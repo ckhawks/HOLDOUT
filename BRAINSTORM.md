@@ -179,13 +179,213 @@ Other hideout texture:
 
 ---
 
+## Stat + RNG combat & loadout system
+
+The integrating subsystem that makes everything else click. Currently events are timed text; this turns each one into a stat check that loadout puzzles into.
+
+### Item functional categories
+
+Every item belongs to at least one. Same item can flex (a Cracked Battery is junk now, material at Workbench T2):
+
+- **Junk** — pure cash conversion. Some items meant to be this. Zero shame.
+- **Materials** — Workbench fuel. Saw-or-sell tension.
+- **Gear** — equipped pre-raid. Stat blocks, slot costs, condition.
+- **Consumables** — burned mid-raid (stim, medkit, EMP, bait, bandage).
+- **Intel** — spent pre-raid for run modifiers.
+- **Tools** — situational unlocks (lockpicks, hacking deck, breaching charge, gas mask).
+- **Trophies** — one-of-a-kind, hideout decoration, occasional passive bonus.
+
+### Stat-check event resolution
+
+- Operative stats: Stealth, Combat, Tech, Endurance, Perception, Nerve
+- Each event has a check (`Tech vs door difficulty` for `locked_door`)
+- Outcome resolves to *degrees*: crit success / success / fail / crit fail
+- Player mid-event choice routes to a different stat check (Pick=Tech, Blast=Combat, Skip=Stealth)
+- Loadout shifts which routes are viable
+
+### Loadout slots (pre-raid)
+
+- Primary weapon
+- Sidearm
+- Head / Chest / Legs armor
+- 3–4 gear slots (tools, consumables, intel docs)
+- Slot scarcity = the puzzle
+
+### Operative skills (Wurm-style)
+
+- Skills tick up per use, no XP screen — just stat drift in tooltips
+- Stealth grows from avoidance, Combat from engagement, Tech from picks/hacks
+- At hideout: spend in-game ticks training a chosen skill
+- Ops organically specialize → roster becomes a deck of specialists
+
+### Location ↔ gear interaction
+
+- **Hard gates** — gas mask for Drowned District, IR for night raids, mag-clamps for Aerostat
+- **Soft biases** — Server Farm rewards Tech, Slum rewards Stealth
+- **Loot biases** + **threat curve** (already in `IDEAS.md`)
+
+Picking a location becomes a four-way thought: which op? which loadout? which intel? which time-of-day?
+
+### Consumables with teeth
+
+Each a single-use slot decision:
+- Medkit — heal mid-raid
+- Stim — burn stamina for temp combat boost
+- EMP — skip one tech-heavy patrol
+- Bait / decoy — auto-resolve `spotted_patrol`
+- Bandage — stop bleed timer
+- Comm-jam — block one bad-event roll
+- Cigarette — Nerve+ for next event (flavor + tiny mechanic)
+
+### Intel as a 4th item type
+
+Looted as data drives, badges, blueprints. Spent pre-raid:
+- "Patrol schedule" → -1 patrol event
+- "Vault location" → guarantees one rare-loot event
+- "Maintenance hatch" → extends Recall window
+- "Frequency hop" → comms degrade slower
+
+Stash gets a 4th valid use: read-and-burn intel for run modifiers.
+
+### Crafting necessity
+
+- Best-in-slot is **crafted only** — never looted, never bought
+- Workbench T1: repair, basic mods
+- Workbench T2: combine items into mid-tier gear
+- Workbench T3: legendary modded weapons via schematic + rare mats
+- Crafted gear gets *named* flavor based on inputs
+
+### Decision flow per raid (target shape)
+
+1. Pick location (gates + biases + threat roll)
+2. Pick operative (skill profile)
+3. Pick gear (slot-limited loadout puzzle)
+4. Spend intel (optional pre-raid mods)
+5. Watch run (events resolve via stat + gear + RNG)
+6. Mid-run choices leverage loadout
+7. Recall window (stake management)
+8. Return — gear wear, loot, skill XP, run summary
+
+Every step touches the stash. Nothing is dead weight.
+
+---
+
+## Weapons + modding deep-dive
+
+Player wants to lean here. Variety + mods = loadout identity.
+
+### Weapon archetypes (different playstyles)
+
+- **Suppressed pistol** — stealth, low ammo concern, weak vs armor
+- **DMR** — long range, ammo precious, slow rate
+- **SMG** — close-quarters, ammo hungry, mediocre at range
+- **Breaching shotgun** — close + door utility, loud
+- **Bolt-action rifle** — single-shot, max damage, slow
+- **Energy weapon** — silent, expensive ammo, armor-piercing but low damage
+- **Melee** — silent, no ammo, high risk, builds Nerve
+
+Each shines in a *type* of raid; none dominates all.
+
+### Mod slots
+
+- **Sight** — iron / red dot / scope / IR / thermal (Perception shifts)
+- **Barrel** — short / standard / long / suppressed (accuracy vs noise vs handling)
+- **Stock** — folding / standard / heavy (recoil / stealth / handling tradeoffs)
+- **Magazine** — small (fast reload, less ammo) / standard / extended (slow reload)
+- **Underbarrel** — laser / grip / flashlight / breaching attachment
+- **Ammo type** — soft mod, swappable per raid (standard / AP / hollow / sub)
+
+Mods have **condition** and **brand**.
+
+### Mod-weapon compatibility
+
+- Not every mod fits every weapon (caliber families, attachment rails)
+- Mods are loot in their own right — finding a specific scope is a real find
+- Brand-set bonuses for matching mod families
+
+### Crafted vs scavenged mods
+
+- T1 workbench: nothing — pure scavenge era
+- T2 workbench: craft mid-tier mods from materials
+- T3 workbench: rare crafted mods via schematic + rare mats
+- Creates a clear gear-rotation arc through play
+
+---
+
+## Gear slot expansion
+
+Roll out *only as each slot earns its keep*. Don't add slots that always carry the same item.
+
+### Tiered slot rollout
+
+**Start with**:
+- Head (helmet)
+- Chest (armor)
+- Boots
+
+**Add when justified**:
+- Eyewear (IR goggles, ballistic, prescription Tech glasses) — only if it gates raids the helmet doesn't already gate
+- Face / mask (gas mask, balaclava) — only if Drowned District / contamination ships
+- Gloves (Tech+ for picks, Combat+ for grip) — only if a stat needs another knob
+- Outer clothing layer (jacket, hazmat overshell) — environmental + flavor
+- Pants / legs — defer unless a leg-injury system needs it
+- Belt (extra small consumable slots) — late-game capacity reward
+
+**Probably skip**:
+- Inner clothing — flavor-only is fine, mechanical slot is bloat
+- Watch / accessory — gimmicky unless a real mechanic justifies
+
+Rule of thumb: **a slot only earns its place if leaving it empty is a real cost AND filling it is a real choice.**
+
+---
+
+## Anti-meta — encouraging playstyle variety
+
+User's explicit flag: prevent "always bring the objectively best loadout." Tools to enforce variety:
+
+- **No strict upgrades** — every gear piece has a downside. Heavier armor = slower extract. Better optic = louder shot. Suppressor = damage drop. Rare ≠ always better.
+- **Situational hard gates** — gas mask for Drowned District, IR optics for night, mag-clamps for Aerostat. Specific gear is *required* for specific raids → forces rotation.
+- **Stat archetype conflicts** — Stealth and Combat want opposite gear. Maxing both is impossible.
+- **Slot scarcity** — limited gear slots = "what do I leave behind?"
+- **Operative skill drift** — ops naturally specialize via use. Switching playstyles mid-op is painful → roster becomes diverse.
+- **Condition / wear** — favorite rifle eventually breaks down → forces backup rotation.
+- **Rotating world modifiers** — heat system makes one district risky, vendor moods shift item economics, "today's hot zone" shifts location biases. Yesterday's best loadout is today's mid.
+- **Diminishing returns** — past a threshold, more Stealth gives less per point. Spread > stack.
+- **Anti-synergy / mutual exclusion** — equipping a suppressor disables a high-damage mod. Specific exclusions create real choice.
+- **Risk/reward tiering** — light/fast = more loot capacity, less defense. Heavy = survivability, smaller haul.
+- **Crit-fail scaling** — overspecialized loadouts crit-fail hard when the opposite check is forced. Pure-stealth op in a forced combat moment? Disaster.
+- **Operative personality** — claustrophobic op refuses gas mask without Nerve hit. Loadout choice bends around the *person*.
+- **Mid-raid event forks that punish the meta** — "Spotted by drone" punishes heavy armor (can't sprint). "Wet floor" hurts mag-clamps. "Quiet kill required" punishes loud weapons. Anti-meta events on a rotating draw.
+- **Rare gear has *weird* tradeoffs** — the "Brickeye" helmet is great BUT blocks peripheral vision (Perception -1). Even high-tier gear is a choice, not a default.
+
+---
+
+## Emergent playstyle archetypes
+
+Don't hardcode classes. These should *emerge* from gear + skill choices. Naming them just for shorthand:
+
+- **Ghost** — stealth, suppressed pistol, ghillie, lockpicks. Avoid every event. Lower loot per run, consistent returns.
+- **Hammer** — plate carrier, shotgun, breaching charges. Engage everything. High alertness, high reward, high risk.
+- **Tinkerer** — hacking deck, lockpicks, EMP, light armor. Vault-runner. Slow, jackpot-focused.
+- **Scavenger** — high-capacity loadout, light gear, fast extract. Many small pulls, low stakes.
+- **Specialist** — location-keyed loadouts; rotates ops to match destination. Master-of-many.
+- **Berserker / Wildcard** — high-variance gear that crits hard both ways. Lottery raids.
+
+The system *names* the playstyle in the player's head, not in the UI.
+
+---
+
 ## Recommended starting points
 
 If picking what to chase next, biggest leverage per effort:
 
-1. **Event chains** — small engine extension, big tonal payoff
-2. **Vendor moods** — adds daily texture for almost no code
-3. **Item tooltips that enrich with use** — discovery without checklists
-4. **The dispatch AI as a character** — defines the game's voice; cheap
+1. **Stat checks on existing events** — convert door/patrol resolution from "timer fires" to "Tech roll vs difficulty." Foundational. Everything else stacks on this.
+2. **3-slot loadout pre-raid** — gear, consumable, tool. The act of picking changes everything, even before full apparel.
+3. **Tooling unlocks event branches** — a lockpick in your pack makes Pick the strong option. Cheapest way to make items *purposeful* immediately.
+4. **Intel as a 4th item category** — reuses the existing loot pipeline, adds a whole pre-raid layer with minimal new UI.
+5. **Event chains** — small engine extension, big tonal payoff.
+6. **Vendor moods** — adds daily texture for almost no code.
+7. **Item tooltips that enrich with use** — discovery without checklists.
+8. **The dispatch AI as a character** — defines the game's voice; cheap.
 
-Note: items 1, 2, 4 all reinforce the "game is the UI" pillar that makes HOLDOUT distinct from "Tarkov but text."
+Items 5, 6, 8 reinforce the "game is the UI" pillar that makes HOLDOUT distinct from "Tarkov but text."
