@@ -96,9 +96,9 @@ Detailed tasks live at `C:\Projects\ideas\SPRINT1_TASKS.md`. Summary:
 - [x] Zustand installed
 - [x] `src/lib/types.ts` created
 - [x] `src/lib/engine/save.ts` created with schema versioning
-- [ ] Create remaining folders (`components/panels`, `components/terminal`, `lib/data`, `lib/engine`, `store`)
-- [ ] Create Zustand store skeleton at `src/store/game.ts` (state slices: cash, stash, backpack, hideout, operative, currentRaid, unlocks; reset action)
-- [ ] First commit + push to GitHub
+- [x] All folders created (`components/panels`, `components/terminal`, `lib/data`, `lib/engine`, `store`)
+- [x] Zustand store at `src/store/game.ts` with all slices + reset action
+- [x] First commit + push to GitHub (https://github.com/ckhawks/HOLDOUT)
 
 **Phase 1 — Skeleton UI** (1-2 days)
 - Tactical-terminal layout: header (cash, op status), sidebar nav (Hideout/Stash/Ops/Feed icons), main panel area
@@ -151,6 +151,56 @@ Detailed tasks live at `C:\Projects\ideas\SPRINT1_TASKS.md`. Summary:
 - Settings: Reset button (with confirmation), tick-rate slider for debug
 - Bug pass + 30-min playtest
 - **Definition of done:** 30 min play, hit one upgrade, see motivation arc working, no crashes
+
+---
+
+## Status as of session 1 end (2026-05-06)
+
+Phases 0, 1, 2, 3, 5, 6 are **functionally complete**. Phase 4 (player decisions / locked-door modal / extract sequence / death) is **not started** — that's the next big block.
+
+**What works end-to-end right now:**
+- Dispatch terminal shell (header, sidebar, 5 panels: Hideout / Stash / Ops / Feed / Settings).
+- Static raid loop with 6 event types, weighted vocab template assembly, 5–15s tick.
+- Health + Energy + Alertness + depth tracked per raid; energy drains 3/tick baseline (more on patrol/door/damage events). Damage hits Health, not Energy.
+- Loot lands in Pack (right-column in Feed panel); overflow drops the lowest-value item.
+- Recall transfers Pack → Stash. Workbench Schematic drop sets `unlocks.workbench`.
+- Sell-per-item + "Sell junk" bulk button (commons only). Experimental items sellValue=0 = unsellable.
+- Backpack & Stash upgrades with growing cost (`500 + 250·level`, `800 + 400·level`). Endless.
+- Debounced localStorage save (400ms) with v1→v2 migration; hydrate on boot; `clearSave()` from Settings panel.
+
+**What's still TODO from earlier phases (small):**
+- Show ammo in the stats row (RunState already has the field, just not displayed).
+- Run-summary modal after Recall (Phase 3 leftover) — currently silent.
+- First-run intro modal (Phase 6 leftover).
+- Tick-rate debug slider (Phase 6 leftover).
+
+**Recommended next sessions (user has not committed yet):**
+1. Phase 4 stakes (door modal, extract sequence, injury/death).
+2. Item flavor pass (per-stash-item adjective so each loot has individual identity).
+3. Run-summary modal.
+4. Then content breadth from `IDEAS.md` (loot categories + threat levels per location is the user's pinned want).
+
+## Pinned UI/feel decisions (don't undo without asking)
+
+These were tuned with the user — they're not accidents.
+
+- **Mixed typography**: sans for prose (subtitles, descriptions, log message text, item names in lists, module status); mono for terminal chrome (header, panel titles, stat labels, kind tags, timestamps, ¤ values, location IDs).
+- **Items in feed log are highlighted via `⟦…⟧` markers** wrapped at template-substitution time. Renderer splits on the marker and applies tier color + `font-semibold`. **Not monospace** — user explicitly rejected mono for items.
+- **Item tier colors live in `src/lib/itemDisplay.ts`** (`TIER_COLOR` map). Reuse it; don't redeclare locally.
+- **Buttons**: sentence case (not all caps), sans (not mono), lucide icon on the *right* side of the label. Send button uses `ArrowRight`, Recall uses `LogOut`.
+- **Log feed**: opacity fade based on row distance from end (-5%/row, floor 0.25). NOT time-based. `transition-opacity` smooths the step.
+- **Log feed**: ghost "next event incoming" row at the bottom with pulsing dots + 10s linear progress bar that resets via `key={raid.log.length}`.
+- **Background**: dot pattern in `.grid-paper` (radial-gradient, 18px), not line grid. Lighter so text is readable.
+- **Pack** is a 240px right-side column inside Feed panel (not a bottom strip). Always rendered while raid is active so layout doesn't shift when the first item lands.
+- **Sidebar width** is `w-20` (80px) — needed to fit "Hideout" / "Settings" labels at text-[10px].
+- **Health + Energy split** (not stamina). Damage events reduce Health; every tick drains Energy. User asked for this explicitly — don't merge them back.
+- **Cursor states**: `cursor-pointer` on Button base + sidebar buttons + select; `disabled:cursor-not-allowed` on disabled Buttons.
+
+## Repo / git
+
+- Remote: `https://github.com/ckhawks/HOLDOUT.git`
+- `/.claude/settings.local.json` is gitignored.
+- One commit so far ("first commit"). Future commits should follow standard "what + why" form per global CLAUDE.md.
 
 ---
 
