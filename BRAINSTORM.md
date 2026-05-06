@@ -274,6 +274,8 @@ Every step touches the stash. Nothing is dead weight.
 
 Player wants to lean here. Variety + mods = loadout identity.
 
+> **Prototype:** `experiments/firearm-gen/` — procedural firearm generator with brands, attachments, tier-shaped names, and per-stat attribution. See `experiments/firearm-gen/DESIGN_NOTES.md` for the design positions it commits to and what it punts. Not wired into HOLDOUT yet.
+
 ### Weapon archetypes (different playstyles)
 
 - **Suppressed pistol** — stealth, low ammo concern, weak vs armor
