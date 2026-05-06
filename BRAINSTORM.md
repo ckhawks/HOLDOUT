@@ -274,6 +274,8 @@ Every step touches the stash. Nothing is dead weight.
 
 Player wants to lean here. Variety + mods = loadout identity.
 
+> **Prototype:** `experiments/firearm-gen/` — procedural firearm generator with brands, attachments, tier-shaped names, and per-stat attribution. See `experiments/firearm-gen/DESIGN_NOTES.md` for the design positions it commits to and what it punts. Not wired into HOLDOUT yet.
+
 ### Weapon archetypes (different playstyles)
 
 - **Suppressed pistol** — stealth, low ammo concern, weak vs armor
@@ -375,17 +377,145 @@ The system *names* the playstyle in the player's head, not in the UI.
 
 ---
 
+## Loot Tetris & spatial inventory
+
+User-flagged: enjoys Tarkov's spatial loot puzzle. Lean here.
+
+- **Grid containers everywhere.** Backpack (raid-time), stash (home), secure container (death-proof mini), individual cases. Items have W×H. Rotation. Drag-place.
+- **Mid-raid Tetris under pressure.** When loot drops, you have to fit it. Drop the canteen for the GPU? Tarkov tension AND active player input *during* the raid.
+- **Cases within containers.** Tool case is a 3×3 item that opens its own sub-grid. Money case (collapses cash to a tile). Ammo case. Mod case. THICC case as endgame flex.
+- **Container biases.** Weapon rack: only weapons but doubles density. Locker: only worn gear. Junk pile: anything but disorganized → search penalty when finding specific items. Cold storage: perishables don't decay. Vault: items can't be accidentally sold.
+- **Ergonomic fit bonuses.** A loadout where everything packs cleanly grants a small "ready" bonus (faster recall, +1 mid-raid option, etc). Tetris feeds back into the run.
+- **Extraction weight + sound.** Heavy hauls slow recall and trigger more `spotted` events. Greed has a cost.
+- **Body slots vs backpack.** Pockets (1×1 only), rig (small grid), backpack (main grid), secure container (tiny but death-proof). Tarkov DNA — gives weight to "what do I really need *on me*."
+
+---
+
+## Loot accumulation & hoarding
+
+User-flagged: enjoys hoarding / accumulation in Tarkov-likes. Lean here too. **This is probably the strongest candidate for the long-tail motivation engine** — independent of which depth pivot lands, the loot-identity pillar gives the game a 100+ hour reason to play.
+
+### Item identity (instances, not types)
+
+- Every item is a **unique instance** with name, brand, condition, history.
+- Two Mk-IV rifles are different individuals: "Mk-IV 'Brickeye', stock chipped, two raids" vs "Mk-IV 'Plumline', factory fresh, never fired." This is what makes Tarkov players name their guns.
+- Item history log: where found, raids carried, kills witnessed. Hover for memoir.
+- After 50 raids you can't bear to sell that rifle. That's the design goal.
+
+### Discovery / examination
+
+- Items return partially-identified ("Unknown Optic, Mk-IV").
+- Examining at hideout (in-game time) reveals stats, brand, flavor.
+- Slows dopamine. Creates "what is this?" ritual.
+
+### Collections / sets
+
+- Set bonuses for matching brand/family items.
+- Catalog progress (soft, *not* achievement-flavored): "Brands identified: 47" / "Brand catalogs: 3/12 complete."
+- Some items appreciate over in-game weeks (vintage, collectible).
+
+### Stash as place, not menu
+
+- Stash is *rooms*: armory wall, pantry, workshop, trophy hall, vault.
+- Visual upgrades (lighting, racks, pegboards, neon) — cosmetic, but the hideout looks more *yours* over time.
+- Pin 3–4 favorite items to home screen. Your "main characters."
+- NPC visits comment on the hoard ("nice rifle wall").
+- Stash worth ticker prominently displayed. Hoarders love a number going up.
+- Snapshot system to look back at empty day-1 stash later.
+
+### Sell vs keep tension (the real game)
+
+- Some items appreciate over time
+- Some items have late-revealed uses (schematics, NPC asks)
+- Vendor demand rotates ("Curator wants medical today, prices doubled")
+- One-of items: once sold, that exact instance is gone forever
+- Insurance has cost; can't insure everything
+- Stash space is finite even at top tier; you have to curate
+- "I knew I'd need this" payoff: a few times per session, hoarded items pay off → builds *trust-the-hoard* psychology
+
+### Decay / churn
+
+- Perishables decay: batteries lose charge, food spoils, meds expire. Forces churn on consumables.
+- Weapons / gear / trophies are hoardable; consumables are not.
+
+### Synthesis with depth pivots
+
+If a deck/card depth pivot lands, items can grant cards (more of an item type → deeper deck; pinned/displayed items grant unique cards). If a verb-table pivot lands, items become workable cards on the table. If a multi-phase pivot lands, hoarded items shape recon and exfil options. **Hoarding feeds the active loop regardless of which pivot wins.**
+
+### First-wave picks
+
+1. **Item instances with name + history** — biggest emotional payoff per line of code; even before grids, naming each item makes them feel real
+2. **Spatial backpack grid (raid-time)** — Tarkov's most beloved mechanic; makes mid-raid loot a real decision
+3. **Stash as rooms with display pins** — turns the stash from a list into a place
+4. **Examine ritual** — slows dopamine, creates "what is this?" moments
+
+---
+
+## Social / multiplayer hooks
+
+Constraints: no realtime PvP (locked), pause-on-tab-close (locked), no clock gating (locked). The dispatch-terminal frame is *already* a network metaphor — handlers in fiction are connected. Lean into async.
+
+### Tier 1 — Ambient presence (zero direct interaction, world feels populated)
+
+- **Comms intercepts** — anonymized other-player raid logs occasionally bleed into your feed as garbled radio chatter
+- **Global heat & faction tides** — aggregate player behavior moves the world; weekly bulletins reflect collective choices
+- **Whisper network** — pre-raid, type a one-line message; gets anonymized + broadcast as flavor in another handler's feed
+- **Network status as UI** — terminal shows other handlers logged in (callsigns scrolling), uptime, peer counts
+- **Aggregated discovery feed** — "rare schematic recovered from Aerostat" / "handler somewhere lost an op," all anonymized
+
+### Tier 2 — Async exchange (you affect each other, no scheduling)
+
+- **Item provenance** — items carry history *across players*; the Mk-IV "Ironclaw" was once @vex's, then @ghost's, now yours. Items as shared cultural artifacts.
+- **Operative graveyard** — dead ops' tags drop into a global pool; recovering and returning a tag earns rep + restores some of the original handler's gear
+- **Bulletin board / classifieds** — async trade postings with item-for-item barter
+- **Intel marketplace** — submit location reports after a raid; others buy them as pre-raid modifiers; you earn passive cash from quality intel
+- **Dead drops** — hide an item in a location addressed to a specific handler; they raid it, find it, extract
+- **Black market notes** — items sold to fences can carry coded messages for whoever buys them later
+
+### Tier 3 — Async cooperation (real shared outcomes)
+
+- **Co-signed raids** — 2–3 handlers pool ops + intel + gear into one operation; resolves async on a player-defined timer; loot splits proportionally
+- **Operative loan** — lend your op as backup in another handler's raid; share loot; gain XP from raids you didn't watch
+- **Crews (4–12 handlers)** — opt-in shared stash, base upgrades, async chat board, slow-burn shared "operations"
+- **Mentor / mentee** — veterans tag newbies; mentor's intel/rep boost mentee runs; mentor earns passive cash from mentee success
+
+### Tier 4 — Soft meta / fame (no high-score competition)
+
+- **Hoarder leaderboards** — "most unique brands in trophy hall" / "longest-surviving operative" / "most-historic single item." Aligns with hoarding pillar.
+- **Operative legends** — top operatives globally have public stat sheets; some unlock cameo events in your world
+- **Hideout tours** — public read-only stash showcase
+- **Item gallery** — most-storied items globally with full provenance chain
+
+### Wild swings
+
+- **The Holdout is one place in fiction** — all hideouts overlap diegetically; "the Holdout" is the same site in lore, you're in different rooms. Crossover events possible.
+- **Operative inheritance** — your dead op's callsign passes to another player's roster; their new op "remembers" yours via flavor lines / sometimes a memento
+- **Anomalous co-signs** — rare global "Anomaly" raids; any handler can co-sign from anywhere; signatures contribute to a slow shared event
+
+### First-wave picks
+
+1. **Comms intercepts + whisper network** — cheapest "world feels alive" win; tiny shared-message pool, no real backend
+2. **Item provenance** — synergizes hard with the hoarding pillar; items become shared cultural artifacts
+3. **Intel marketplace** — async, paid, useful, no ego/scoreboards
+4. **Co-signed raids** — the one true "play together" mechanic that doesn't require simultaneity
+
+These four together give the game a populated feel + real shared stakes + a friendship-tier mechanic, all within the locked constraints.
+
+---
+
 ## Recommended starting points
 
 If picking what to chase next, biggest leverage per effort:
 
-1. **Stat checks on existing events** — convert door/patrol resolution from "timer fires" to "Tech roll vs difficulty." Foundational. Everything else stacks on this.
-2. **3-slot loadout pre-raid** — gear, consumable, tool. The act of picking changes everything, even before full apparel.
-3. **Tooling unlocks event branches** — a lockpick in your pack makes Pick the strong option. Cheapest way to make items *purposeful* immediately.
+1. **Item instances + history** (loot-identity pillar) — biggest long-tail payoff per line of code; underpins the whole hoarding direction
+2. **Stat checks on existing events** — convert door/patrol resolution from "timer fires" to "stat roll vs difficulty." Foundational for any depth pivot.
+3. **Tooling unlocks event branches** — a lockpick makes Pick the strong option. Cheapest way to make items *purposeful* immediately.
 4. **Intel as a 4th item category** — reuses the existing loot pipeline, adds a whole pre-raid layer with minimal new UI.
-5. **Event chains** — small engine extension, big tonal payoff.
-6. **Vendor moods** — adds daily texture for almost no code.
-7. **Item tooltips that enrich with use** — discovery without checklists.
-8. **The dispatch AI as a character** — defines the game's voice; cheap.
+5. **Spatial backpack grid (raid-time)** — Tarkov DNA; turns mid-raid loot into a real decision.
+6. **Event chains** — small engine extension, big tonal payoff.
+7. **Vendor moods** — adds daily texture for almost no code.
+8. **Item tooltips that enrich with use** — discovery without checklists.
+9. **Comms intercepts + whisper network** — cheap "world feels alive" win.
+10. **The dispatch AI as a character** — defines the game's voice; cheap.
 
-Items 5, 6, 8 reinforce the "game is the UI" pillar that makes HOLDOUT distinct from "Tarkov but text."
+Items 6, 7, 9, 10 reinforce the "game is the UI" pillar that makes HOLDOUT distinct from "Tarkov but text."
