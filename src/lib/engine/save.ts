@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 4;
 
 export interface PersistedState {
   cash: number;
@@ -54,15 +54,24 @@ export function loadGame(): PersistedState | null {
 }
 
 export function migrateSave(saved: SavedGame): SavedGame {
+  const s = saved.state as PersistedState;
   // v1 had no upgrades field
   if (saved.schemaVersion < 2) {
-    const s = saved.state as PersistedState;
     if (!s.upgrades) {
       s.upgrades = { backpackLevel: 0, stashLevel: 0 };
     }
-    return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };
   }
-  return saved;
+  // v3: pack tetris — old in-progress raid format is incompatible. Drop it.
+  if (saved.schemaVersion < 3) {
+    s.currentRaid = null;
+  }
+  // v4: locations + unlocks added biolab.
+  if (saved.schemaVersion < 4) {
+    if (s.unlocks && typeof (s.unlocks as { biolab?: boolean }).biolab !== "boolean") {
+      s.unlocks = { ...s.unlocks, biolab: false };
+    }
+  }
+  return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };
 }
 
 export function clearSave(): void {

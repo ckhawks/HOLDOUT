@@ -1,17 +1,43 @@
 export type ItemTier = "common" | "uncommon" | "rare" | "experimental";
 
+export type ItemCategory =
+  | "mechanical"
+  | "electronics"
+  | "chems"
+  | "consumables"
+  | "valuables"
+  | "intel"
+  | "military"
+  | "experimental";
+
+export type Cell = readonly [number, number];
+export type ShapeCells = ReadonlyArray<Cell>;
+export type Rotation = 0 | 1 | 2 | 3;
+
 export interface Item {
   id: string;
   name: string;
   tier: ItemTier;
+  category: ItemCategory;
   sellValue: number;
   weight: number;
+  shape: ShapeCells;
 }
 
 export interface StashItem {
   uid: string;
   itemId: string;
   flavor?: string;
+}
+
+export interface PackPlacement extends StashItem {
+  x: number;
+  y: number;
+  rotation: Rotation;
+}
+
+export interface PendingItem extends StashItem {
+  arrivedAt: number;
 }
 
 export interface RunState {
@@ -74,12 +100,21 @@ export interface RaidEventDef {
   templates: string[];
 }
 
+export interface LocationUnlock {
+  type: "permanent" | "consumable";
+  itemId: string;
+  label: string;
+}
+
 export interface Location {
   id: string;
   name: string;
   description: string;
   tier: number;
+  difficulty: "low" | "mid" | "high";
+  categoryWeights?: Partial<Record<ItemCategory, number>>;
   eventWeights?: Partial<Record<EventKind, number>>;
+  unlock?: LocationUnlock;
 }
 
 export interface CurrentRaid {
@@ -87,13 +122,17 @@ export interface CurrentRaid {
   startedAt: number;
   runState: RunState;
   log: LogEntry[];
-  backpack: StashItem[];
+  pack: PackPlacement[];
+  pending: PendingItem[];
+  packGrid: { width: number; height: number };
+  pendingCapacity: number;
   active: boolean;
 }
 
 export interface Unlocks {
   workbench: boolean;
   medbay: boolean;
+  biolab: boolean;
 }
 
 export interface Upgrades {

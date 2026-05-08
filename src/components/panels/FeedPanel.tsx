@@ -2,12 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { useGame } from "@/store/game";
-import { ITEMS } from "@/lib/data/items";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
 import { LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
+import { PackTetris } from "./PackTetris";
+import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
 export function FeedPanel() {
   const raid = useGame((s) => s.currentRaid);
@@ -37,7 +38,7 @@ export function FeedPanel() {
     <section className="flex min-h-0 flex-1 flex-col">
       <PanelHeader
         title="Comms Feed"
-        subtitle={`Channel open · ${raid.locationId} · depth ${rs.depth}`}
+        subtitle={`Channel open · ${LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId} · depth ${rs.depth}`}
         right={
           <Button
             variant="destructive"
@@ -101,7 +102,7 @@ export function FeedPanel() {
           );
         })}
         <div
-          key={`incoming-${raid.log.length}`}
+          key={`incoming-${raid.runState.depth}`}
           className="flex items-center gap-3 py-1.5 opacity-70"
         >
           <span className="shrink-0 font-mono text-xs text-muted-foreground/50 tabular-nums">
@@ -119,33 +120,7 @@ export function FeedPanel() {
           </span>
         </div>
       </div>
-      <aside className="flex w-60 shrink-0 flex-col border-l border-border/60">
-        <div className="flex items-center justify-between border-b border-border/60 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-          <span>Pack</span>
-          <span className="tabular-nums text-foreground">{raid.backpack.length}</span>
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-3">
-          {raid.backpack.length === 0 ? (
-            <div className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground/70">
-              empty
-            </div>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {raid.backpack.map((bi) => (
-                <li
-                  key={bi.uid}
-                  className={cn(
-                    "rounded-sm border border-border bg-card/40 px-2 py-1.5 text-xs font-semibold",
-                    tierColorFor(bi.itemId),
-                  )}
-                >
-                  {ITEMS[bi.itemId]?.name ?? bi.itemId}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </aside>
+      <PackTetris />
       </div>
     </section>
   );

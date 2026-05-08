@@ -1,8 +1,8 @@
-import type { CurrentRaid, LogEntry, StashItem } from "@/lib/types";
+import type { CurrentRaid, LogEntry, PendingItem } from "@/lib/types";
 import { rollEvent } from "@/lib/engine/events";
 
-export const TICK_MIN_MS = 5000;
-export const TICK_MAX_MS = 15000;
+export const TICK_MIN_MS = 3000;
+export const TICK_MAX_MS = 8000;
 
 export function makeRng(seed: number): () => number {
   let s = seed >>> 0 || 1;
@@ -15,7 +15,11 @@ export function makeRng(seed: number): () => number {
   };
 }
 
-export function startRaid(locationId: string): CurrentRaid {
+export function startRaid(
+  locationId: string,
+  packGrid: { width: number; height: number },
+  pendingCapacity: number,
+): CurrentRaid {
   return {
     locationId,
     startedAt: Date.now(),
@@ -23,7 +27,10 @@ export function startRaid(locationId: string): CurrentRaid {
     log: [
       makeLog("system", `Operative inserted at ${locationId}. Comms green.`),
     ],
-    backpack: [],
+    pack: [],
+    pending: [],
+    packGrid,
+    pendingCapacity,
     active: true,
   };
 }
@@ -44,7 +51,7 @@ export function nextTickDelay(rand: () => number): number {
 
 export interface TickResult {
   log: LogEntry;
-  loot?: StashItem;
+  loot?: PendingItem;
   alertnessDelta: number;
   healthDelta: number;
   energyDelta: number;
@@ -52,18 +59,19 @@ export interface TickResult {
 
 export const ENERGY_BASE_DRAIN = 3;
 
-export function tickRaid(rand: () => number): TickResult {
-  const ev = rollEvent(rand);
+export function tickRaid(rand: () => number, locationId?: string): TickResult {
+  const ev = rollEvent(rand, locationId);
   let alertnessDelta = 0;
   let healthDelta = 0;
   let energyDelta = -ENERGY_BASE_DRAIN;
-  let loot: StashItem | undefined;
+  let loot: PendingItem | undefined;
 
   if (ev.kind === "looted_container" || ev.kind === "found_rare") {
     if (ev.itemId) {
       loot = {
         uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         itemId: ev.itemId,
+        arrivedAt: Date.now(),
       };
     }
   }

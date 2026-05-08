@@ -145,7 +145,7 @@
   to { width: 100%; }
 }
 .tick-progress-bar {
-  animation: tick-progress 10s linear forwards;
+  animation: tick-progress 8s linear forwards;
 }
 
 @keyframes tick-pulse {

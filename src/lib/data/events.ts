@@ -6,9 +6,12 @@ export const EVENTS: RaidEventDef[] = [
     weight: 35,
     kind: "loot",
     templates: [
-      "Pried open a {brand} crate in the {location}. {item} inside, {adj}.",
-      "Cracked a locker. {item}, {adj}. Bagged.",
-      "Tipped over a footlocker — {item} ({adj}). Pocketed.",
+      "Pried open a {brand} crate. {item} inside, {adj}.",
+      "Cracked a locker — {item}. {adj}.",
+      "Tipped a footlocker. Got a {item} ({adj}).",
+      "{adj} {item} on a shelf in the {location}.",
+      "Pulled a {item} from a {brand} duffel. {adj}.",
+      "Found a {item} in the {location}. {adj}.",
     ],
   },
   {
@@ -27,8 +30,10 @@ export const EVENTS: RaidEventDef[] = [
     kind: "loot",
     templates: [
       "Wedged behind a panel — {item}. {adj}.",
-      "In a deep cache: {item}. Not corp-issue.",
-      "Under the {location} flooring — {item}, {adj}.",
+      "Deep cache. {item} — not corp-issue.",
+      "Under the {location} flooring: {item}, {adj}.",
+      "Hidden in a {brand} maintenance hatch — {item}. {adj}.",
+      "Tucked behind a {brand} junction box — {item}. {adj}.",
     ],
   },
   {

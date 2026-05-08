@@ -6,6 +6,9 @@ import type {
   Hideout,
   LogEntry,
   Operative,
+  PackPlacement,
+  PendingItem,
+  Rotation,
   StashItem,
   Unlocks,
   Upgrades,
@@ -15,17 +18,27 @@ import { ITEMS } from "@/lib/data/items";
 import {
   backpackCapacity,
   backpackUpgradeCost,
+  packDimensions,
+  pendingCapacity,
   stashCapacity,
   stashUpgradeCost,
 } from "@/lib/engine/upgrades";
+import {
+  buildOccupancy,
+  canPlace,
+  shapeFor,
+} from "@/lib/engine/shapes";
 import {
   loadGame,
   saveGame,
   clearSave,
   type PersistedState,
 } from "@/lib/engine/save";
+import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
 export type PanelId = "hideout" | "stash" | "ops" | "feed" | "settings";
+
+export const PENDING_EXPIRY_MS = 15000;
 
 interface GameState {
   cash: number;
@@ -44,6 +57,12 @@ interface GameState {
   doTick: () => void;
   recall: () => void;
   endRaid: (extracted: boolean) => void;
+  placeFromPending: (uid: string, x: number, y: number, rotation: Rotation) => boolean;
+  movePackItem: (uid: string, x: number, y: number, rotation: Rotation) => boolean;
+  unplacePackItem: (uid: string) => void;
+  trashFromPending: (uid: string) => void;
+  trashFromPack: (uid: string) => void;
+  pruneExpiredPending: () => void;
   sellItem: (uid: string) => void;
   sellAllJunk: () => void;
   buyBackpackUpgrade: () => void;
@@ -74,21 +93,19 @@ function buildHideout(upgrades: Upgrades): Hideout {
 
 const initialUpgrades: Upgrades = { backpackLevel: 0, stashLevel: 0 };
 
-function pushBackpack(raid: CurrentRaid, capacity: number, loot: StashItem): CurrentRaid {
-  const bp = [...raid.backpack, loot];
-  if (bp.length <= capacity) return { ...raid, backpack: bp };
-  // Drop the lowest-value item if over capacity (oldest wins on ties)
-  let worstIdx = 0;
-  let worstValue = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < bp.length; i++) {
-    const v = ITEMS[bp[i].itemId]?.sellValue ?? 0;
-    if (v < worstValue) {
-      worstValue = v;
-      worstIdx = i;
-    }
+function pushPending(raid: CurrentRaid, loot: PendingItem): CurrentRaid {
+  const pending = [...raid.pending, loot];
+  if (pending.length <= raid.pendingCapacity) {
+    return { ...raid, pending };
   }
-  bp.splice(worstIdx, 1);
-  return { ...raid, backpack: bp };
+  // FIFO: drop oldest. Annotate log with the drop.
+  const dropped = pending.shift()!;
+  const dropName = ITEMS[dropped.itemId]?.name ?? dropped.itemId;
+  return {
+    ...raid,
+    pending,
+    log: [...raid.log, makeLog("system", `Pending tray full — dropped ⟦${dropName}⟧.`, dropped.itemId)],
+  };
 }
 
 export const useGame = create<GameState>((set, get) => ({
@@ -96,7 +113,7 @@ export const useGame = create<GameState>((set, get) => ({
   stash: [],
   operative: initialOperative(),
   hideout: buildHideout(initialUpgrades),
-  unlocks: { workbench: false, medbay: false },
+  unlocks: { workbench: false, medbay: false, biolab: false },
   upgrades: initialUpgrades,
   currentRaid: null,
   activePanel: "ops",
@@ -106,20 +123,33 @@ export const useGame = create<GameState>((set, get) => ({
   setPanel: (p) => set({ activePanel: p }),
 
   beginRaid: (locationId) => {
-    const { operative } = get();
+    const { operative, upgrades, unlocks, stash } = get();
     if (operative.state !== "idle") return;
+    const loc = LOCATIONS_BY_ID[locationId];
+    if (!loc) return;
+    let nextStash = stash;
+    if (loc.unlock) {
+      if (loc.unlock.type === "permanent") {
+        if (!unlocks[loc.id as keyof Unlocks]) return;
+      } else {
+        const idx = stash.findIndex((s) => s.itemId === loc.unlock!.itemId);
+        if (idx === -1) return;
+        nextStash = [...stash.slice(0, idx), ...stash.slice(idx + 1)];
+      }
+    }
     set({
-      currentRaid: startRaid(locationId),
+      stash: nextStash,
+      currentRaid: startRaid(locationId, packDimensions(upgrades), pendingCapacity(upgrades)),
       operative: { ...operative, state: "raiding" },
       activePanel: "feed",
     });
   },
 
   doTick: () => {
-    const { currentRaid, hideout, rngSeed } = get();
+    const { currentRaid, rngSeed } = get();
     if (!currentRaid || !currentRaid.active) return;
     const rand = makeRng(rngSeed + currentRaid.log.length);
-    const t = tickRaid(rand);
+    const t = tickRaid(rand, currentRaid.locationId);
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, t.log],
@@ -132,7 +162,7 @@ export const useGame = create<GameState>((set, get) => ({
       },
     };
     if (t.loot) {
-      raid = pushBackpack(raid, hideout.modules.backpack.capacity ?? 0, t.loot);
+      raid = pushPending(raid, t.loot);
     }
     set({ currentRaid: raid });
   },
@@ -154,9 +184,18 @@ export const useGame = create<GameState>((set, get) => ({
     let nextStash = stash;
     let nextUnlocks = unlocks;
     if (extracted) {
-      nextStash = [...stash, ...currentRaid.backpack].slice(-cap);
-      if (currentRaid.backpack.some((i) => i.itemId === "workbench_schematic")) {
-        nextUnlocks = { ...unlocks, workbench: true };
+      // Only items placed in the pack make it home. Pending is left behind.
+      const recovered: StashItem[] = currentRaid.pack.map((p) => ({
+        uid: p.uid,
+        itemId: p.itemId,
+        flavor: p.flavor,
+      }));
+      nextStash = [...stash, ...recovered].slice(-cap);
+      if (recovered.some((i) => i.itemId === "workbench_schematic")) {
+        nextUnlocks = { ...nextUnlocks, workbench: true };
+      }
+      if (recovered.some((i) => i.itemId === "biolab_coords")) {
+        nextUnlocks = { ...nextUnlocks, biolab: true };
       }
     }
     set({
@@ -167,12 +206,120 @@ export const useGame = create<GameState>((set, get) => ({
     });
   },
 
+  placeFromPending: (uid, x, y, rotation) => {
+    const { currentRaid } = get();
+    if (!currentRaid) return false;
+    const pendingItem = currentRaid.pending.find((p) => p.uid === uid);
+    if (!pendingItem) return false;
+    const occ = buildOccupancy(currentRaid.pack, currentRaid.packGrid.width, currentRaid.packGrid.height);
+    const cells = shapeFor(pendingItem.itemId, rotation);
+    if (!canPlace(cells, x, y, currentRaid.packGrid.width, currentRaid.packGrid.height, occ)) {
+      return false;
+    }
+    const placement: PackPlacement = {
+      uid: pendingItem.uid,
+      itemId: pendingItem.itemId,
+      flavor: pendingItem.flavor,
+      x,
+      y,
+      rotation,
+    };
+    set({
+      currentRaid: {
+        ...currentRaid,
+        pack: [...currentRaid.pack, placement],
+        pending: currentRaid.pending.filter((p) => p.uid !== uid),
+      },
+    });
+    return true;
+  },
+
+  movePackItem: (uid, x, y, rotation) => {
+    const { currentRaid } = get();
+    if (!currentRaid) return false;
+    const target = currentRaid.pack.find((p) => p.uid === uid);
+    if (!target) return false;
+    const occ = buildOccupancy(currentRaid.pack, currentRaid.packGrid.width, currentRaid.packGrid.height, uid);
+    const cells = shapeFor(target.itemId, rotation);
+    if (!canPlace(cells, x, y, currentRaid.packGrid.width, currentRaid.packGrid.height, occ)) {
+      return false;
+    }
+    set({
+      currentRaid: {
+        ...currentRaid,
+        pack: currentRaid.pack.map((p) => (p.uid === uid ? { ...p, x, y, rotation } : p)),
+      },
+    });
+    return true;
+  },
+
+  trashFromPending: (uid) => {
+    const { currentRaid } = get();
+    if (!currentRaid) return;
+    set({
+      currentRaid: {
+        ...currentRaid,
+        pending: currentRaid.pending.filter((p) => p.uid !== uid),
+      },
+    });
+  },
+
+  trashFromPack: (uid) => {
+    const { currentRaid } = get();
+    if (!currentRaid) return;
+    set({
+      currentRaid: {
+        ...currentRaid,
+        pack: currentRaid.pack.filter((p) => p.uid !== uid),
+      },
+    });
+  },
+
+  unplacePackItem: (uid) => {
+    const { currentRaid } = get();
+    if (!currentRaid) return;
+    const item = currentRaid.pack.find((p) => p.uid === uid);
+    if (!item) return;
+    const reborn: PendingItem = {
+      uid: item.uid,
+      itemId: item.itemId,
+      flavor: item.flavor,
+      arrivedAt: Date.now(),
+    };
+    const without = { ...currentRaid, pack: currentRaid.pack.filter((p) => p.uid !== uid) };
+    set({ currentRaid: pushPending(without, reborn) });
+  },
+
+  pruneExpiredPending: () => {
+    const { currentRaid } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    const now = Date.now();
+    const survivors: PendingItem[] = [];
+    const expired: PendingItem[] = [];
+    for (const p of currentRaid.pending) {
+      if (now - p.arrivedAt >= PENDING_EXPIRY_MS) expired.push(p);
+      else survivors.push(p);
+    }
+    if (expired.length === 0) return;
+    const newLogs = expired.map((p) => {
+      const name = ITEMS[p.itemId]?.name ?? p.itemId;
+      return makeLog("system", `Pending expired — dropped ⟦${name}⟧.`, p.itemId);
+    });
+    set({
+      currentRaid: {
+        ...currentRaid,
+        pending: survivors,
+        log: [...currentRaid.log, ...newLogs],
+      },
+    });
+  },
+
   sellItem: (uid) => {
     const { stash, cash } = get();
     const idx = stash.findIndex((i) => i.uid === uid);
     if (idx === -1) return;
     const value = ITEMS[stash[idx].itemId]?.sellValue ?? 0;
-    if (value <= 0) return; // experimental quest items don't sell
+    if (value <= 0) return;
     const next = [...stash];
     next.splice(idx, 1);
     set({ stash: next, cash: cash + value });
@@ -237,7 +384,7 @@ export const useGame = create<GameState>((set, get) => ({
       stash: [],
       operative: initialOperative(),
       hideout: buildHideout(initialUpgrades),
-      unlocks: { workbench: false, medbay: false },
+      unlocks: { workbench: false, medbay: false, biolab: false },
       upgrades: initialUpgrades,
       currentRaid: null,
       activePanel: "ops",
@@ -265,7 +412,6 @@ export const useGame = create<GameState>((set, get) => ({
   },
 }));
 
-// Persistence: debounced save on relevant slice changes.
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 function schedulePersist(s: PersistedState) {
   if (saveTimer) clearTimeout(saveTimer);

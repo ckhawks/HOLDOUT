@@ -6,9 +6,10 @@ import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  BACKPACK_SLOTS_PER_LEVEL,
+  PACK_GRID_WIDTH,
   STASH_SLOTS_PER_LEVEL,
   backpackUpgradeCost,
+  packDimensions,
   stashUpgradeCost,
 } from "@/lib/engine/upgrades";
 
@@ -82,7 +83,7 @@ export function HideoutPanel() {
         <ModuleCard
           Icon={Home}
           name="Backpack"
-          status={`${h.modules.backpack.capacity} slot loadout · level ${upgrades.backpackLevel}`}
+          status={`${packDimensions(upgrades).width}×${packDimensions(upgrades).height} grid · level ${upgrades.backpackLevel}`}
           unlocked
           action={
             <Button
@@ -93,7 +94,7 @@ export function HideoutPanel() {
               className="rounded-sm"
             >
               <Plus className="size-3.5" />
-              +{BACKPACK_SLOTS_PER_LEVEL} slots · ¤{backpackCost.toLocaleString()}
+              +1 row ({PACK_GRID_WIDTH} cells) · ¤{backpackCost.toLocaleString()}
             </Button>
           }
         />

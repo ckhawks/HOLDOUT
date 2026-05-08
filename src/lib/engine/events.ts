@@ -1,6 +1,7 @@
 import { EVENTS, EVENTS_BY_ID } from "@/lib/data/events";
 import { pickVocab } from "@/lib/data/vocab";
-import { ITEMS, pickCommonItemId, pickRareItemId } from "@/lib/data/items";
+import { ITEMS, pickCommonItemId, pickItemForLocation, pickRareItemId } from "@/lib/data/items";
+import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 import type { EventKind, LogEntry, RaidEventDef } from "@/lib/types";
 
 export function pickEvent(rand: () => number): RaidEventDef {
@@ -20,13 +21,17 @@ export interface RolledEvent {
   logKind: LogEntry["kind"];
 }
 
-export function rollEvent(rand: () => number): RolledEvent {
+export function rollEvent(rand: () => number, locationId?: string): RolledEvent {
   const def = pickEvent(rand);
   const tpl = def.templates[Math.floor(rand() * def.templates.length)];
+  const location = locationId ? LOCATIONS_BY_ID[locationId] : undefined;
 
   let itemId: string | undefined;
-  if (def.id === "looted_container") itemId = pickCommonItemId(rand);
-  else if (def.id === "found_rare") itemId = pickRareItemId(rand);
+  if (def.id === "looted_container") {
+    itemId = location ? pickItemForLocation(rand, location, false) : pickCommonItemId(rand);
+  } else if (def.id === "found_rare") {
+    itemId = location ? pickItemForLocation(rand, location, true) : pickRareItemId(rand);
+  }
 
   const text = tpl
     .replace(/\{location\}/g, pickVocab("locations", rand))

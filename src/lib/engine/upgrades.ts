@@ -10,6 +10,18 @@ export function backpackCapacity(u: Upgrades): number {
   return BACKPACK_BASE_SLOTS + u.backpackLevel * BACKPACK_SLOTS_PER_LEVEL;
 }
 
+export const PACK_GRID_WIDTH = 4;
+export const PACK_GRID_BASE_HEIGHT = 4;
+
+export function packDimensions(u: Upgrades): { width: number; height: number } {
+  return { width: PACK_GRID_WIDTH, height: PACK_GRID_BASE_HEIGHT + u.backpackLevel };
+}
+
+export const PENDING_BASE_CAPACITY = 4;
+export function pendingCapacity(_u: Upgrades): number {
+  return PENDING_BASE_CAPACITY;
+}
+
 export function stashCapacity(u: Upgrades): number {
   return STASH_BASE_SLOTS + u.stashLevel * STASH_SLOTS_PER_LEVEL;
 }
