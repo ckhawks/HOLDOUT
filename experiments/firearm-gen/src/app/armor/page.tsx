@@ -2,60 +2,59 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { generateMany } from "@/lib/engine/weaponGen";
-import { WeaponCard } from "@/components/WeaponCard";
-import type { Tier, WeaponClass } from "@/lib/types";
+import { generateManyArmor } from "@/lib/engine/armorGen";
+import { ArmorCard } from "@/components/ArmorCard";
+import type { ArmorPiece, Tier } from "@/lib/types";
 
 const TIER_OPTIONS: ("any" | Tier)[] = ["any", "common", "uncommon", "rare", "experimental"];
-const CLASS_OPTIONS: ("any" | WeaponClass)[] = ["any", "pistol", "burst", "shotgun", "lmg", "energy"];
+const PIECE_OPTIONS: ("any" | ArmorPiece)[] = ["any", "helmet", "chest", "legs", "boots"];
 
-export default function Home() {
+export default function ArmorPage() {
   const [count, setCount] = useState(8);
   const [tier, setTier] = useState<"any" | Tier>("any");
-  const [weaponClass, setWeaponClass] = useState<"any" | WeaponClass>("any");
+  const [piece, setPiece] = useState<"any" | ArmorPiece>("any");
   const [seedInput, setSeedInput] = useState("");
   const [bumper, setBumper] = useState(0);
 
-  const firearms = useMemo(() => {
+  const items = useMemo(() => {
     const seed = seedInput.trim() ? Number(seedInput.trim()) || hashStr(seedInput.trim()) : undefined;
-    const target = weaponClass === "any" ? null : weaponClass;
+    const target = piece === "any" ? null : piece;
     if (!target && tier === "any") {
-      return generateMany(count, { seed });
+      return generateManyArmor(count, { seed });
     }
-    const out = [] as ReturnType<typeof generateMany>;
+    const out = [] as ReturnType<typeof generateManyArmor>;
     let safety = count * 30;
     while (out.length < count && safety-- > 0) {
-      const batch = generateMany(Math.max(count, 16), {
+      const batch = generateManyArmor(Math.max(count, 16), {
         seed: seed !== undefined ? seed + out.length : undefined,
         tier: tier === "any" ? undefined : tier,
       });
-      for (const f of batch) {
-        if (target && f.weaponClass !== target) continue;
-        out.push(f);
+      for (const a of batch) {
+        if (target && a.piece !== target) continue;
+        out.push(a);
         if (out.length >= count) break;
       }
     }
     return out;
-    // bumper forces re-roll
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count, tier, weaponClass, seedInput, bumper]);
+  }, [count, tier, piece, seedInput, bumper]);
 
   return (
     <div className="min-h-full bg-zinc-950 text-zinc-100 font-mono">
       <header className="border-b border-zinc-800 bg-zinc-900/40">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-baseline justify-between">
           <div>
-            <h1 className="text-lg font-semibold tracking-wide">FIREARM-GEN</h1>
+            <h1 className="text-lg font-semibold tracking-wide">FIREARM-GEN · ARMOR</h1>
             <p className="text-[11px] uppercase tracking-widest text-zinc-500">
               instance generator · v0
             </p>
           </div>
           <div className="flex items-baseline gap-4">
             <Link
-              href="/armor"
+              href="/"
               className="text-[11px] uppercase tracking-widest text-zinc-400 hover:text-zinc-100 transition"
             >
-              armor →
+              ← firearms
             </Link>
             <Link
               href="/pools"
@@ -63,7 +62,7 @@ export default function Home() {
             >
               pools →
             </Link>
-            <div className="text-[11px] text-zinc-600">{firearms.length} rolls</div>
+            <div className="text-[11px] text-zinc-600">{items.length} rolls</div>
           </div>
         </div>
       </header>
@@ -98,15 +97,15 @@ export default function Home() {
             </select>
           </Field>
 
-          <Field label="class">
+          <Field label="piece">
             <select
-              value={weaponClass}
-              onChange={(e) => setWeaponClass(e.target.value as "any" | WeaponClass)}
+              value={piece}
+              onChange={(e) => setPiece(e.target.value as "any" | ArmorPiece)}
               className="bg-zinc-900 border border-zinc-800 px-2 py-1 text-zinc-100 rounded focus:outline-none focus:border-zinc-600"
             >
-              {CLASS_OPTIONS.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {PIECE_OPTIONS.map((p) => (
+                <option key={p} value={p}>
+                  {p}
                 </option>
               ))}
             </select>
@@ -131,11 +130,10 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Grid */}
       <main className="max-w-6xl mx-auto px-6 py-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {firearms.map((f) => (
-            <WeaponCard key={f.uid + bumper} firearm={f} />
+          {items.map((a) => (
+            <ArmorCard key={a.uid + bumper} armor={a} />
           ))}
         </div>
       </main>

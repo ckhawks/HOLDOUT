@@ -1,9 +1,9 @@
 import type {
+  AmmoType,
   AppliedModifier,
   Attachment,
   AttachmentSlot,
   Brand,
-  Era,
   FirearmInstance,
   Tier,
   WeaponBase,
@@ -11,8 +11,10 @@ import type {
 } from "@/lib/types";
 import { INVERTED_STATS, STAT_KEYS } from "@/lib/types";
 import {
+  AMMO_TYPES,
   ATTACHMENTS,
   BRANDS,
+  CALIBERS,
   NICKNAMES_BY_TIER,
   VARIANTS_BY_TIER,
   WEAPON_BASES,
@@ -63,20 +65,14 @@ function rollTier(rand: Rand): Tier {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Brand selection — match weapon era when possible
+// Brand: each base names its manufacturer directly. Real-world model — only
+// SIG makes the SG-552, only FN makes the P90.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ERA_RANK: Record<Era, number> = { modern: 0, advanced: 1, exotic: 2 };
-
-function pickBrand(rand: Rand, base: WeaponBase): Brand {
-  const all = Object.values(BRANDS);
-  const targetRank = ERA_RANK[base.era];
-  const scored = all.map((b) => {
-    const dist = Math.abs(ERA_RANK[b.era] - targetRank);
-    const weight = dist === 0 ? 5 : dist === 1 ? 1.5 : 0.3;
-    return [b, weight] as [Brand, number];
-  });
-  return pickWeighted(rand, scored);
+function brandForBase(base: WeaponBase): Brand {
+  const b = BRANDS[base.brandId];
+  if (!b) throw new Error(`unknown brandId on base ${base.id}: ${base.brandId}`);
+  return b;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -129,7 +125,8 @@ function rollBaseStats(rand: Rand, base: WeaponBase, tier: Tier): WeaponStats {
 
 function applyAttachments(
   baseStats: WeaponStats,
-  attachments: Attachment[]
+  attachments: Attachment[],
+  ammo: AmmoType
 ): { final: WeaponStats; attributions: AppliedModifier[] } {
   const final: WeaponStats = { ...baseStats };
   const attributions: AppliedModifier[] = [];
@@ -146,6 +143,18 @@ function applyAttachments(
       });
     }
   }
+  // Ammo modifiers contribute to attribution as a virtual "attachment"
+  for (const stat of STAT_KEYS) {
+    const delta = ammo.modifiers[stat];
+    if (delta === undefined || delta === 0) continue;
+    final[stat] = round(final[stat] + delta, stat);
+    attributions.push({
+      attachmentId: `ammo:${ammo.id}`,
+      attachmentName: `${ammo.name} (loaded)`,
+      stat,
+      delta,
+    });
+  }
   return { final, attributions };
 }
 
@@ -158,8 +167,8 @@ function round(value: number, stat: keyof WeaponStats): number {
 // Name assembly
 // ─────────────────────────────────────────────────────────────────────────────
 
-function assembleName(brand: Brand, base: WeaponBase, variant: string, nickname?: string): string {
-  const head = `${brand.name} ${base.modelCode} ${variant}`;
+function assembleName(_brand: Brand, base: WeaponBase, variant: string, nickname?: string): string {
+  const head = `${base.modelCode} ${variant}`;
   return nickname ? `${head} '${nickname}'` : head;
 }
 
@@ -174,6 +183,24 @@ export interface GenerateOptions {
   baseId?: string;
 }
 
+function pickAmmo(rand: Rand, base: WeaponBase, tier: Tier): AmmoType {
+  const caliber = CALIBERS[base.caliberId];
+  const candidates = Object.values(AMMO_TYPES).filter((a) => a.family === caliber.family);
+  const targetRank = TIER_RANK[tier];
+  const scored = candidates.map((a) => {
+    const ar = TIER_RANK[a.tier];
+    const dist = Math.abs(ar - targetRank);
+    let weight: number;
+    if (dist === 0) weight = 4;
+    else if (dist === 1) weight = 2;
+    else weight = 0.5;
+    // Bias toward common/standard at lower tiers
+    if (a.tier === "common" && tier === "common") weight *= 1.5;
+    return [a, weight] as [AmmoType, number];
+  });
+  return pickWeighted(rand, scored);
+}
+
 export function generateFirearm(opts: GenerateOptions = {}): FirearmInstance {
   const rand = opts.rand ?? (opts.seed !== undefined ? makeRand(opts.seed) : makeRand());
 
@@ -181,7 +208,7 @@ export function generateFirearm(opts: GenerateOptions = {}): FirearmInstance {
   const base = opts.baseId ? WEAPON_BASES[opts.baseId] : pick(rand, Object.values(WEAPON_BASES));
   if (!base) throw new Error(`unknown baseId: ${opts.baseId}`);
 
-  const brand = pickBrand(rand, base);
+  const brand = brandForBase(base);
   const variant = pick(rand, VARIANTS_BY_TIER[tier]);
   const nickname =
     rand() < TIER_NICKNAME_CHANCE[tier] ? pick(rand, NICKNAMES_BY_TIER[tier]) : undefined;
@@ -198,8 +225,11 @@ export function generateFirearm(opts: GenerateOptions = {}): FirearmInstance {
     if (att) attachments.push(att);
   }
 
-  // Apply
-  const { final: finalStats, attributions } = applyAttachments(baseStats, attachments);
+  // Roll loaded ammo
+  const ammo = pickAmmo(rand, base, tier);
+
+  // Apply attachments + ammo
+  const { final: finalStats, attributions } = applyAttachments(baseStats, attachments, ammo);
 
   // Condition: 50–100, biased high for higher tiers
   const condBase = 50 + Math.floor(rand() * 51); // 50–100
@@ -218,6 +248,8 @@ export function generateFirearm(opts: GenerateOptions = {}): FirearmInstance {
     tier,
     era: base.era,
     weaponClass: base.weaponClass,
+    caliberId: base.caliberId,
+    ammoTypeId: ammo.id,
     baseStats,
     finalStats,
     attachments,

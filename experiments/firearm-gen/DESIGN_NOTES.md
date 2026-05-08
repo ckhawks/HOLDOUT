@@ -39,24 +39,26 @@ Trade-off: this is verbose. A clean inventory grid will need a compact mode.
 
 ### 4. Brand has era-alignment, not just visual identity
 
-11 fictional corps split across legacy / modern / advanced eras. Brand selection is biased to match the weapon base's era — legacy bases roll legacy brands often, advanced bases roll advanced brands often, but the bias is soft (not a hard gate).
+11 fictional corps split across modern / advanced / exotic eras. Brand selection is biased to match the weapon base's era — modern bases roll modern brands often, exotic bases roll exotic brands often, but the bias is soft (not a hard gate).
 
-This is a worldbuilding lever: brand choice tells you about the corp landscape over time without a single line of exposition. A "Skarn Industries" rifle on a modern base implies Skarn is still around; an advanced base with a legacy brand reads as a refurb / black-market rework.
+This is a worldbuilding lever: brand choice tells you about the corp landscape over time without a single line of exposition. A modern brand on an exotic base reads as a refurb / black-market rework; an exotic brand on a modern base reads as someone retrofitting current-gen with cutting-edge parts.
 
 ### 5. Names encode tier through shape, not labels
 
-| Tier | Shape | Example |
-| --- | --- | --- |
-| Common | `<base> <variant>` | `BR-19 Mk-I` |
-| Uncommon | `<brand> <base> <variant>` | `Skarn BR-19 Mk-II` |
-| Rare | `<brand> <base> <variant> '<NICKNAME>'` (15% nick) | `Helix Pulse-AR Mk-III 'OWLEYE'` |
-| Experimental | always nickname, full brand name | `Cipher Industries Pulse-AR Proto 'REVENANT'` |
+All names follow `<model> <variant> ['<NICKNAME>']`. Brand is rendered separately (header line + tinted color) so the name itself doesn't duplicate it. Nickname presence and pool change with tier:
 
-Nicknames are tier-keyed — common nicknames sound mundane, experimental nicknames sound mythic. The name is doing the work the rarity color usually does, in text form. Critical for terminal-aesthetic UIs where text is the medium.
+| Tier | Nickname chance | Variant pool | Example |
+| --- | --- | --- | --- |
+| Common | 15% | `Mk-I, Mk-II, CIV, PD` | `BR-19 Mk-I` |
+| Uncommon | 55% | `Mk-II, Mk-III, PD, SF` | `ICR-7 Mk-III 'KESTREL'` |
+| Rare | 95% | `Mk-IV, Mk-V, SF, Proto` | `RG-9 Mk-V 'BLACKLINE'` |
+| Experimental | 100% | `Proto, X-1, Black-Spec, Null` | `Pulse-AR Proto 'REVENANT'` |
+
+Nicknames are tier-keyed — common nicknames sound mundane (`STUBBY`, `KICKER`), experimental nicknames sound mythic (`REVENANT`, `WIDOWMAKER`, `COMPLIANCE`). The name is doing the work the rarity color usually does, in text form. Critical for terminal-aesthetic UIs where text is the medium.
 
 ### 6. Attachments slot, don't replace
 
-5 slots (optic, barrel, mag, grip, underbarrel). Each slot fills independently with a tier-scaled probability. No slot is required; a bare common weapon with zero attachments is a valid drop. This protects the "I FOUND a Slick" moment (RISKS.md line 40) — rare attachments are themselves loot, and finding a great optic on a mediocre rifle is its own dopamine hit.
+5 slots (sight, barrel, stock, mag, underbarrel). Each base declares which slots it supports — pistols rarely have stocks, energy weapons skip mags. Each supported slot fills independently with a tier-scaled probability. No slot is required; a bare common weapon with zero attachments is a valid drop. This protects the "I FOUND a Slick" moment (RISKS.md line 40) — rare attachments are themselves loot, and finding a great optic on a mediocre rifle is its own dopamine hit.
 
 ### 7. Pure, seedable, deterministic
 
@@ -83,7 +85,7 @@ Nicknames are tier-keyed — common nicknames sound mundane, experimental nickna
 2. **Where does the line between "generated" and "hand-authored" sit?** Quest items, schematics, story drops probably want hand-authoring for narrative beats. Junk loot wants generation. Middle ground is fuzzy.
 3. **Brand count vs depth.** 11 brands is enough to feel populated, not enough for set-collection ("Brand catalogs: 3/12 complete" — BRAINSTORM line 412). Likely needs 25–40 brands at full scope, with most encountered rarely.
 4. **Era as gameplay vs flavor.** Currently era only affects brand selection. Could era also gate which raids drop which weapons (Aerostat = advanced only; Slum = legacy mostly)? Becomes a soft loot bias per location.
-5. **Stat axis count.** 4 stats (damage, accuracy, recoil, reliability) is the minimum that lets attachments trade off. BRAINSTORM line 290 implies more (handling, noise, weight). Adding axes is cheap; keeping the card readable as they multiply is the hard part.
+5. **Stat axis count.** Currently 7 stats (damage, accuracy, rpm, range, recoil, reliability, weight). Some attachments only touch 1–2 of those, which is fine — the empty-cell rendering of `StatTable` makes it obvious which stats a part actually affects. BRAINSTORM line 290 implies more (handling, noise). Adding axes is cheap; keeping the card readable as they multiply is the hard part.
 6. **The "Δ" UI doesn't scale to mid-raid.** Beautiful in a tooltip / inspector, illegible in a 1-second loot pickup. Need a compact rendering for in-raid pickup events vs the inspector.
 
 ## How to lift this into HOLDOUT
