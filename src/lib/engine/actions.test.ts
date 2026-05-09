@@ -6,7 +6,7 @@ import type { CurrentRaid, MapTile, RunState } from "@/lib/types";
 
 function freshRunState(over: Partial<RunState> = {}): RunState {
   return {
-    alertness: 50,
+    heat: 50,
     health: 100,
     energy: 100,
     ammo: 30,
@@ -87,19 +87,19 @@ describe("tickAction movement", () => {
     expect(result.movement).toBe("forward");
   });
 
-  it("stay returns movement: none and reduces alertness", () => {
+  it("stay returns movement: none and reduces heat", () => {
     const raid = makeRaid({ queuedAction: "stay" });
     const result = tickAction(raid, makeRng(1));
     expect(result.movement).toBe("none");
-    expect(result.alertnessDelta).toBeLessThan(0);
+    expect(result.heatDelta).toBeLessThan(0);
   });
 
   it("extract_step returns movement: backward and skips interrupts", () => {
     const raid = makeRaid({
       queuedAction: "extract_step",
-      runState: freshRunState({ flags: ["extracting"], distanceFromExtract: 3 }),
+      // heat=0 so the heat-driven ambush roll never fires.
+      runState: freshRunState({ heat: 0, flags: ["extracting"], distanceFromExtract: 3 }),
     });
-    // Run many seeds to make sure no interrupt damage fires during extract.
     for (let seed = 1; seed < 50; seed++) {
       const result = tickAction(raid, makeRng(seed));
       expect(result.movement).toBe("backward");
@@ -109,7 +109,6 @@ describe("tickAction movement", () => {
 
 describe("tickAction loot", () => {
   it("loot consumes a loot container and may drop an item into the room", () => {
-    // Build a tile guaranteed to have loot remaining.
     const baseMap = generateMap(makeRng(1));
     const target = baseMap.tiles.find(
       (t) => t.type !== "entry" && !t.blocked && t.lootRemaining >= 2,
@@ -127,6 +126,28 @@ describe("tickAction loot", () => {
       if (result.droppedItem) drops++;
     }
     expect(drops).toBeGreaterThan(0);
+  });
+
+  it("breach_locked resolves directly, consumes a locked container, costs ammo", () => {
+    const baseMap = generateMap(makeRng(1));
+    const target = baseMap.tiles.find(
+      (t) => t.type !== "entry" && !t.blocked,
+    )!;
+    const tiles = baseMap.tiles.slice();
+    tiles[target.y * baseMap.width + target.x] = {
+      ...target,
+      lockedContainers: [{ name: "wall safe", keyType: "keycard" }],
+    };
+    const raid = makeRaid({
+      map: { ...baseMap, tiles },
+      operativePos: { x: target.x, y: target.y },
+      queuedAction: "breach_locked",
+    });
+    const result = tickAction(raid, makeRng(1));
+    expect(result.pendingChoice).toBeUndefined();
+    expect(result.breachedLocked).toBe(true);
+    expect(result.ammoDelta).toBe(-2);
+    expect(result.heatDelta).toBe(14);
   });
 
   it("loot on an empty room logs 'nothing left' and doesn't consume", () => {
@@ -214,7 +235,7 @@ describe("combat sub-mode", () => {
     expect(ids).toContain("hide");
   });
 
-  it("move_forward into a clean tile does not raise a patrol", () => {
+  it("at high heat, move_forward into a clean tile sometimes raises an ambush patrol", () => {
     const baseMap = generateMap(makeRng(1));
     const entry = baseMap.entry;
     const dest = { x: entry.x + 1, y: entry.y };
@@ -226,8 +247,34 @@ describe("combat sub-mode", () => {
       operativePos: { x: entry.x, y: entry.y },
       nextStep: dest,
       queuedAction: "move_forward",
+      runState: freshRunState({ heat: 100 }),
     });
-    // Run many seeds — none should raise pendingChoice on a clean dest.
+    // heat=100 → 25% per tick. Across 200 seeds we should see plenty of
+    // ambushes.
+    let ambushes = 0;
+    for (let seed = 1; seed < 200; seed++) {
+      const result = tickAction(raid, makeRng(seed));
+      if (result.pendingChoice) ambushes++;
+    }
+    expect(ambushes).toBeGreaterThan(20);
+  });
+
+  it("move_forward into a clean tile (heat=0) does not raise a patrol", () => {
+    const baseMap = generateMap(makeRng(1));
+    const entry = baseMap.entry;
+    const dest = { x: entry.x + 1, y: entry.y };
+    const tiles = baseMap.tiles.slice();
+    const idx = dest.y * baseMap.width + dest.x;
+    tiles[idx] = { ...tiles[idx], threat: false };
+    const raid = makeRaid({
+      map: { ...baseMap, tiles },
+      operativePos: { x: entry.x, y: entry.y },
+      nextStep: dest,
+      queuedAction: "move_forward",
+      runState: freshRunState({ heat: 0 }),
+    });
+    // Run many seeds — none should raise pendingChoice on a clean dest at
+    // heat=0 (heat-driven ambush probability is 0).
     for (let seed = 1; seed < 50; seed++) {
       const result = tickAction(raid, makeRng(seed));
       expect(result.pendingChoice).toBeUndefined();

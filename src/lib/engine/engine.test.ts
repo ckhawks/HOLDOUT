@@ -9,7 +9,7 @@ import type { RaidEventDef, RunState } from "@/lib/types";
 
 function freshRunState(over: Partial<RunState> = {}): RunState {
   return {
-    alertness: 0,
+    heat: 0,
     health: 100,
     energy: 100,
     ammo: 30,
@@ -258,7 +258,7 @@ describe("save migration v4 → v5", () => {
           locationId: "warehouse",
           startedAt: 0,
           // @ts-expect-error — exercising legacy shape on purpose
-          runState: { alertness: 0, health: 100, energy: 100, ammo: 30, depth: 7 },
+          runState: { heat: 0, health: 100, energy: 100, ammo: 30, depth: 7 },
           log: [],
           pack: [],
           pending: [],

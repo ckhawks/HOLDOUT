@@ -43,7 +43,7 @@ export function ManualPanel() {
                 it&apos;s full, the lowest-value item drops.
               </li>
               <li>
-                Hit <b>Recall</b> to start the extract sequence. Alertness and
+                Hit <b>Recall</b> to start the extract sequence. Heat and
                 distance from extract determine how risky the trip back is. If
                 your operative dies, the loadout is gone.
               </li>
@@ -63,7 +63,7 @@ export function ManualPanel() {
               <li>
                 <b>What to do next</b> — every tick you can override the queued
                 action. Push deeper for better loot, loot the current room
-                instead of moving on, or hold position to let alertness cool
+                instead of moving on, or hold position to let heat cool
                 off.
               </li>
               <li>
@@ -89,8 +89,8 @@ export function ManualPanel() {
                 outcomes on the events that test it.
               </li>
               <li>
-                <b>Alertness</b> — rises with noise (blasting doors, firefights).
-                High alertness makes the extract sequence more dangerous.
+                <b>Heat</b> — rises with noise (blasting doors, firefights).
+                High heat makes the extract sequence more dangerous.
               </li>
               <li>
                 <b>Depth</b> — how far in you&apos;ve pushed. Deeper = better
@@ -116,7 +116,7 @@ export function ManualPanel() {
                 read.
               </li>
               <li>
-                When the pack is mostly full and alertness is rising, hit{" "}
+                When the pack is mostly full and heat is rising, hit{" "}
                 <b>Recall</b>. Don&apos;t get greedy on your first run — the
                 extract sequence is where most deaths happen.
               </li>

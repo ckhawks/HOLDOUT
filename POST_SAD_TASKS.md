@@ -51,6 +51,13 @@ Open ideas / wishlist (still relevant):
 - hideout: foundry — melt metals down, forge items. Construct foundry first.
 - realistic ammo: magazines, swap mags, reload from pack ammo
 - opponent quality preview ("the big scary guy" vs "the little shrimp")
+- lockpicks as a consumable pack item — slow/quiet alternative to Blast for
+  cracking locked containers. Each pick has a chance to break, success
+  depends on container quality.
+- key items: actual keys / keycards / ID badges that unlock specific locked
+  containers (the keyType field on LockedContainer is already wired). Keys
+  could spawn in regular containers; ID badges could come from defeated
+  patrols.
 
 ---
 

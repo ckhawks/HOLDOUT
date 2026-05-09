@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 18;
 
 export interface PersistedState {
   cash: number;
@@ -173,6 +173,51 @@ export function migrateSave(saved: SavedGame): SavedGame {
   // progress raids since lootRemaining and containers must agree.
   if (saved.schemaVersion < 15) {
     s.currentRaid = null;
+  }
+  // v16: container shape changed from string[] to {name, locked}[]. Drop
+  // in-progress raids — old shape is incompatible.
+  if (saved.schemaVersion < 16) {
+    s.currentRaid = null;
+  }
+  // v17: locked containers split into a separate lockedContainers array;
+  // containers reverted to string[]. Drop in-progress raids — both fields
+  // changed shape.
+  if (saved.schemaVersion < 17) {
+    s.currentRaid = null;
+  }
+  // v18: RunState.alertness renamed to RunState.heat. If currentRaid carries
+  // the old field, copy it over. (Saves with no in-progress raid don't need
+  // anything.)
+  if (saved.schemaVersion < 18) {
+    const cr = s.currentRaid;
+    if (cr?.runState) {
+      const rs = cr.runState as unknown as { alertness?: number; heat?: number };
+      if (typeof rs.heat !== "number" && typeof rs.alertness === "number") {
+        rs.heat = rs.alertness;
+        delete rs.alertness;
+      }
+    }
+  }
+  // Defensive shape check, version-independent: a save can end up with the
+  // new schema version but old container data if HMR + auto-save raced
+  // during dev. If any tile has containers that aren't strings, or is
+  // missing lockedContainers, drop the raid.
+  if (s.currentRaid?.map?.tiles) {
+    const bad = s.currentRaid.map.tiles.some((t) => {
+      if (!Array.isArray(t.lockedContainers)) return true;
+      return t.containers?.some((c: unknown) => typeof c !== "string");
+    });
+    if (bad) s.currentRaid = null;
+  }
+  // If we dropped the raid for any reason but the operative state is still
+  // "raiding" or "extracting", force it back to idle so the UI doesn't get
+  // stuck showing "deployed" with no raid to render.
+  if (
+    !s.currentRaid &&
+    s.operative &&
+    (s.operative.state === "raiding" || s.operative.state === "extracting")
+  ) {
+    s.operative = { ...s.operative, state: "idle" };
   }
   return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };
 }

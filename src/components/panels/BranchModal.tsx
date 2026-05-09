@@ -25,11 +25,11 @@ function chipsFor(opt: BranchOption): Chip[] {
         : "bad";
     chips.push({ text: `${sign}${delta} ${label}`, tone });
   };
-  // Convention: HP/Energy/Ammo positive = good. Alertness positive = bad.
+  // Convention: HP/Energy/Ammo positive = good. Heat positive = bad.
   stat(fx.healthDelta, "HP");
   stat(fx.energyDelta, "EN");
   stat(fx.ammoDelta, "Ammo");
-  stat(fx.alertnessDelta, "Alert", true);
+  stat(fx.heatDelta, "Heat", true);
   if (fx.distanceAdvance && fx.distanceAdvance > 0) {
     chips.push({ text: `+${fx.distanceAdvance} Dist`, tone: "bad" });
   }

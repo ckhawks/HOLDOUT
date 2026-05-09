@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Lock } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Slash } from "lucide-react";
 import { useGame } from "@/store/game";
 import { pathToEntry } from "@/lib/engine/map";
 import type { MapTile, RaidMap as RaidMapType, RoomType } from "@/lib/types";
@@ -254,8 +254,8 @@ function Tile({
     );
   }
 
-  // Seen-but-blocked: render with a lock glyph so the player knows it's
-  // sealed without spoiling room type detail.
+  // Seen-but-blocked: render with a slash glyph so the player reads "no
+  // entry" rather than "locked but openable."
   if (tile.blocked) {
     return (
       <div
@@ -265,7 +265,7 @@ function Tile({
           ringClass,
         )}
       >
-        <Lock className="size-3 text-muted-foreground/70" />
+        <Slash className="size-5 text-muted-foreground/60" />
         {previewOverlay}
       </div>
     );

@@ -36,7 +36,7 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
   stay: {
     id: "stay",
     label: "Hold position",
-    description: "Stay in place. Lowers alertness.",
+    description: "Stay in place. Lowers heat.",
     isEligible: (raid) => !raid.runState.flags.includes("extracting"),
   },
   extract_step: {
@@ -57,7 +57,89 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     description: "Try to disengage and slip out.",
     isEligible: (raid) => raid.runState.flags.includes("combat_engaged"),
   },
+  breach_locked: {
+    id: "breach_locked",
+    label: "Breach locked",
+    description: "Blast open a locked container.",
+    isEligible: (raid) => {
+      if (raid.runState.flags.includes("combat_engaged")) return false;
+      const tile = currentTile(raid);
+      return !!tile && tile.lockedContainers.length > 0;
+    },
+  },
 };
+
+// Static effect chips for each action, used to preview "what happens if I
+// queue this." Each chip is { kind, value, tone } where kind drives the
+// icon and tone drives the color. Actual rolls in tickAction may deviate.
+export type ChipKind =
+  | "hp"
+  | "energy"
+  | "heat"
+  | "ammo"
+  | "loot"
+  | "distance"
+  | "depth"
+  | "misc";
+
+export interface ActionChip {
+  kind: ChipKind;
+  value: string;
+  tone: "good" | "bad" | "neutral" | "loot";
+}
+
+const STATIC_CHIPS: Record<ActionId, ActionChip[]> = {
+  move_forward: [{ kind: "depth", value: "+1", tone: "neutral" }],
+  loot: [
+    { kind: "energy", value: "-1", tone: "bad" },
+    { kind: "loot", value: "?", tone: "loot" },
+  ],
+  stay: [
+    { kind: "heat", value: "-8", tone: "good" },
+    { kind: "energy", value: "-2", tone: "bad" },
+  ],
+  extract_step: [{ kind: "distance", value: "-1", tone: "good" }],
+  fight: [
+    { kind: "ammo", value: "-2", tone: "bad" },
+    { kind: "heat", value: "+5", tone: "bad" },
+    { kind: "misc", value: "varies", tone: "neutral" },
+  ],
+  flee: [
+    { kind: "misc", value: "60% break", tone: "good" },
+    { kind: "hp", value: "40% -5", tone: "bad" },
+  ],
+  breach_locked: [
+    { kind: "ammo", value: "-2", tone: "bad" },
+    { kind: "heat", value: "+14", tone: "bad" },
+    { kind: "loot", value: "70%", tone: "loot" },
+  ],
+};
+
+// Static chips for the row. Per-raid counts (number of lootable containers,
+// number of locked containers) are surfaced as a small "Nx" badge in the
+// row's top-right instead — see countFor.
+export function chipsFor(_id: ActionId, _raid: CurrentRaid): ActionChip[] {
+  return STATIC_CHIPS[_id];
+}
+
+// Optional count badge in the top-right of an action row. Returns null for
+// actions where a count doesn't apply.
+export function countFor(id: ActionId, raid: CurrentRaid): number | null {
+  if (id === "loot") {
+    const tile = currentTile(raid);
+    return tile && tile.lootRemaining > 0 ? tile.lootRemaining : null;
+  }
+  if (id === "breach_locked") {
+    const tile = currentTile(raid);
+    return tile && tile.lockedContainers.length > 0
+      ? tile.lockedContainers.length
+      : null;
+  }
+  return null;
+}
+
+// Backwards-compat export so existing imports keep working.
+export const ACTION_CHIPS = STATIC_CHIPS;
 
 export function currentTile(raid: CurrentRaid): MapTile | undefined {
   return tileAt(raid.map, raid.operativePos.x, raid.operativePos.y);
@@ -74,17 +156,25 @@ export function autoPickAction(raid: CurrentRaid): ActionId {
   return "stay";
 }
 
-// Returns the actions the player can override to right now. Combat sub-mode
-// shows only fight/flee; extract sub-mode shows extract_step plus loot/stay
-// so the player can opportunistically search a room they're passing back
-// through; raiding shows the regular trio.
-export function availableActions(raid: CurrentRaid): ActionDef[] {
-  const order: ActionId[] = raid.runState.flags.includes("combat_engaged")
-    ? ["fight", "flee"]
-    : raid.runState.flags.includes("extracting")
-      ? ["extract_step", "loot", "stay"]
-      : ["move_forward", "loot", "stay"];
-  return order.map((id) => ACTIONS[id]).filter((a) => a.isEligible(raid));
+// Primary actions are always shown in the action menu (in stable order),
+// disabled when ineligible. They drive the operative's default loop:
+// raiding / extracting / combat sub-mode.
+export function primaryActionOrder(raid: CurrentRaid): ActionId[] {
+  if (raid.runState.flags.includes("combat_engaged")) return ["fight", "flee"];
+  if (raid.runState.flags.includes("extracting"))
+    return ["extract_step", "loot", "stay"];
+  return ["move_forward", "loot", "stay"];
+}
+
+// Context actions only appear (under a divider) when their isEligible
+// returns true. They're the "this room has X" interactions: breach a
+// locked container, future lockpick, future use-key.
+const CONTEXT_ACTION_IDS: ActionId[] = ["breach_locked"];
+export function contextActions(raid: CurrentRaid): ActionDef[] {
+  if (raid.runState.flags.includes("combat_engaged")) return [];
+  return CONTEXT_ACTION_IDS.map((id) => ACTIONS[id]).filter((a) =>
+    a.isEligible(raid),
+  );
 }
 
 // Tags used to bias loot rolls per room type. Imported by the action

@@ -76,7 +76,7 @@ export const EVENTS: RaidEventDef[] = [
         label: "Hide",
         description: "Wait it out. Quiet but slow.",
         effects: {
-          alertnessDelta: -3,
+          heatDelta: -3,
           energyDelta: -2,
           depthAdvance: 0,
           distanceAdvance: 0,
@@ -90,7 +90,7 @@ export const EVENTS: RaidEventDef[] = [
         // No loot here. Combat resolves over 1+ follow-up ticks; loot drops on
         // target_down. flagsAdded sets the exclusive combat pool.
         effects: {
-          alertnessDelta: 14,
+          heatDelta: 14,
           ammoDelta: -3,
           flagsAdded: ["combat_engaged"],
           depthAdvance: 0,
@@ -102,7 +102,7 @@ export const EVENTS: RaidEventDef[] = [
         label: "Reposition",
         description: "Slip around them. Costs distance to extract.",
         effects: {
-          alertnessDelta: 4,
+          heatDelta: 4,
           energyDelta: -4,
           distanceAdvance: 1,
           depthAdvance: 0,
@@ -157,14 +157,14 @@ export const EVENTS: RaidEventDef[] = [
         id: "pick",
         label: "Pick",
         description: "Quiet but slow.",
-        effects: { energyDelta: -8, alertnessDelta: 1, rollLoot: "common" },
+        effects: { energyDelta: -8, heatDelta: 1, rollLoot: "common" },
         isDefault: true,
       },
       {
         id: "blast",
         label: "Blast",
         description: "Fast, loud, draws attention.",
-        effects: { alertnessDelta: 15, ammoDelta: -2, rollLoot: "rare" },
+        effects: { heatDelta: 15, ammoDelta: -2, rollLoot: "rare" },
       },
       {
         id: "skip",
@@ -184,7 +184,7 @@ export const EVENTS: RaidEventDef[] = [
       "Footsteps and chatter. Two corridors out.",
       "{condition}. Can hear breathing on the other side.",
     ],
-    passiveEffects: { alertnessDelta: 3 },
+    passiveEffects: { heatDelta: 3 },
     // Stopping to listen is lateral — no deeper, no closer to extract change.
     depthAdvance: 0,
     distanceAdvance: 0,
@@ -204,7 +204,7 @@ export const EVENTS: RaidEventDef[] = [
     exclusive: true,
     rollLoot: "common",
     removeFlags: ["combat_engaged"],
-    passiveEffects: { alertnessDelta: 4 },
+    passiveEffects: { heatDelta: 4 },
     depthAdvance: 0,
     distanceAdvance: 0,
   },
@@ -219,7 +219,7 @@ export const EVENTS: RaidEventDef[] = [
     ],
     preconditions: (s) => s.flags.includes("combat_engaged"),
     exclusive: true,
-    passiveEffects: { healthDelta: -6, ammoDelta: -2, alertnessDelta: 5 },
+    passiveEffects: { healthDelta: -6, ammoDelta: -2, heatDelta: 5 },
     // Sustained fire occasionally cuts: ~25% minor bleed, no major from this event.
     postconditions: (rand) => (rand() < 0.25 ? ["bleeding_minor"] : []),
     depthAdvance: 0,
@@ -236,7 +236,7 @@ export const EVENTS: RaidEventDef[] = [
     preconditions: (s) => s.flags.includes("combat_engaged"),
     exclusive: true,
     removeFlags: ["combat_engaged"],
-    passiveEffects: { alertnessDelta: 8, ammoDelta: -1 },
+    passiveEffects: { heatDelta: 8, ammoDelta: -1 },
     depthAdvance: 0,
     distanceAdvance: 0,
   },
@@ -270,7 +270,7 @@ export const EVENTS: RaidEventDef[] = [
     ],
     preconditions: (s) => s.flags.includes("extracting"),
     exclusive: true,
-    passiveEffects: { healthDelta: -8, ammoDelta: -1, alertnessDelta: 6 },
+    passiveEffects: { healthDelta: -8, ammoDelta: -1, heatDelta: 6 },
     distanceAdvance: -1,
     depthAdvance: 0,
     postconditions: (rand) => (rand() < 0.35 ? ["bleeding_minor"] : []),

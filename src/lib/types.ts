@@ -41,7 +41,7 @@ export interface PendingItem extends StashItem {
 }
 
 export interface RunState {
-  alertness: number;
+  heat: number;
   health: number;
   energy: number;
   ammo: number;
@@ -109,7 +109,7 @@ export type EventKind =
   | "extract_corner_loot";
 
 export interface BranchEffects {
-  alertnessDelta?: number;
+  heatDelta?: number;
   healthDelta?: number;
   energyDelta?: number;
   ammoDelta?: number;
@@ -129,7 +129,7 @@ export interface BranchOption {
 }
 
 export interface PassiveEffects {
-  alertnessDelta?: number;
+  heatDelta?: number;
   healthDelta?: number;
   energyDelta?: number;
   ammoDelta?: number;
@@ -190,6 +190,16 @@ export type RoomType =
   | "gantry"
   | "locked";
 
+// Locked containers are a separate pool from the regular `containers` queue.
+// You can't just Loot them — needs a Force/Blast (or, future, a key item).
+// Loot tier inside is independent of opening method (30% empty, 50% common,
+// 20% rare).
+export interface LockedContainer {
+  name: string;
+  // Future: which item type would unlock this. Unused for now.
+  keyType: "key" | "keycard" | "id_badge";
+}
+
 export interface MapTile {
   x: number;
   y: number;
@@ -206,10 +216,14 @@ export interface MapTile {
   lootRemaining: number;
   // Initial lootRemaining at generation, used for "2/3 searched" displays.
   lootMax: number;
-  // Specific container names left in this room ("locker", "crate", "duffel"
-  // etc.), in the order the operative will work through them. Length always
-  // equals lootRemaining; popped from the front on each Loot action.
+  // Specific (unlocked) container names left in this room, in the order the
+  // operative will work through them. Length always equals lootRemaining;
+  // popped from the front on each Loot action.
   containers: string[];
+  // Locked containers in this room — separate from the regular Loot queue.
+  // Force/Blast clears one at a time; loot tier inside is rolled
+  // independently of opening method.
+  lockedContainers: LockedContainer[];
   // Items currently sitting in this room — dropped by loot actions or by
   // the player. Persist across operative leaving and returning.
   contents: StashItem[];
@@ -265,7 +279,8 @@ export type ActionId =
   | "stay"
   | "extract_step"
   | "fight"
-  | "flee";
+  | "flee"
+  | "breach_locked";
 
 export interface Unlocks {
   workbench: boolean;

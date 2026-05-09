@@ -49,7 +49,7 @@ export function startRaid(
     locationId,
     startedAt: Date.now(),
     runState: {
-      alertness: 0,
+      heat: 0,
       health: 100,
       energy: 100,
       ammo: 30,
@@ -108,10 +108,18 @@ export const ENERGY_BASE_DRAIN = 3;
 // logs and pickup actions match.
 export function entranceLog(tile: import("@/lib/types").MapTile): LogEntry {
   const lootHint = (() => {
-    if (tile.lootMax === 0) return "";
-    if (tile.lootRemaining === 0) return " Already cleared.";
-    if (tile.containers.length === 0) return "";
-    return ` ${enumerateContainers(tile.containers)} here.`;
+    if (tile.lootMax === 0 && tile.lockedContainers.length === 0) return "";
+    if (tile.lootRemaining === 0 && tile.lockedContainers.length === 0)
+      return " Already cleared.";
+    const parts: string[] = [];
+    if (tile.containers.length > 0) {
+      parts.push(`${enumerateContainers(tile.containers)} here`);
+    }
+    if (tile.lockedContainers.length > 0) {
+      const names = tile.lockedContainers.map((c) => c.name);
+      parts.push(`${enumerateContainers(names)} — locked`);
+    }
+    return parts.length > 0 ? ` ${parts.join("; ")}.` : "";
   })();
   const inRoom = (() => {
     if (tile.contents.length === 0) return "";
@@ -134,10 +142,10 @@ export function entranceLog(tile: import("@/lib/types").MapTile): LogEntry {
   );
 }
 
-// Group same-noun containers into "two crates and a footlocker" form.
-function enumerateContainers(containers: ReadonlyArray<string>): string {
+// Group same-noun container names into "two crates and a footlocker" form.
+function enumerateContainers(names: ReadonlyArray<string>): string {
   const counts = new Map<string, number>();
-  for (const c of containers) counts.set(c, (counts.get(c) ?? 0) + 1);
+  for (const c of names) counts.set(c, (counts.get(c) ?? 0) + 1);
   const parts = Array.from(counts.entries()).map(([noun, n]) => pluralize(noun, n));
   if (parts.length === 0) return "";
   if (parts.length === 1) return capitalize(parts[0]);
@@ -205,6 +213,34 @@ export const ACTION_TIMER_MS = 6000;
 const INTERRUPT_CHANCE = 0.22;
 const PATROL_TIMER_MS = 10000;
 
+// Force-locked encounter — fired when the player queues force_locked on a
+// tile with a locked container. Blast / Skip for now (Key path TODO once we
+// add key items to the pack).
+function lockedCratePendingChoice(containerName: string): PendingChoice {
+  return {
+    eventId: "locked_door",
+    prompt: `${capitalize(containerName)}. How do I crack it?`,
+    defaultId: "skip",
+    startedAt: Date.now(),
+    timerMs: 10000,
+    options: [
+      {
+        id: "blast",
+        label: "Blast",
+        description: "Loud, costs ammo.",
+        effects: { ammoDelta: -2, heatDelta: 14 },
+      },
+      {
+        id: "skip",
+        label: "Skip",
+        description: "Leave it for now.",
+        effects: {},
+        isDefault: true,
+      },
+    ],
+  };
+}
+
 // A patrol encounter — fired as a forced-choice modal when the operative
 // runs into hostiles while pushing forward.
 function patrolPendingChoice(): PendingChoice {
@@ -221,7 +257,7 @@ function patrolPendingChoice(): PendingChoice {
         label: "Engage",
         description: "Open fire. Loud — and they'll fight back.",
         effects: {
-          alertnessDelta: 14,
+          heatDelta: 14,
           ammoDelta: -2,
           flagsAdded: ["combat_engaged"],
         },
@@ -230,7 +266,7 @@ function patrolPendingChoice(): PendingChoice {
         id: "hide",
         label: "Hide",
         description: "Hold here. Quiet.",
-        effects: { alertnessDelta: -3, energyDelta: -2 },
+        effects: { heatDelta: -3, energyDelta: -2 },
         isDefault: true,
       },
       {
@@ -238,7 +274,7 @@ function patrolPendingChoice(): PendingChoice {
         label: "Reposition",
         description: "Slip around them. Lane shift, +1 distance.",
         effects: {
-          alertnessDelta: 3,
+          heatDelta: 3,
           energyDelta: -3,
           distanceAdvance: 1,
           depthAdvance: 0,
@@ -252,7 +288,7 @@ export interface ActionTickResult {
   logs: LogEntry[];
   // Item to add to the current tile's contents (not pending tray).
   droppedItem?: StashItem;
-  alertnessDelta: number;
+  heatDelta: number;
   healthDelta: number;
   energyDelta: number;
   ammoDelta: number;
@@ -262,6 +298,8 @@ export interface ActionTickResult {
   movement: "none" | "forward" | "lateral" | "backward";
   // True if the action consumed one of the tile's loot containers.
   consumedLoot: boolean;
+  // True if the action consumed one of the tile's locked containers.
+  breachedLocked: boolean;
   // Forced-choice modal raised by this action (e.g. patrol encounter on a
   // move). When set, the store sets pendingChoice and the action that
   // would have been applied is suppressed.
@@ -276,7 +314,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
   const bleed = bleedDrain(flags);
 
   let healthDelta = -bleed;
-  let alertnessDelta = 0;
+  let heatDelta = 0;
   let energyDelta = -ENERGY_BASE_DRAIN;
   let ammoDelta = 0;
   const flagsAdded: string[] = [];
@@ -284,6 +322,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
   let movement: ActionTickResult["movement"] = "none";
   let droppedItem: StashItem | undefined;
   let consumedLoot = false;
+  let breachedLocked = false;
   const logs: LogEntry[] = [];
 
   // Current tile reference for the Loot action.
@@ -292,20 +331,34 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
 
   switch (action) {
     case "move_forward": {
-      // Pre-gen patrol encounter: if the destination tile holds a threat,
-      // freeze in place and pop the forced-choice modal. The operative has
-      // already glanced into adjacent tiles via revealFrom, so the threat
-      // is on the visible map before they move.
+      // Two ways to land in a patrol encounter:
+      //   1. Pre-gen threat — destination tile has threat=true (visible to
+      //      the player via the red marker on the map).
+      //   2. Heat-driven ambush — enemies heard the operative making noise
+      //      and come to investigate. Chance scales with current heat:
+      //      heat / 400 per move tick (heat 100 → 25%, heat 50 → 12.5%).
       const dest = raid.nextStep;
       const destTile = dest
         ? raid.map.tiles[dest.y * raid.map.width + dest.x]
         : undefined;
-      if (destTile && destTile.threat) {
+      const heatRoll =
+        !destTile?.threat && rand() < (raid.runState.heat ?? 0) / 400;
+      if ((destTile && destTile.threat) || heatRoll) {
         return {
           logs: [
-            makeLog("flavor", "Hostiles in the next room. Holding.", undefined),
+            heatRoll
+              ? makeLog(
+                  "flavor",
+                  "Footsteps closing in — they heard me.",
+                  undefined,
+                )
+              : makeLog(
+                  "flavor",
+                  "Hostiles in the next room. Holding.",
+                  undefined,
+                ),
           ],
-          alertnessDelta: 0,
+          heatDelta: 0,
           healthDelta: -bleed,
           energyDelta: 0,
           ammoDelta: 0,
@@ -313,6 +366,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
           flagsRemoved: [],
           movement: "none",
           consumedLoot: false,
+          breachedLocked: false,
           pendingChoice: patrolPendingChoice(),
         };
       }
@@ -363,24 +417,81 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
       break;
     }
     case "stay": {
-      alertnessDelta = -3;
+      heatDelta = -8;
       energyDelta = -2;
       logs.push(makeLog("flavor", "Holding position. Listening.", undefined));
       break;
     }
+    case "breach_locked": {
+      const target = currentTile?.lockedContainers[0];
+      if (!target) {
+        logs.push(makeLog("flavor", "Nothing locked here.", undefined));
+        break;
+      }
+      // Effects baked in: -2 ammo, +14 heat. Loot rolled 30% empty / 50%
+      // common / 20% rare. Container is consumed by the store after this
+      // tick (it sees the lockedContainerBreached flag in the result).
+      ammoDelta = -2;
+      heatDelta = 14;
+      breachedLocked = true;
+      const r = rand();
+      if (r < 0.3) {
+        logs.push(
+          makeLog("flavor", `Blasted the ${target.name}. Empty inside.`, undefined),
+        );
+      } else {
+        const isRare = r >= 0.8;
+        const loc = LOCATIONS_BY_ID[raid.locationId];
+        const itemId = loc
+          ? pickItemForLocation(rand, loc, isRare, raid.runState.depth)
+          : undefined;
+        if (itemId) {
+          const item = ITEMS[itemId];
+          droppedItem = {
+            uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            itemId,
+          };
+          logs.push(
+            makeLog(
+              "loot",
+              `Blasted the ${target.name}. ⟦${item?.name ?? itemId}⟧ inside.`,
+              itemId,
+            ),
+          );
+        } else {
+          logs.push(
+            makeLog("flavor", `Blasted the ${target.name}. Empty inside.`, undefined),
+          );
+        }
+      }
+      break;
+    }
     case "extract_step": {
-      // Same threat check as move_forward: the path back may pass through
-      // a tile with a hostile, and the operative still has to deal with it.
+      // Same dual check as move_forward — pre-gen threat tile OR heat-
+      // driven ambush. Heat carries through the extract, so a noisy raid
+      // makes the walk back dangerous.
       const dest = raid.nextStep;
       const destTile = dest
         ? raid.map.tiles[dest.y * raid.map.width + dest.x]
         : undefined;
-      if (destTile && destTile.threat) {
+      const heatRoll =
+        !destTile?.threat && rand() < (raid.runState.heat ?? 0) / 400;
+      if ((destTile && destTile.threat) || heatRoll) {
         return {
           logs: [
-            makeLog("flavor", "Hostiles between me and extract. Holding.", undefined),
+            heatRoll
+              ? makeLog(
+                  "flavor",
+                  "Caught up to. They tracked the noise.",
+                  undefined,
+                )
+              : makeLog(
+                  "flavor",
+                  "Hostiles between me and extract. Holding.",
+                  undefined,
+                ),
           ],
-          alertnessDelta: 0,
+          heatDelta: 0,
           healthDelta: -bleed,
           energyDelta: 0,
           ammoDelta: 0,
@@ -388,6 +499,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
           flagsRemoved: [],
           movement: "none",
           consumedLoot: false,
+          breachedLocked: false,
           pendingChoice: patrolPendingChoice(),
         };
       }
@@ -401,7 +513,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
       // Resolve a round of combat. Three outcomes:
       //   - target_down  (~55%): drop loot into current tile, clear combat
       //   - firefight     (~30%): trade fire — HP/ammo cost, possible bleed
-      //   - target_fled  (~15%): no loot, alertness up, clear combat
+      //   - target_fled  (~15%): no loot, heat up, clear combat
       const r = rand();
       if (r < 0.55) {
         // target_down — pull a loot drop from the current location.
@@ -425,17 +537,17 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         } else {
           logs.push(makeLog("combat_resolved", "Target down. Nothing on them.", undefined));
         }
-        alertnessDelta += 4;
+        heatDelta += 4;
         ammoDelta = -1;
         flagsRemoved.push("combat_engaged");
       } else if (r < 0.85) {
         healthDelta -= 7;
         ammoDelta = -2;
-        alertnessDelta += 5;
+        heatDelta += 5;
         if (rand() < 0.25) flagsAdded.push("bleeding_minor");
         logs.push(makeLog("damage", "Trading shots. Took a glancing hit.", undefined));
       } else {
-        alertnessDelta += 8;
+        heatDelta += 8;
         ammoDelta = -1;
         flagsRemoved.push("combat_engaged");
         logs.push(
@@ -451,7 +563,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
     case "flee": {
       // 60% break-contact, 40% they keep on you.
       if (rand() < 0.6) {
-        alertnessDelta += 6;
+        heatDelta += 6;
         flagsRemoved.push("combat_engaged");
         logs.push(
           makeLog(
@@ -491,7 +603,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
       logs.push(makeLog("damage", "Took fire. Plate held — mostly.", undefined));
     } else {
       // heard_voices flavor
-      alertnessDelta += 3;
+      heatDelta += 3;
       logs.push(makeLog("flavor", "Voices through the wall. Muffled.", undefined));
     }
   }
@@ -499,7 +611,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
   return {
     logs,
     droppedItem,
-    alertnessDelta,
+    heatDelta,
     healthDelta,
     energyDelta,
     ammoDelta,
@@ -507,6 +619,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
     flagsRemoved,
     movement,
     consumedLoot,
+    breachedLocked,
   };
 }
 

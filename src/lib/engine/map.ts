@@ -1,4 +1,4 @@
-import type { Location, MapTile, RaidMap, RoomType, StashItem } from "@/lib/types";
+import type { Location, LockedContainer, MapTile, RaidMap, RoomType, StashItem } from "@/lib/types";
 import { ROOM_NAMES } from "@/lib/data/events";
 
 // Coordinate convention matches the visual: x grows rightward (depth from
@@ -81,6 +81,50 @@ function pickContainers(
   return out;
 }
 
+// Per-room-type locked container pool. These are *separate* from regular
+// containers — they go into MapTile.lockedContainers and require a Force /
+// Blast action to crack. Different name flavor too: a wall safe is more
+// interesting than a "locked locker."
+const LOCKED_CONTAINER_POOL: Record<RoomType, Array<{ name: string; keyType: LockedContainer["keyType"] }>> = {
+  storage: [
+    { name: "padlocked footlocker", keyType: "key" },
+    { name: "wall safe", keyType: "keycard" },
+    { name: "secure crate", keyType: "key" },
+  ],
+  office: [
+    { name: "wall safe", keyType: "keycard" },
+    { name: "executive lockbox", keyType: "key" },
+    { name: "ID-locked drawer", keyType: "id_badge" },
+  ],
+  mechanical: [
+    { name: "secured junction box", keyType: "keycard" },
+    { name: "armored panel", keyType: "key" },
+  ],
+  corridor: [
+    { name: "padlocked crate", keyType: "key" },
+  ],
+  gantry: [
+    { name: "padlocked supply crate", keyType: "key" },
+  ],
+  entry: [],
+  locked: [],
+};
+
+// Chance a non-blocked, non-entry tile gets a locked container; if any, 0–1
+// of them per tile (kept low to make finds feel meaningful).
+const LOCKED_CONTAINER_TILE_RATIO = 0.18;
+
+function pickLockedContainers(
+  rand: () => number,
+  type: RoomType,
+): LockedContainer[] {
+  const pool = LOCKED_CONTAINER_POOL[type];
+  if (!pool || pool.length === 0) return [];
+  if (rand() >= LOCKED_CONTAINER_TILE_RATIO) return [];
+  const pick = pool[Math.floor(rand() * pool.length)];
+  return [{ name: pick.name, keyType: pick.keyType }];
+}
+
 function pickWeighted<T extends string>(
   rand: () => number,
   weights: Partial<Record<T, number>>,
@@ -124,6 +168,7 @@ export function generateMap(
           lootRemaining: 0,
           lootMax: 0,
           containers: [],
+          lockedContainers: [],
           contents: [],
           seen: false,
           threat: false,
@@ -151,6 +196,7 @@ export function generateMap(
         lootRemaining: lootMax,
         lootMax,
         containers: pickContainers(rand, type, lootMax),
+        lockedContainers: blocked ? [] : pickLockedContainers(rand, type),
         contents: [],
         seen: false,
         threat,
@@ -326,9 +372,8 @@ export function markTileVisited(
   return { ...map, tiles };
 }
 
-// Decrement lootRemaining and pop the next container off the queue. Returns
-// the new map plus the container name that was searched (or undefined if
-// the room had nothing left).
+// Decrement lootRemaining and pop the next container name off the queue.
+// Returns the new map plus the popped name (or undefined if empty).
 export function consumeLootFromTile(
   map: RaidMap,
   x: number,
@@ -345,6 +390,21 @@ export function consumeLootFromTile(
     containers: rest,
   };
   return { map: { ...map, tiles }, container: head };
+}
+
+// Pop the front locked container off a tile after a Force/Blast resolves.
+export function consumeLockedFromTile(
+  map: RaidMap,
+  x: number,
+  y: number,
+): { map: RaidMap; locked?: LockedContainer } {
+  const idx = y * map.width + x;
+  const t = map.tiles[idx];
+  if (!t || t.lockedContainers.length === 0) return { map };
+  const [head, ...rest] = t.lockedContainers;
+  const tiles = map.tiles.slice();
+  tiles[idx] = { ...t, lockedContainers: rest };
+  return { map: { ...map, tiles }, locked: head };
 }
 
 // Add an item to a tile's contents. Used when loot drops or when the player

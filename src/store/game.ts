@@ -24,7 +24,7 @@ import {
   makeRng,
 } from "@/lib/engine/raid";
 import { autoPickAction } from "@/lib/engine/actions";
-import { ITEMS } from "@/lib/data/items";
+import { ITEMS, pickItemForLocation } from "@/lib/data/items";
 import {
   backpackCapacity,
   backpackUpgradeCost,
@@ -41,6 +41,7 @@ import {
 import {
   addToTileContents,
   clearTileThreat,
+  consumeLockedFromTile,
   consumeLootFromTile,
   markTileVisited,
   pathToEntry,
@@ -236,6 +237,14 @@ export const useGame = create<GameState>((set, get) => ({
       );
       nextMap = afterConsume;
     }
+    if (t.breachedLocked) {
+      const { map: afterBreach } = consumeLockedFromTile(
+        nextMap,
+        currentRaid.operativePos.x,
+        currentRaid.operativePos.y,
+      );
+      nextMap = afterBreach;
+    }
     if (t.droppedItem) {
       nextMap = addToTileContents(
         nextMap,
@@ -269,7 +278,7 @@ export const useGame = create<GameState>((set, get) => ({
       nextStep,
       runState: {
         ...currentRaid.runState,
-        alertness: Math.max(0, Math.min(100, currentRaid.runState.alertness + t.alertnessDelta)),
+        heat: Math.max(0, Math.min(100, currentRaid.runState.heat + t.heatDelta)),
         health: Math.max(0, Math.min(100, currentRaid.runState.health + t.healthDelta)),
         energy: Math.max(0, Math.min(100, currentRaid.runState.energy + t.energyDelta)),
         ammo: Math.max(0, currentRaid.runState.ammo + t.ammoDelta),
@@ -389,19 +398,17 @@ export const useGame = create<GameState>((set, get) => ({
       }
     }
 
+    const choiceLogs: LogEntry[] = [makeLog("choice_result", choice.label, undefined)];
     let raid: CurrentRaid = {
       ...currentRaid,
-      log: [
-        ...currentRaid.log,
-        makeLog("choice_result", choice.label, undefined),
-      ],
+      log: [...currentRaid.log, ...choiceLogs],
       pendingChoice: null,
       operativePos: nextPos,
       map: nextMap,
       nextStep,
       runState: {
         ...rs,
-        alertness: Math.max(0, Math.min(100, rs.alertness + (fx.alertnessDelta ?? 0))),
+        heat: Math.max(0, Math.min(100, rs.heat + (fx.heatDelta ?? 0))),
         health: Math.max(0, Math.min(100, rs.health + (fx.healthDelta ?? 0))),
         energy: Math.max(0, Math.min(100, rs.energy + (fx.energyDelta ?? 0))),
         ammo: Math.max(0, rs.ammo + (fx.ammoDelta ?? 0)),

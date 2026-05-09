@@ -4,7 +4,16 @@ import { useEffect, useRef } from "react";
 import { useGame } from "@/store/game";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
-import { Bandage, CornerDownRight, Crosshair, Droplet } from "lucide-react";
+import {
+  Bandage,
+  CornerDownRight,
+  Crosshair,
+  Droplet,
+  Flame,
+  Footprints,
+  Heart,
+  Zap,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
 import { PackTetris } from "./PackTetris";
@@ -60,11 +69,12 @@ export function FeedPanel() {
           Paused — comms hold
         </div>
       ) : null}
-      <div className="grid grid-cols-4 gap-3 border-b border-border/60 px-6 py-3 font-mono text-[11px] uppercase tracking-widest">
-        <Stat label="Health" value={rs.health} tone={rs.health < 40 ? "warn" : "ok"} />
-        <Stat label="Energy" value={rs.energy} tone={rs.energy < 30 ? "warn" : "ok"} />
-        <Stat label="Alertness" value={rs.alertness} tone={rs.alertness > 60 ? "warn" : "ok"} />
-        <Stat label="Distance" value={rs.distanceFromExtract} />
+      <div className="grid grid-cols-5 gap-3 border-b border-border/60 px-6 py-3 font-mono text-[11px] uppercase tracking-widest">
+        <Stat icon={Heart} label="Health" value={rs.health} tone={rs.health < 40 ? "warn" : "ok"} />
+        <Stat icon={Zap} label="Energy" value={rs.energy} tone={rs.energy < 30 ? "warn" : "ok"} />
+        <Stat icon={Flame} label="Heat" value={rs.heat} tone={rs.heat > 60 ? "warn" : "ok"} />
+        <Stat icon={Crosshair} label="Ammo" value={rs.ammo} tone={rs.ammo < 10 ? "warn" : "ok"} />
+        <Stat icon={Footprints} label="Distance" value={rs.distanceFromExtract} />
       </div>
       {hasBleed ? (
         <div className="flex items-center gap-3 border-b border-border/60 bg-red-500/5 px-6 py-2">
@@ -190,10 +200,23 @@ export function FeedPanel() {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number | string; tone?: "ok" | "warn" }) {
+function Stat({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: number | string;
+  tone?: "ok" | "warn";
+}) {
   return (
     <div className="flex flex-col">
-      <span className="text-muted-foreground">{label}</span>
+      <span className="flex items-center gap-1 text-muted-foreground">
+        {Icon ? <Icon className="size-3" /> : null}
+        {label}
+      </span>
       <span className={cn("text-foreground", tone === "warn" && "text-amber-400")}>{value}</span>
     </div>
   );
