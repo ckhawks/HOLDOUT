@@ -52,23 +52,26 @@ function chipsFor(opt: BranchOption): Chip[] {
 
 export function BranchModal() {
   const choice = useGame((s) => s.currentRaid?.pendingChoice ?? null);
+  const paused = useGame((s) => s.currentRaid?.pausedAt ?? null);
   const resolve = useGame((s) => s.resolveBranch);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!choice) return;
+    if (paused) return;
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(t);
-  }, [choice]);
+  }, [choice, paused]);
 
   useEffect(() => {
     if (!choice) return;
+    if (paused) return;
     const remaining = choice.startedAt + choice.timerMs - now;
     if (remaining <= 0) {
       resolve(choice.defaultId);
     }
-  }, [choice, now, resolve]);
+  }, [choice, paused, now, resolve]);
 
   if (!choice) return null;
 

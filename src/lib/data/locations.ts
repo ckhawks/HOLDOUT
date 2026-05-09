@@ -16,6 +16,14 @@ export const LOCATIONS: Location[] = [
       valuables: 1,
       intel: 1,
     },
+    roomTypeWeights: {
+      corridor: 6,
+      storage: 5,
+      mechanical: 3,
+      gantry: 2,
+      office: 1,
+      locked: 1,
+    },
   },
   {
     id: "subway",
@@ -32,6 +40,14 @@ export const LOCATIONS: Location[] = [
       valuables: 1,
       electronics: 1,
     },
+    roomTypeWeights: {
+      corridor: 8,
+      mechanical: 4,
+      storage: 3,
+      gantry: 2,
+      locked: 2,
+      office: 1,
+    },
   },
   {
     id: "drone_graveyard",
@@ -47,6 +63,14 @@ export const LOCATIONS: Location[] = [
       intel: 2,
       consumables: 1,
     },
+    roomTypeWeights: {
+      gantry: 5,
+      mechanical: 5,
+      storage: 4,
+      corridor: 3,
+      locked: 2,
+      office: 1,
+    },
   },
   {
     id: "datacenter",
@@ -61,6 +85,14 @@ export const LOCATIONS: Location[] = [
       mechanical: 1,
       valuables: 1,
       experimental: 1,
+    },
+    roomTypeWeights: {
+      office: 6,
+      corridor: 4,
+      mechanical: 3,
+      storage: 2,
+      locked: 3,
+      gantry: 1,
     },
     unlock: {
       type: "consumable",
@@ -81,6 +113,14 @@ export const LOCATIONS: Location[] = [
       electronics: 3,
       intel: 2,
       mechanical: 1,
+    },
+    roomTypeWeights: {
+      mechanical: 5,
+      office: 4,
+      storage: 3,
+      corridor: 3,
+      locked: 4,
+      gantry: 1,
     },
     unlock: {
       type: "permanent",

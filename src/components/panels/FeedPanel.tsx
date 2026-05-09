@@ -4,17 +4,19 @@ import { useEffect, useRef } from "react";
 import { useGame } from "@/store/game";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
-import { Bandage, CornerDownRight, Crosshair, Droplet, LogOut } from "lucide-react";
+import { Bandage, CornerDownRight, Crosshair, Droplet, LogOut, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
 import { PackTetris } from "./PackTetris";
 import { BranchModal } from "./BranchModal";
+import { RaidMap } from "./RaidMap";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
 export function FeedPanel() {
   const raid = useGame((s) => s.currentRaid);
   const recall = useGame((s) => s.recall);
   const useBandage = useGame((s) => s.useBandage);
+  const togglePause = useGame((s) => s.togglePause);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,6 +42,7 @@ export function FeedPanel() {
   const hasMajor = rs.flags.includes("bleeding_major");
   const hasBandage = raid.pack.some((p) => p.itemId === "bandage_pack");
   const extracting = rs.flags.includes("extracting");
+  const paused = !!raid.pausedAt;
 
   return (
     <section className="relative flex min-h-0 flex-1 flex-col">
@@ -51,17 +54,32 @@ export function FeedPanel() {
             : `Channel open · ${LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId} · depth ${rs.depth}`
         }
         right={
-          <Button
-            variant="destructive"
-            onClick={recall}
-            disabled={extracting}
-            className="rounded-sm"
-          >
-            {extracting ? "Extracting…" : "Recall"}
-            <LogOut className="size-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={togglePause}
+              className="rounded-sm"
+            >
+              {paused ? "Resume" : "Pause"}
+              {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={recall}
+              disabled={extracting}
+              className="rounded-sm"
+            >
+              {extracting ? "Extracting…" : "Recall"}
+              <LogOut className="size-4" />
+            </Button>
+          </div>
         }
       />
+      {paused ? (
+        <div className="flex items-center justify-center border-b border-amber-400/40 bg-amber-500/10 px-6 py-1.5 font-mono text-[11px] uppercase tracking-widest text-amber-300">
+          Paused — comms hold
+        </div>
+      ) : null}
       <div className="grid grid-cols-4 gap-3 border-b border-border/60 px-6 py-3 font-mono text-[11px] uppercase tracking-widest">
         <Stat label="Health" value={rs.health} tone={rs.health < 40 ? "warn" : "ok"} />
         <Stat label="Energy" value={rs.energy} tone={rs.energy < 30 ? "warn" : "ok"} />
@@ -199,6 +217,7 @@ export function FeedPanel() {
           </span>
         </div>
       </div>
+      <RaidMap />
       <PackTetris />
       </div>
       <BranchModal />

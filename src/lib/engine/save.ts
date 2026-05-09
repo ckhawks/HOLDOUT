@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 8;
 
 export interface PersistedState {
   cash: number;
@@ -88,6 +88,19 @@ export function migrateSave(saved: SavedGame): SavedGame {
   if (saved.schemaVersion < 6) {
     if (s.currentRaid && !("pendingChoice" in s.currentRaid)) {
       (s.currentRaid as { pendingChoice: null }).pendingChoice = null;
+    }
+  }
+  // v7: spatial map — CurrentRaid gains map + operativePos. The old in-
+  // progress raid has no map; rather than synthesize one, drop the raid.
+  if (saved.schemaVersion < 7) {
+    if (s.currentRaid && !("map" in s.currentRaid)) {
+      s.currentRaid = null;
+    }
+  }
+  // v8: explicit pause — CurrentRaid gains pausedAt. Old raids resume running.
+  if (saved.schemaVersion < 8) {
+    if (s.currentRaid && !("pausedAt" in s.currentRaid)) {
+      (s.currentRaid as { pausedAt: number | null }).pausedAt = null;
     }
   }
   return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };

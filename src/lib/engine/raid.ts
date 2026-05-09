@@ -8,6 +8,7 @@ import type {
 import { rollEvent } from "@/lib/engine/events";
 import { ITEMS, pickItemForLocation } from "@/lib/data/items";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
+import { generateMap } from "@/lib/engine/map";
 
 export const TICK_MIN_MS = 3000;
 export const TICK_MAX_MS = 8000;
@@ -63,7 +64,14 @@ export function startRaid(
   locationId: string,
   packGrid: { width: number; height: number },
   pendingCapacity: number,
+  rand: () => number,
 ): CurrentRaid {
+  const baseMap = generateMap(rand, LOCATIONS_BY_ID[locationId]);
+  // Entry tile starts already cleared so the visited memory is consistent.
+  const entryIdx = baseMap.entry.y * baseMap.width + baseMap.entry.x;
+  const tiles = baseMap.tiles.slice();
+  tiles[entryIdx] = { ...tiles[entryIdx], looted: true };
+  const map = { ...baseMap, tiles };
   return {
     locationId,
     startedAt: Date.now(),
@@ -85,6 +93,9 @@ export function startRaid(
     pendingCapacity,
     active: true,
     pendingChoice: null,
+    map,
+    operativePos: { x: map.entry.x, y: map.entry.y },
+    pausedAt: null,
   };
 }
 
@@ -129,8 +140,10 @@ export function tickRaid(
   rand: () => number,
   locationId?: string,
   state?: RunState,
+  roomType?: import("@/lib/types").RoomType,
+  roomLooted?: boolean,
 ): TickResult {
-  const ev = rollEvent(rand, locationId, state);
+  const ev = rollEvent(rand, locationId, state, roomType, roomLooted);
   const flags = state?.flags ?? [];
   const bleed = bleedDrain(flags);
 

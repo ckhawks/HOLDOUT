@@ -1,13 +1,21 @@
-import { EVENTS, EVENTS_BY_ID } from "@/lib/data/events";
+import { EVENTS, EVENTS_BY_ID, ROOM_EVENT_BIAS } from "@/lib/data/events";
 import { pickVocab } from "@/lib/data/vocab";
 import { ITEMS, pickCommonItemId, pickItemForLocation, pickRareItemId } from "@/lib/data/items";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
-import type { EventKind, LogEntry, RaidEventDef, RunState } from "@/lib/types";
+import type {
+  EventKind,
+  LogEntry,
+  RaidEventDef,
+  RoomType,
+  RunState,
+} from "@/lib/types";
 
 export function pickEvent(
   rand: () => number,
   state?: RunState,
   events: ReadonlyArray<RaidEventDef> = EVENTS,
+  roomType?: RoomType,
+  roomLooted?: boolean,
 ): RaidEventDef {
   const pool = state
     ? events.filter((e) => !e.preconditions || e.preconditions(state))
@@ -17,13 +25,27 @@ export function pickEvent(
   // shadow everything else when any are eligible.
   const exclusive = eligible.filter((e) => e.exclusive);
   const final = exclusive.length > 0 ? exclusive : eligible;
-  const total = final.reduce((s, e) => s + e.weight, 0);
-  let r = rand() * total;
-  for (const e of final) {
-    r -= e.weight;
-    if (r <= 0) return e;
+  // Room-type bias only applies when there's no exclusive pool active
+  // (combat/extract aren't room-driven).
+  let bias: Partial<Record<EventKind, number>> | undefined;
+  if (roomType && exclusive.length === 0) {
+    bias = { ...ROOM_EVENT_BIAS[roomType] };
+    if (roomLooted) {
+      bias.looted_container = (bias.looted_container ?? 1) * 0.35;
+      bias.found_rare = (bias.found_rare ?? 1) * 0.5;
+    }
   }
-  return final[0];
+  const weighted = final.map((e) => ({
+    e,
+    w: e.weight * (bias?.[e.id] ?? 1),
+  }));
+  const total = weighted.reduce((s, x) => s + x.w, 0);
+  let r = rand() * total;
+  for (const x of weighted) {
+    r -= x.w;
+    if (r <= 0) return x.e;
+  }
+  return weighted[weighted.length - 1].e;
 }
 
 export interface RolledEvent {
@@ -44,8 +66,10 @@ export function rollEvent(
   rand: () => number,
   locationId?: string,
   state?: RunState,
+  roomType?: RoomType,
+  roomLooted?: boolean,
 ): RolledEvent {
-  const def = pickEvent(rand, state);
+  const def = pickEvent(rand, state, EVENTS, roomType, roomLooted);
   const tpl = def.templates[Math.floor(rand() * def.templates.length)];
   const location = locationId ? LOCATIONS_BY_ID[locationId] : undefined;
 

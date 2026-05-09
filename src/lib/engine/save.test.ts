@@ -90,6 +90,9 @@ describe("save round-trip", () => {
       pendingCapacity: 4,
       active: true,
       pendingChoice: null,
+      map: { width: 1, height: 1, entry: { x: 0, y: 0 }, tiles: [{ x: 0, y: 0, type: "entry", blocked: false, looted: false }] },
+      operativePos: { x: 0, y: 0 },
+      pausedAt: null,
     };
     saveGame(s);
     const loaded = loadGame();

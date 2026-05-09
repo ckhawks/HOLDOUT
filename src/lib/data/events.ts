@@ -1,4 +1,34 @@
-import type { RaidEventDef } from "@/lib/types";
+import type { EventKind, RaidEventDef, RoomType } from "@/lib/types";
+
+// Per-room-type event weight multipliers. Applied on top of the base weight in
+// pickEvent when the operative's current tile has a known type. corridor and
+// entry are pass-through (no bias). locked is unreachable so never queried.
+export const ROOM_EVENT_BIAS: Record<RoomType, Partial<Record<EventKind, number>>> = {
+  entry: {},
+  corridor: {},
+  storage: {
+    looted_container: 1.8,
+    found_rare: 1.3,
+    spotted_patrol: 0.6,
+  },
+  office: {
+    locked_door: 1.6,
+    looted_container: 1.2,
+    found_rare: 1.4,
+    heard_voices: 1.4,
+  },
+  mechanical: {
+    took_damage: 1.6,
+    locked_door: 1.4,
+    looted_container: 0.9,
+  },
+  gantry: {
+    spotted_patrol: 1.8,
+    took_damage: 1.4,
+    looted_container: 0.6,
+  },
+  locked: {},
+};
 
 export const EVENTS: RaidEventDef[] = [
   {

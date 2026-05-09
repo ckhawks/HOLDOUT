@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { PENDING_EXPIRY_MS, prunePending, pushPending } from "./raid";
+import { generateMap } from "./map";
+import { makeRng } from "./raid";
 import type { CurrentRaid, PendingItem } from "@/lib/types";
 
 function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
+  const map = generateMap(makeRng(1));
   return {
     locationId: "warehouse",
     startedAt: 0,
@@ -22,6 +25,9 @@ function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
     pendingCapacity: 3,
     active: true,
     pendingChoice: null,
+    map,
+    operativePos: { x: map.entry.x, y: map.entry.y },
+    pausedAt: null,
     ...over,
   };
 }

@@ -175,7 +175,37 @@ export interface Location {
   difficulty: "low" | "mid" | "high";
   categoryWeights?: Partial<Record<ItemCategory, number>>;
   eventWeights?: Partial<Record<EventKind, number>>;
+  // Optional bias for which room types appear on the location's map.
+  // Falls back to a generic mix if not set.
+  roomTypeWeights?: Partial<Record<RoomType, number>>;
   unlock?: LocationUnlock;
+}
+
+export type RoomType =
+  | "entry"
+  | "corridor"
+  | "storage"
+  | "office"
+  | "mechanical"
+  | "gantry"
+  | "locked";
+
+export interface MapTile {
+  x: number;
+  y: number;
+  type: RoomType;
+  blocked: boolean;
+  looted: boolean;
+}
+
+export interface RaidMap {
+  width: number;
+  height: number;
+  // Flat tile array indexed by y * width + x. Entry sits at (entry.x, entry.y),
+  // typically the bottom-middle. Operative pushes upward (decreasing y) to go
+  // deeper, returns toward entry on recall.
+  tiles: MapTile[];
+  entry: { x: number; y: number };
 }
 
 export interface CurrentRaid {
@@ -189,6 +219,12 @@ export interface CurrentRaid {
   pendingCapacity: number;
   active: boolean;
   pendingChoice: PendingChoice | null;
+  map: RaidMap;
+  operativePos: { x: number; y: number };
+  // Wall-clock timestamp when the player paused. null = running. On resume the
+  // store shifts pending.arrivedAt and pendingChoice.startedAt forward so the
+  // pause time doesn't expire items or auto-resolve branches.
+  pausedAt: number | null;
 }
 
 export interface Unlocks {

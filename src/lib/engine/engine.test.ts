@@ -297,11 +297,12 @@ describe("doTick flag/distance plumbing (via tickRaid + manual apply)", () => {
 });
 
 describe("save migration v4 → v5", () => {
-  it("backfills flags=[] and distanceFromExtract=depth on in-progress raids", () => {
+  it("drops legacy in-progress raids that predate the spatial map (v7+)", () => {
+    // A v4 save's currentRaid has no map field. v7's migration step recognizes
+    // that and drops the raid entirely rather than synthesizing a map.
     const v4: SavedGame = {
       schemaVersion: 4,
       timestamp: 0,
-      // RunState shape pre-v5 had no flags/distanceFromExtract.
       state: {
         cash: 0,
         stash: [],
@@ -337,9 +338,7 @@ describe("save migration v4 → v5", () => {
     };
     const migrated = migrateSave(v4);
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    const rs = migrated.state.currentRaid!.runState;
-    expect(rs.flags).toEqual([]);
-    expect(rs.distanceFromExtract).toBe(7);
+    expect(migrated.state.currentRaid).toBeNull();
   });
 
   it("leaves null currentRaid alone", () => {

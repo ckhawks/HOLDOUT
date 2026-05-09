@@ -39,6 +39,11 @@ import {
   shapeFor,
 } from "@/lib/engine/shapes";
 import {
+  markTileLooted,
+  stepBackward,
+  stepForward,
+} from "@/lib/engine/map";
+import {
   loadGame,
   saveGame,
   clearSave,
@@ -67,6 +72,7 @@ interface GameState {
   doTick: () => void;
   resolveBranch: (choiceId: string) => void;
   useBandage: () => void;
+  togglePause: () => void;
   recall: () => void;
   endRaid: (extracted: boolean) => void;
   placeFromPending: (uid: string, x: number, y: number, rotation: Rotation) => boolean;
@@ -120,7 +126,7 @@ export const useGame = create<GameState>((set, get) => ({
   setPanel: (p) => set({ activePanel: p }),
 
   beginRaid: (locationId) => {
-    const { operative, upgrades, unlocks, stash } = get();
+    const { operative, upgrades, unlocks, stash, rngSeed } = get();
     if (operative.state !== "idle") return;
     const loc = LOCATIONS_BY_ID[locationId];
     if (!loc) return;
@@ -134,9 +140,11 @@ export const useGame = create<GameState>((set, get) => ({
         nextStash = [...stash.slice(0, idx), ...stash.slice(idx + 1)];
       }
     }
+    // Map gen RNG is seeded off rngSeed + raid start so each raid's map differs.
+    const mapRand = makeRng(rngSeed + Date.now());
     set({
       stash: nextStash,
-      currentRaid: startRaid(locationId, packDimensions(upgrades), pendingCapacity(upgrades)),
+      currentRaid: startRaid(locationId, packDimensions(upgrades), pendingCapacity(upgrades), mapRand),
       operative: { ...operative, state: "raiding" },
       activePanel: "feed",
     });
@@ -147,7 +155,16 @@ export const useGame = create<GameState>((set, get) => ({
     if (!currentRaid || !currentRaid.active) return;
     if (currentRaid.pendingChoice) return; // tick paused while awaiting decision
     const rand = makeRng(rngSeed + currentRaid.log.length);
-    const t = tickRaid(rand, currentRaid.locationId, currentRaid.runState);
+    const tile = currentRaid.map.tiles[
+      currentRaid.operativePos.y * currentRaid.map.width + currentRaid.operativePos.x
+    ];
+    const t = tickRaid(
+      rand,
+      currentRaid.locationId,
+      currentRaid.runState,
+      tile?.type,
+      tile?.looted,
+    );
     let flags: string[] = currentRaid.runState.flags;
     if (t.flagsAdded.length || t.flagsRemoved.length) {
       const set = new Set(flags);
@@ -155,10 +172,24 @@ export const useGame = create<GameState>((set, get) => ({
       for (const f of t.flagsRemoved) set.delete(f);
       flags = Array.from(set);
     }
+    // Advance the operative on the map to match the tick's distance change.
+    let nextPos = currentRaid.operativePos;
+    let nextMap = currentRaid.map;
+    const isExtracting = currentRaid.runState.flags.includes("extracting");
+    if (t.distanceAdvance > 0 && !isExtracting) {
+      nextPos = stepForward(currentRaid.map, currentRaid.operativePos, rand);
+    } else if (t.distanceAdvance < 0 && isExtracting) {
+      nextPos = stepBackward(currentRaid.map, currentRaid.operativePos);
+    }
+    if (nextPos !== currentRaid.operativePos) {
+      nextMap = markTileLooted(nextMap, nextPos.x, nextPos.y);
+    }
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, t.log],
       pendingChoice: t.pendingChoice,
+      operativePos: nextPos,
+      map: nextMap,
       runState: {
         ...currentRaid.runState,
         alertness: Math.max(0, Math.min(100, currentRaid.runState.alertness + t.alertnessDelta)),
@@ -215,7 +246,19 @@ export const useGame = create<GameState>((set, get) => ({
     const { currentRaid, rngSeed } = get();
     if (!currentRaid || !currentRaid.pendingChoice) return;
     const rand = makeRng(rngSeed + currentRaid.log.length + 1);
+    const distBefore = currentRaid.runState.distanceFromExtract;
     let { raid } = resolveBranch(currentRaid, choiceId, rand);
+    const distDelta = raid.runState.distanceFromExtract - distBefore;
+    if (distDelta > 0) {
+      const nextPos = stepForward(raid.map, raid.operativePos, rand);
+      if (nextPos !== raid.operativePos) {
+        raid = {
+          ...raid,
+          operativePos: nextPos,
+          map: markTileLooted(raid.map, nextPos.x, nextPos.y),
+        };
+      }
+    }
     if (raid.runState.health <= 0) {
       raid = {
         ...raid,
@@ -227,6 +270,31 @@ export const useGame = create<GameState>((set, get) => ({
       return;
     }
     set({ currentRaid: raid });
+  },
+
+  togglePause: () => {
+    const { currentRaid } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    if (currentRaid.pausedAt) {
+      // Resume: shift wall-clock timestamps forward by the pause duration so
+      // pending items don't expire and branch timers don't auto-fire.
+      const pauseDuration = Date.now() - currentRaid.pausedAt;
+      const pending = currentRaid.pending.map((p) => ({
+        ...p,
+        arrivedAt: p.arrivedAt + pauseDuration,
+      }));
+      const pendingChoice = currentRaid.pendingChoice
+        ? {
+            ...currentRaid.pendingChoice,
+            startedAt: currentRaid.pendingChoice.startedAt + pauseDuration,
+          }
+        : null;
+      set({
+        currentRaid: { ...currentRaid, pausedAt: null, pending, pendingChoice },
+      });
+    } else {
+      set({ currentRaid: { ...currentRaid, pausedAt: Date.now() } });
+    }
   },
 
   useBandage: () => {

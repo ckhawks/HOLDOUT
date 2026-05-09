@@ -8,6 +8,7 @@ import {
   tickRaid,
   applyBandage,
 } from "./raid";
+import { generateMap } from "./map";
 import type { CurrentRaid, PackPlacement, RunState } from "@/lib/types";
 
 function freshRunState(over: Partial<RunState> = {}): RunState {
@@ -24,6 +25,7 @@ function freshRunState(over: Partial<RunState> = {}): RunState {
 }
 
 function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
+  const map = generateMap(makeRng(1));
   return {
     locationId: "warehouse",
     startedAt: 0,
@@ -35,6 +37,9 @@ function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
     pendingCapacity: 4,
     active: true,
     pendingChoice: null,
+    map,
+    operativePos: { x: map.entry.x, y: map.entry.y },
+    pausedAt: null,
     ...over,
   };
 }
@@ -262,6 +267,26 @@ describe("took_damage bleed decoupling", () => {
     }
     expect(damageHits).toBeGreaterThan(50);
     expect(noBleed / damageHits).toBeGreaterThan(0.2);
+  });
+});
+
+describe("pause data shape", () => {
+  it("a raid with pausedAt set retains a valid pendingChoice", () => {
+    const raid = makeRaid({
+      pausedAt: Date.now(),
+      pendingChoice: {
+        eventId: "spotted_patrol",
+        prompt: "x",
+        options: [
+          { id: "hide", label: "Hide", effects: {}, isDefault: true },
+        ],
+        defaultId: "hide",
+        startedAt: Date.now() - 5000,
+        timerMs: 10000,
+      },
+    });
+    expect(raid.pausedAt).not.toBeNull();
+    expect(raid.pendingChoice?.startedAt).toBeLessThan(Date.now());
   });
 });
 

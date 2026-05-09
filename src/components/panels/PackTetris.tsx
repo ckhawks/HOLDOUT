@@ -45,15 +45,20 @@ export function PackTetris() {
   const [hoverCell, setHoverCell] = useState<{ x: number; y: number; valid: boolean } | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
-  // Drive countdown + expiry pruning at 200ms.
+  // Drive countdown + expiry pruning at 200ms. Frozen while paused so
+  // countdown bars don't tick down and items don't expire mid-pause.
   useEffect(() => {
     if (!raid?.active) return;
+    if (raid.pausedAt) {
+      setNow(raid.pausedAt);
+      return;
+    }
     const id = setInterval(() => {
       pruneExpiredPending();
       setNow(Date.now());
     }, 200);
     return () => clearInterval(id);
-  }, [raid?.active, pruneExpiredPending]);
+  }, [raid?.active, raid?.pausedAt, pruneExpiredPending]);
 
   // Global pointer + key listeners while dragging
   useEffect(() => {
