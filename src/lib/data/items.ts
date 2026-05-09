@@ -85,9 +85,13 @@ const TIER_POOLS: Record<string, string[]> = {
 
 // Items keyed unlock items are excluded from generic pools so they only drop
 // from location-specific tagged events.
-export function pickCommonItemId(rand: () => number): string {
+export function pickCommonItemId(rand: () => number, depth: number = 0): string {
+  // Depth lifts the mean tier without flattening the lucky-rare floor (~5% at any depth).
+  const lift = Math.min(0.35, depth * 0.02);
   const r = rand();
-  const tier = r < 0.7 ? "common" : r < 0.95 ? "uncommon" : "rare";
+  const commonCut = 0.7 - lift;
+  const uncommonCut = 0.95 - lift * 0.5;
+  const tier = r < commonCut ? "common" : r < uncommonCut ? "uncommon" : "rare";
   const pool = TIER_POOLS[tier];
   return pool[Math.floor(rand() * pool.length)];
 }
@@ -111,15 +115,23 @@ function pickWeighted<T>(rand: () => number, entries: ReadonlyArray<readonly [T,
   return entries[entries.length - 1][0];
 }
 
-function rollTier(rand: () => number, isRare: boolean): "common" | "uncommon" | "rare" | "experimental" {
+function rollTier(
+  rand: () => number,
+  isRare: boolean,
+  depth: number = 0,
+): "common" | "uncommon" | "rare" | "experimental" {
   const r = rand();
   if (isRare) {
     if (r < 0.6) return "rare";
     if (r < 0.9) return "uncommon";
     return "experimental";
   }
-  if (r < 0.65) return "common";
-  if (r < 0.92) return "uncommon";
+  // Depth lifts the curve; ceiling is clamped so very deep raids don't flatten.
+  const lift = Math.min(0.35, depth * 0.02);
+  const commonCut = 0.65 - lift;
+  const uncommonCut = 0.92 - lift * 0.5;
+  if (r < commonCut) return "common";
+  if (r < uncommonCut) return "uncommon";
   return "rare";
 }
 
@@ -134,6 +146,7 @@ export function pickItemForLocation(
   rand: () => number,
   location: Location,
   isRare: boolean,
+  depth: number = 0,
 ): string {
   // Rare-event tokens (Datacenter Keycard / Biolab Coordinates) only drop on rare events.
   if (isRare) {
@@ -144,7 +157,7 @@ export function pickItemForLocation(
 
   const weights = location.categoryWeights;
   if (!weights || Object.keys(weights).length === 0) {
-    return isRare ? pickRareItemId(rand) : pickCommonItemId(rand);
+    return isRare ? pickRareItemId(rand) : pickCommonItemId(rand, depth);
   }
   const entries = Object.entries(weights) as Array<[ItemCategory, number]>;
 
@@ -152,7 +165,7 @@ export function pickItemForLocation(
   for (let attempt = 0; attempt < 4; attempt++) {
     const cat = pickWeighted(rand, entries);
     if (!cat) break;
-    const tier = rollTier(rand, isRare);
+    const tier = rollTier(rand, isRare, depth);
     const slice = Object.values(ITEMS).filter(
       (i) =>
         i.category === cat &&
@@ -163,5 +176,5 @@ export function pickItemForLocation(
       return slice[Math.floor(rand() * slice.length)].id;
     }
   }
-  return isRare ? pickRareItemId(rand) : pickCommonItemId(rand);
+  return isRare ? pickRareItemId(rand) : pickCommonItemId(rand, depth);
 }

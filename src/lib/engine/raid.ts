@@ -1,8 +1,42 @@
-import type { CurrentRaid, LogEntry, PendingItem } from "@/lib/types";
+import type { CurrentRaid, LogEntry, PendingItem, RunState } from "@/lib/types";
 import { rollEvent } from "@/lib/engine/events";
+import { ITEMS } from "@/lib/data/items";
 
 export const TICK_MIN_MS = 3000;
 export const TICK_MAX_MS = 8000;
+export const PENDING_EXPIRY_MS = 15000;
+
+export function pushPending(raid: CurrentRaid, loot: PendingItem): CurrentRaid {
+  const pending = [...raid.pending, loot];
+  if (pending.length <= raid.pendingCapacity) {
+    return { ...raid, pending };
+  }
+  const dropped = pending.shift()!;
+  const dropName = ITEMS[dropped.itemId]?.name ?? dropped.itemId;
+  return {
+    ...raid,
+    pending,
+    log: [
+      ...raid.log,
+      makeLog("system", `Pending tray full — dropped ⟦${dropName}⟧.`, dropped.itemId),
+    ],
+  };
+}
+
+export function prunePending(raid: CurrentRaid, now: number): CurrentRaid {
+  const survivors: PendingItem[] = [];
+  const expired: PendingItem[] = [];
+  for (const p of raid.pending) {
+    if (now - p.arrivedAt >= PENDING_EXPIRY_MS) expired.push(p);
+    else survivors.push(p);
+  }
+  if (expired.length === 0) return raid;
+  const newLogs = expired.map((p) => {
+    const name = ITEMS[p.itemId]?.name ?? p.itemId;
+    return makeLog("system", `Pending expired — dropped ⟦${name}⟧.`, p.itemId);
+  });
+  return { ...raid, pending: survivors, log: [...raid.log, ...newLogs] };
+}
 
 export function makeRng(seed: number): () => number {
   let s = seed >>> 0 || 1;
@@ -23,7 +57,15 @@ export function startRaid(
   return {
     locationId,
     startedAt: Date.now(),
-    runState: { alertness: 0, health: 100, energy: 100, ammo: 30, depth: 0 },
+    runState: {
+      alertness: 0,
+      health: 100,
+      energy: 100,
+      ammo: 30,
+      depth: 0,
+      distanceFromExtract: 0,
+      flags: [],
+    },
     log: [
       makeLog("system", `Operative inserted at ${locationId}. Comms green.`),
     ],
@@ -55,12 +97,19 @@ export interface TickResult {
   alertnessDelta: number;
   healthDelta: number;
   energyDelta: number;
+  depthAdvance: number;
+  distanceAdvance: number;
+  flagsAdded: string[];
 }
 
 export const ENERGY_BASE_DRAIN = 3;
 
-export function tickRaid(rand: () => number, locationId?: string): TickResult {
-  const ev = rollEvent(rand, locationId);
+export function tickRaid(
+  rand: () => number,
+  locationId?: string,
+  state?: RunState,
+): TickResult {
+  const ev = rollEvent(rand, locationId, state);
   let alertnessDelta = 0;
   let healthDelta = 0;
   let energyDelta = -ENERGY_BASE_DRAIN;
@@ -92,5 +141,8 @@ export function tickRaid(rand: () => number, locationId?: string): TickResult {
     alertnessDelta,
     healthDelta,
     energyDelta,
+    depthAdvance: ev.depthAdvance,
+    distanceAdvance: ev.distanceAdvance,
+    flagsAdded: ev.postconditions ?? [],
   };
 }

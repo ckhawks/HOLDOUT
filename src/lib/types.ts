@@ -46,6 +46,8 @@ export interface RunState {
   energy: number;
   ammo: number;
   depth: number;
+  distanceFromExtract: number;
+  flags: string[];
 }
 
 export type LogKind = "flavor" | "loot" | "damage" | "system" | "choice";
@@ -98,6 +100,10 @@ export interface RaidEventDef {
   weight: number;
   kind: LogKind;
   templates: string[];
+  preconditions?: (state: RunState) => boolean;
+  postconditions?: string[];
+  depthAdvance?: number;
+  distanceAdvance?: number;
 }
 
 export interface LocationUnlock {

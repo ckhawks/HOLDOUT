@@ -13,7 +13,15 @@ import type {
   Unlocks,
   Upgrades,
 } from "@/lib/types";
-import { startRaid, tickRaid, makeLog, makeRng } from "@/lib/engine/raid";
+import {
+  PENDING_EXPIRY_MS,
+  prunePending,
+  pushPending,
+  startRaid,
+  tickRaid,
+  makeLog,
+  makeRng,
+} from "@/lib/engine/raid";
 import { ITEMS } from "@/lib/data/items";
 import {
   backpackCapacity,
@@ -38,7 +46,7 @@ import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
 export type PanelId = "hideout" | "stash" | "ops" | "feed" | "settings";
 
-export const PENDING_EXPIRY_MS = 15000;
+export { PENDING_EXPIRY_MS };
 
 interface GameState {
   cash: number;
@@ -93,21 +101,6 @@ function buildHideout(upgrades: Upgrades): Hideout {
 
 const initialUpgrades: Upgrades = { backpackLevel: 0, stashLevel: 0 };
 
-function pushPending(raid: CurrentRaid, loot: PendingItem): CurrentRaid {
-  const pending = [...raid.pending, loot];
-  if (pending.length <= raid.pendingCapacity) {
-    return { ...raid, pending };
-  }
-  // FIFO: drop oldest. Annotate log with the drop.
-  const dropped = pending.shift()!;
-  const dropName = ITEMS[dropped.itemId]?.name ?? dropped.itemId;
-  return {
-    ...raid,
-    pending,
-    log: [...raid.log, makeLog("system", `Pending tray full — dropped ⟦${dropName}⟧.`, dropped.itemId)],
-  };
-}
-
 export const useGame = create<GameState>((set, get) => ({
   cash: 0,
   stash: [],
@@ -149,7 +142,10 @@ export const useGame = create<GameState>((set, get) => ({
     const { currentRaid, rngSeed } = get();
     if (!currentRaid || !currentRaid.active) return;
     const rand = makeRng(rngSeed + currentRaid.log.length);
-    const t = tickRaid(rand, currentRaid.locationId);
+    const t = tickRaid(rand, currentRaid.locationId, currentRaid.runState);
+    const flags = t.flagsAdded.length
+      ? Array.from(new Set([...currentRaid.runState.flags, ...t.flagsAdded]))
+      : currentRaid.runState.flags;
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, t.log],
@@ -158,7 +154,12 @@ export const useGame = create<GameState>((set, get) => ({
         alertness: Math.max(0, Math.min(100, currentRaid.runState.alertness + t.alertnessDelta)),
         health: Math.max(0, Math.min(100, currentRaid.runState.health + t.healthDelta)),
         energy: Math.max(0, Math.min(100, currentRaid.runState.energy + t.energyDelta)),
-        depth: currentRaid.runState.depth + 1,
+        depth: currentRaid.runState.depth + t.depthAdvance,
+        distanceFromExtract: Math.max(
+          0,
+          currentRaid.runState.distanceFromExtract + t.distanceAdvance,
+        ),
+        flags,
       },
     };
     if (t.loot) {
@@ -293,25 +294,9 @@ export const useGame = create<GameState>((set, get) => ({
   pruneExpiredPending: () => {
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
-    const now = Date.now();
-    const survivors: PendingItem[] = [];
-    const expired: PendingItem[] = [];
-    for (const p of currentRaid.pending) {
-      if (now - p.arrivedAt >= PENDING_EXPIRY_MS) expired.push(p);
-      else survivors.push(p);
-    }
-    if (expired.length === 0) return;
-    const newLogs = expired.map((p) => {
-      const name = ITEMS[p.itemId]?.name ?? p.itemId;
-      return makeLog("system", `Pending expired — dropped ⟦${name}⟧.`, p.itemId);
-    });
-    set({
-      currentRaid: {
-        ...currentRaid,
-        pending: survivors,
-        log: [...currentRaid.log, ...newLogs],
-      },
-    });
+    const next = prunePending(currentRaid, Date.now());
+    if (next === currentRaid) return;
+    set({ currentRaid: next });
   },
 
   sellItem: (uid) => {

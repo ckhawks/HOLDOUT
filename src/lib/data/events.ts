@@ -35,6 +35,7 @@ export const EVENTS: RaidEventDef[] = [
       "Hidden in a {brand} maintenance hatch — {item}. {adj}.",
       "Tucked behind a {brand} junction box — {item}. {adj}.",
     ],
+    preconditions: (s) => s.depth >= 3,
   },
   {
     id: "took_damage",
@@ -45,6 +46,7 @@ export const EVENTS: RaidEventDef[] = [
       "Snagged a tripwire. Cut on the leg.",
       "Slipped on debris in the {location}. Limping.",
     ],
+    postconditions: ["bleeding"],
   },
   {
     id: "locked_door",

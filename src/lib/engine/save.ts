@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export interface PersistedState {
   cash: number;
@@ -71,7 +71,23 @@ export function migrateSave(saved: SavedGame): SavedGame {
       s.unlocks = { ...s.unlocks, biolab: false };
     }
   }
+  // v5: engine spine — RunState gains flags + distanceFromExtract.
+  if (saved.schemaVersion < 5) {
+    if (s.currentRaid?.runState) {
+      const rs = s.currentRaid.runState as RunStateV5;
+      if (!Array.isArray(rs.flags)) rs.flags = [];
+      if (typeof rs.distanceFromExtract !== "number") {
+        rs.distanceFromExtract = rs.depth ?? 0;
+      }
+    }
+  }
   return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };
+}
+
+interface RunStateV5 {
+  flags?: string[];
+  distanceFromExtract?: number;
+  depth?: number;
 }
 
 export function clearSave(): void {
