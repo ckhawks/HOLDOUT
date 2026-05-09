@@ -194,8 +194,16 @@ export interface MapTile {
   x: number;
   y: number;
   type: RoomType;
+  // Specific room name fixed at generation, e.g. "shift office" for type
+  // "office". Used both in map tooltip and as the {location} substitution in
+  // event templates so the log and the map agree on what room you're in.
+  name: string;
   blocked: boolean;
+  // Operative has been on this tile. Suppresses repeat loot rolls.
   looted: boolean;
+  // Operative has visited this tile OR been on an orthogonal neighbor.
+  // Drives map visibility (fog of war).
+  seen: boolean;
 }
 
 export interface RaidMap {
@@ -221,6 +229,10 @@ export interface CurrentRaid {
   pendingChoice: PendingChoice | null;
   map: RaidMap;
   operativePos: { x: number; y: number };
+  // Pre-computed next tile the operative will step into on the next forward
+  // (or extract) advance. Decided at the end of the previous tick so the
+  // preview indicator matches the actual move that will happen.
+  nextStep: { x: number; y: number } | null;
   // Wall-clock timestamp when the player paused. null = running. On resume the
   // store shifts pending.arrivedAt and pendingChoice.startedAt forward so the
   // pause time doesn't expire items or auto-resolve branches.

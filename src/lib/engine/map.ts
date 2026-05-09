@@ -1,4 +1,5 @@
 import type { Location, MapTile, RaidMap, RoomType } from "@/lib/types";
+import { ROOM_NAMES } from "@/lib/data/events";
 
 export const MAP_WIDTH = 5;
 export const MAP_HEIGHT = 12;
@@ -13,6 +14,12 @@ const DEFAULT_ROOM_WEIGHTS: Record<RoomType, number> = {
   locked: 1,
   entry: 0,
 };
+
+function pickName(rand: () => number, type: RoomType): string {
+  const pool = ROOM_NAMES[type];
+  if (!pool || pool.length === 0) return type;
+  return pool[Math.floor(rand() * pool.length)];
+}
 
 function pickWeighted<T extends string>(
   rand: () => number,
@@ -39,7 +46,8 @@ export function generateMap(
   width: number = MAP_WIDTH,
   height: number = MAP_HEIGHT,
 ): RaidMap {
-  const entry = { x: Math.floor(width / 2), y: height - 1 };
+  // Entry is any tile on the bottom row — keeps insertion points varied.
+  const entry = { x: Math.floor(rand() * width), y: height - 1 };
   const weights: Partial<Record<RoomType, number>> =
     location?.roomTypeWeights ?? DEFAULT_ROOM_WEIGHTS;
 
@@ -47,7 +55,15 @@ export function generateMap(
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       if (x === entry.x && y === entry.y) {
-        tiles.push({ x, y, type: "entry", blocked: false, looted: false });
+        tiles.push({
+          x,
+          y,
+          type: "entry",
+          name: pickName(rand, "entry"),
+          blocked: false,
+          looted: false,
+          seen: false,
+        });
         continue;
       }
       // Tile directly above entry should never be blocked — guarantees the
@@ -55,7 +71,15 @@ export function generateMap(
       const adjacentToEntry = x === entry.x && y === entry.y - 1;
       const blocked = !adjacentToEntry && rand() < BLOCKED_TILE_RATIO;
       const type: RoomType = blocked ? "locked" : pickWeighted(rand, weights);
-      tiles.push({ x, y, type, blocked, looted: false });
+      tiles.push({
+        x,
+        y,
+        type,
+        name: pickName(rand, type),
+        blocked,
+        looted: false,
+        seen: false,
+      });
     }
   }
   return { width, height, tiles, entry };
@@ -107,8 +131,11 @@ export function distanceToEntry(
 }
 
 // Pick the next tile when pushing deeper. Prefers "up" (decreasing y) with a
-// chance to drift laterally for variety. Falls back to a lateral step if the
-// way up is blocked, or stays in place if cornered.
+// ~25% chance to drift laterally for path variety. Falls back to a lateral
+// step when up is blocked, or stays in place if cornered. The drift makes
+// the result non-deterministic, which is why CurrentRaid.nextStep is
+// computed once at the end of the *previous* tick and stored — preview =
+// actual move.
 export function stepForward(
   map: RaidMap,
   pos: { x: number; y: number },
@@ -116,7 +143,6 @@ export function stepForward(
 ): { x: number; y: number } {
   const up = { x: pos.x, y: pos.y - 1 };
   const upOk = isWalkable(map, up.x, up.y);
-  // ~25% drift sideways even when up is open, for some path variety.
   if (upOk && rand() < 0.25) {
     const dir = rand() < 0.5 ? -1 : 1;
     const lat = { x: pos.x + dir, y: pos.y };
@@ -130,6 +156,24 @@ export function stepForward(
     const lat = { x: pos.x + dir, y: pos.y };
     if (isWalkable(map, lat.x, lat.y)) return lat;
   }
+  return pos;
+}
+
+// Pick a sideways tile for branches like Reposition where the operative
+// "slips around" rather than pushing deeper. Prefers the side that increases
+// manhattan distance from entry; falls back to the other side; returns the
+// same tile if both sides are blocked.
+export function stepLateral(
+  map: RaidMap,
+  pos: { x: number; y: number },
+): { x: number; y: number } {
+  // Pick the lateral direction that moves AWAY from entry.x. If we're already
+  // on entry.x, default to right (+1).
+  const dir = pos.x >= map.entry.x ? 1 : -1;
+  const out = { x: pos.x + dir, y: pos.y };
+  if (isWalkable(map, out.x, out.y)) return out;
+  const back = { x: pos.x - dir, y: pos.y };
+  if (isWalkable(map, back.x, back.y)) return back;
   return pos;
 }
 
@@ -173,4 +217,30 @@ export function markTileLooted(
   const tiles = map.tiles.slice();
   tiles[idx] = { ...t, looted: true };
   return { ...map, tiles };
+}
+
+// Reveal a tile and its 4 orthogonal neighbors. Used to expand fog of war
+// as the operative moves. Returns a new RaidMap if anything changed.
+export function revealFrom(
+  map: RaidMap,
+  x: number,
+  y: number,
+): RaidMap {
+  const targets: Array<[number, number]> = [
+    [x, y],
+    [x + 1, y],
+    [x - 1, y],
+    [x, y + 1],
+    [x, y - 1],
+  ];
+  let tiles: MapTile[] | null = null;
+  for (const [tx, ty] of targets) {
+    if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) continue;
+    const idx = ty * map.width + tx;
+    const t = (tiles ?? map.tiles)[idx];
+    if (t.seen) continue;
+    if (!tiles) tiles = map.tiles.slice();
+    tiles[idx] = { ...t, seen: true };
+  }
+  return tiles ? { ...map, tiles } : map;
 }

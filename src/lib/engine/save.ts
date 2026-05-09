@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 11;
 
 export interface PersistedState {
   cash: number;
@@ -101,6 +101,43 @@ export function migrateSave(saved: SavedGame): SavedGame {
   if (saved.schemaVersion < 8) {
     if (s.currentRaid && !("pausedAt" in s.currentRaid)) {
       (s.currentRaid as { pausedAt: number | null }).pausedAt = null;
+    }
+  }
+  // v9: map fog of war — MapTile gains `seen`. Backfill seen=true on existing
+  // tiles so resumed raids don't suddenly black out the whole map.
+  if (saved.schemaVersion < 9) {
+    const cr = s.currentRaid;
+    if (cr?.map?.tiles) {
+      cr.map = {
+        ...cr.map,
+        tiles: cr.map.tiles.map((t) => {
+          const tile = t as unknown as { seen?: boolean };
+          return tile.seen === undefined ? { ...t, seen: true } : t;
+        }),
+      };
+    }
+  }
+  // v10: per-tile fixed room names. Backfill name=type so old tiles still
+  // render something readable; new tiles get proper names from the pool.
+  if (saved.schemaVersion < 10) {
+    const cr = s.currentRaid;
+    if (cr?.map?.tiles) {
+      cr.map = {
+        ...cr.map,
+        tiles: cr.map.tiles.map((t) => {
+          const tile = t as unknown as { name?: string; type: string };
+          return tile.name === undefined ? { ...t, name: tile.type } : t;
+        }),
+      };
+    }
+  }
+  // v11: cached nextStep on CurrentRaid. Default to null on legacy raids;
+  // doTick will fall back to fresh stepForward/stepBackward when nextStep
+  // is null.
+  if (saved.schemaVersion < 11) {
+    const cr = s.currentRaid;
+    if (cr && !("nextStep" in cr)) {
+      (cr as { nextStep: null }).nextStep = null;
     }
   }
   return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };

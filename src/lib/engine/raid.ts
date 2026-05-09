@@ -8,7 +8,7 @@ import type {
 import { rollEvent } from "@/lib/engine/events";
 import { ITEMS, pickItemForLocation } from "@/lib/data/items";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
-import { generateMap } from "@/lib/engine/map";
+import { generateMap, revealFrom, stepForward } from "@/lib/engine/map";
 
 export const TICK_MIN_MS = 3000;
 export const TICK_MAX_MS = 8000;
@@ -71,7 +71,9 @@ export function startRaid(
   const entryIdx = baseMap.entry.y * baseMap.width + baseMap.entry.x;
   const tiles = baseMap.tiles.slice();
   tiles[entryIdx] = { ...tiles[entryIdx], looted: true };
-  const map = { ...baseMap, tiles };
+  // Reveal entry + its orthogonal neighbors (the operative can see what's
+  // immediately around them on insertion).
+  const map = revealFrom({ ...baseMap, tiles }, baseMap.entry.x, baseMap.entry.y);
   return {
     locationId,
     startedAt: Date.now(),
@@ -95,6 +97,7 @@ export function startRaid(
     pendingChoice: null,
     map,
     operativePos: { x: map.entry.x, y: map.entry.y },
+    nextStep: stepForward(map, { x: map.entry.x, y: map.entry.y }, rand),
     pausedAt: null,
   };
 }
@@ -142,8 +145,9 @@ export function tickRaid(
   state?: RunState,
   roomType?: import("@/lib/types").RoomType,
   roomLooted?: boolean,
+  roomName?: string,
 ): TickResult {
-  const ev = rollEvent(rand, locationId, state, roomType, roomLooted);
+  const ev = rollEvent(rand, locationId, state, roomType, roomLooted, roomName);
   const flags = state?.flags ?? [];
   const bleed = bleedDrain(flags);
 

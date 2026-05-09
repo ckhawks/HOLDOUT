@@ -39,6 +39,7 @@ function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
     pendingChoice: null,
     map,
     operativePos: { x: map.entry.x, y: map.entry.y },
+    nextStep: null,
     pausedAt: null,
     ...over,
   };

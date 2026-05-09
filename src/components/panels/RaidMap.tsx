@@ -1,38 +1,155 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
+import { Lock } from "lucide-react";
 import { useGame } from "@/store/game";
-import type { MapTile } from "@/lib/types";
+import type { MapTile, RoomType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+const ROOM_LABEL: Record<RoomType, string> = {
+  entry: "Entry",
+  corridor: "Corridor",
+  storage: "Storage",
+  office: "Office",
+  mechanical: "Mechanical",
+  gantry: "Gantry",
+  locked: "Sealed",
+};
+
+interface HoverState {
+  tile: MapTile;
+  isOperative: boolean;
+  cursor: { x: number; y: number };
+}
+
+function tileStatusLabel(h: HoverState, isPreview: boolean): string {
+  const { tile, isOperative } = h;
+  if (isOperative) return "operative here";
+  if (isPreview) {
+    if (!tile.seen) return "next move · unknown room";
+    if (tile.blocked) return "next move · sealed";
+    return tile.looted ? "next move · well-searched" : "next move · unsearched";
+  }
+  if (!tile.seen) return "out of sight";
+  // Seen but not visited — visible but not searched yet.
+  if (!tile.looted) {
+    if (tile.blocked) return "sealed";
+    if (tile.type === "entry") return "extract point";
+    return "unsearched";
+  }
+  if (tile.type === "entry") return "extract point";
+  return "well-searched";
+}
+
+function titleCase(s: string): string {
+  return s.replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+}
+
+function tileTypeLabel(tile: MapTile): string {
+  // Anything the operative has glanced at — including unentered adjacent
+  // rooms — reveals its specific name. Only the never-seen fog stays as ???.
+  if (!tile.seen) return "???";
+  // Use the per-tile fixed name so map and event log match.
+  return tile.name ? titleCase(tile.name) : ROOM_LABEL[tile.type];
+}
 
 export function RaidMap() {
   const raid = useGame((s) => s.currentRaid);
+  const [hover, setHover] = useState<HoverState | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = tooltipRef.current;
+    if (!hover || !el) return;
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    const offset = 14;
+    let left = hover.cursor.x + offset;
+    let top = hover.cursor.y + offset;
+    if (left + r.width > window.innerWidth - margin)
+      left = hover.cursor.x - r.width - offset;
+    if (top + r.height > window.innerHeight - margin)
+      top = hover.cursor.y - r.height - offset;
+    if (left < margin) left = margin;
+    if (top < margin) top = margin;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+  }, [hover]);
+
   if (!raid) return null;
   const { map, operativePos } = raid;
+  const previewPos = raid.nextStep;
 
+  // Render horizontal: entry on the left, deep on the right.
+  // Data tile (x, y) → visual column = (height - 1 - y), visual row = x.
   return (
-    <aside className="flex shrink-0 flex-col border-l border-border/60">
+    <aside className="flex shrink-0 flex-col border-t border-border/60">
       <div className="border-b border-border/60 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-        Map
+        Map · entry → deep
       </div>
-      <div className="flex flex-1 flex-col items-center px-3 py-3">
-        <div className="grid gap-px rounded-sm border border-border/60 bg-border/40 p-px">
+      <div className="flex flex-1 items-center justify-center px-4 py-3">
+        <div
+          className="grid gap-px rounded-sm border border-border/60 bg-border/40 p-px"
+          onMouseLeave={() => setHover(null)}
+        >
           {Array.from({ length: map.height }, (_, y) =>
             Array.from({ length: map.width }, (_, x) => {
               const tile = map.tiles[y * map.width + x];
               const isOperative =
                 operativePos.x === x && operativePos.y === y;
+              const isHovered =
+                hover && hover.tile.x === x && hover.tile.y === y;
+              const isPreview =
+                !!previewPos && previewPos.x === x && previewPos.y === y;
+              const visualCol = map.height - y;
+              const visualRow = x + 1;
               return (
                 <Tile
                   key={`${x}-${y}`}
                   tile={tile}
                   isOperative={isOperative}
-                  style={{ gridColumn: x + 1, gridRow: y + 1 }}
+                  isHovered={!!isHovered}
+                  isPreview={isPreview}
+                  style={{ gridColumn: visualCol, gridRow: visualRow }}
+                  onPointerEnter={(e) =>
+                    setHover({
+                      tile,
+                      isOperative,
+                      cursor: { x: e.clientX, y: e.clientY },
+                    })
+                  }
+                  onPointerMove={(e) =>
+                    setHover({
+                      tile,
+                      isOperative,
+                      cursor: { x: e.clientX, y: e.clientY },
+                    })
+                  }
                 />
               );
             }),
           )}
         </div>
       </div>
+      {hover ? (
+        <div
+          ref={tooltipRef}
+          className="pointer-events-none fixed z-[60] whitespace-nowrap rounded-sm border border-border/80 bg-popover/95 px-2 py-1 font-mono text-[10px] uppercase tracking-widest shadow-md backdrop-blur"
+          style={{ left: hover.cursor.x + 14, top: hover.cursor.y + 14 }}
+        >
+          <div className="font-semibold text-foreground">
+            {tileTypeLabel(hover.tile)}
+          </div>
+          <div className="text-muted-foreground">
+            {tileStatusLabel(
+              hover,
+              !!previewPos &&
+                previewPos.x === hover.tile.x &&
+                previewPos.y === hover.tile.y,
+            )}
+          </div>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -40,45 +157,105 @@ export function RaidMap() {
 function Tile({
   tile,
   isOperative,
+  isHovered,
+  isPreview,
   style,
+  onPointerEnter,
+  onPointerMove,
 }: {
   tile: MapTile;
   isOperative: boolean;
+  isHovered: boolean;
+  isPreview: boolean;
   style: React.CSSProperties;
+  onPointerEnter: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
 }) {
+  const ringClass = cn(
+    isHovered && "ring-2 ring-foreground/70",
+    !isHovered && isPreview && "ring-2 ring-amber-400/80",
+  );
+  const baseProps = {
+    style,
+    onPointerEnter,
+    onPointerMove,
+  };
+
+  // Unseen — fog of war. Render as a blank dim cell, no info.
+  if (!tile.seen) {
+    return (
+      <div
+        {...baseProps}
+        className={cn(
+          "size-7 border border-dashed border-border/20 bg-background/40",
+          ringClass,
+        )}
+      />
+    );
+  }
+
   if (isOperative) {
     return (
       <div
-        style={style}
-        className="flex size-7 items-center justify-center bg-card"
-        title="Operative"
+        {...baseProps}
+        className={cn(
+          "flex size-7 items-center justify-center bg-card",
+          ringClass,
+        )}
       >
         <span className="size-3 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" />
       </div>
     );
   }
+
+  // Seen-but-blocked: render with a lock glyph so the player knows it's
+  // sealed without spoiling room type detail.
   if (tile.blocked) {
-    return <div style={style} className="size-7 bg-background" title="Sealed" />;
+    return (
+      <div
+        {...baseProps}
+        className={cn(
+          "flex size-7 items-center justify-center bg-background/70",
+          ringClass,
+        )}
+      >
+        <Lock className="size-3 text-muted-foreground/70" />
+      </div>
+    );
   }
+
   if (tile.type === "entry") {
     return (
       <div
-        style={style}
-        className="flex size-7 items-center justify-center bg-card"
-        title="Entry / extract"
+        {...baseProps}
+        className={cn(
+          "flex size-7 items-center justify-center bg-card",
+          ringClass,
+        )}
       >
         <span className="size-2 rounded-full bg-emerald-400/40" />
       </div>
     );
   }
+
+  // Seen but not visited: outline only, dim center.
+  if (!tile.looted) {
+    return (
+      <div
+        {...baseProps}
+        className={cn(
+          "size-7 border border-border/60 bg-card/20",
+          ringClass,
+        )}
+      />
+    );
+  }
+
+  // Visited.
   return (
     <div
-      style={style}
-      title={tile.looted ? "Cleared" : "Unexplored"}
-      className={cn(
-        "size-7",
-        tile.looted ? "bg-card/50" : "bg-card",
-      )}
+      {...baseProps}
+      className={cn("size-7 bg-card/60", ringClass)}
     />
   );
 }

@@ -40,8 +40,10 @@ import {
 } from "@/lib/engine/shapes";
 import {
   markTileLooted,
+  revealFrom,
   stepBackward,
   stepForward,
+  stepLateral,
 } from "@/lib/engine/map";
 import {
   loadGame,
@@ -55,6 +57,12 @@ export type PanelId = "hideout" | "stash" | "ops" | "feed" | "settings";
 
 export { PENDING_EXPIRY_MS };
 
+export interface RaidOutcome {
+  type: "death" | "extracted";
+  recoveredCount: number;
+  locationId: string;
+}
+
 interface GameState {
   cash: number;
   stash: StashItem[];
@@ -66,6 +74,7 @@ interface GameState {
   activePanel: PanelId;
   rngSeed: number;
   hydrated: boolean;
+  raidOutcome: RaidOutcome | null;
 
   setPanel: (p: PanelId) => void;
   beginRaid: (locationId: string) => void;
@@ -75,6 +84,7 @@ interface GameState {
   togglePause: () => void;
   recall: () => void;
   endRaid: (extracted: boolean) => void;
+  dismissRaidOutcome: () => void;
   placeFromPending: (uid: string, x: number, y: number, rotation: Rotation) => boolean;
   movePackItem: (uid: string, x: number, y: number, rotation: Rotation) => boolean;
   unplacePackItem: (uid: string) => void;
@@ -122,6 +132,7 @@ export const useGame = create<GameState>((set, get) => ({
   activePanel: "ops",
   rngSeed: Math.floor(Math.random() * 0xffffffff),
   hydrated: false,
+  raidOutcome: null,
 
   setPanel: (p) => set({ activePanel: p }),
 
@@ -164,6 +175,7 @@ export const useGame = create<GameState>((set, get) => ({
       currentRaid.runState,
       tile?.type,
       tile?.looted,
+      tile?.name,
     );
     let flags: string[] = currentRaid.runState.flags;
     if (t.flagsAdded.length || t.flagsRemoved.length) {
@@ -173,16 +185,29 @@ export const useGame = create<GameState>((set, get) => ({
       flags = Array.from(set);
     }
     // Advance the operative on the map to match the tick's distance change.
+    // Use the *previously* committed nextStep so the preview the player saw
+    // becomes the actual move. After moving, compute a new nextStep for the
+    // following tick.
     let nextPos = currentRaid.operativePos;
     let nextMap = currentRaid.map;
+    let nextStep = currentRaid.nextStep;
     const isExtracting = currentRaid.runState.flags.includes("extracting");
     if (t.distanceAdvance > 0 && !isExtracting) {
-      nextPos = stepForward(currentRaid.map, currentRaid.operativePos, rand);
+      nextPos = currentRaid.nextStep
+        ? { ...currentRaid.nextStep }
+        : stepForward(currentRaid.map, currentRaid.operativePos, rand);
     } else if (t.distanceAdvance < 0 && isExtracting) {
-      nextPos = stepBackward(currentRaid.map, currentRaid.operativePos);
+      nextPos = currentRaid.nextStep
+        ? { ...currentRaid.nextStep }
+        : stepBackward(currentRaid.map, currentRaid.operativePos);
     }
     if (nextPos !== currentRaid.operativePos) {
       nextMap = markTileLooted(nextMap, nextPos.x, nextPos.y);
+      nextMap = revealFrom(nextMap, nextPos.x, nextPos.y);
+      // Pre-roll the next move now that the operative has settled here.
+      nextStep = isExtracting
+        ? stepBackward(nextMap, nextPos)
+        : stepForward(nextMap, nextPos, rand);
     }
     let raid: CurrentRaid = {
       ...currentRaid,
@@ -190,6 +215,7 @@ export const useGame = create<GameState>((set, get) => ({
       pendingChoice: t.pendingChoice,
       operativePos: nextPos,
       map: nextMap,
+      nextStep,
       runState: {
         ...currentRaid.runState,
         alertness: Math.max(0, Math.min(100, currentRaid.runState.alertness + t.alertnessDelta)),
@@ -250,13 +276,23 @@ export const useGame = create<GameState>((set, get) => ({
     let { raid } = resolveBranch(currentRaid, choiceId, rand);
     const distDelta = raid.runState.distanceFromExtract - distBefore;
     if (distDelta > 0) {
-      const nextPos = stepForward(raid.map, raid.operativePos, rand);
-      if (nextPos !== raid.operativePos) {
-        raid = {
-          ...raid,
-          operativePos: nextPos,
-          map: markTileLooted(raid.map, nextPos.x, nextPos.y),
-        };
+      // Reposition-style branches (depthAdvance: 0, distanceAdvance > 0) move
+      // the operative sideways rather than deeper. Detect that via the chosen
+      // option's effects so we route through stepLateral instead of using the
+      // cached forward nextStep.
+      const choice = currentRaid.pendingChoice?.options.find((o) => o.id === choiceId);
+      const isLateral =
+        !!choice && (choice.effects?.depthAdvance ?? 1) === 0;
+      const nextPos = isLateral
+        ? stepLateral(raid.map, raid.operativePos)
+        : raid.nextStep
+          ? { ...raid.nextStep }
+          : stepForward(raid.map, raid.operativePos, rand);
+      if (nextPos.x !== raid.operativePos.x || nextPos.y !== raid.operativePos.y) {
+        let m = markTileLooted(raid.map, nextPos.x, nextPos.y);
+        m = revealFrom(m, nextPos.x, nextPos.y);
+        const newNext = stepForward(m, nextPos, rand);
+        raid = { ...raid, operativePos: nextPos, map: m, nextStep: newNext };
       }
     }
     if (raid.runState.health <= 0) {
@@ -311,9 +347,16 @@ export const useGame = create<GameState>((set, get) => ({
     if (currentRaid.runState.flags.includes("extracting")) return;
     const log: LogEntry = makeLog(
       "system",
-      `RECALL acknowledged. Backtracking to extract — ${currentRaid.runState.distanceFromExtract} events out.`,
+      `RECALL acknowledged. Backtracking to extract — about ${currentRaid.runState.distanceFromExtract} rooms away.`,
     );
     const flags = Array.from(new Set([...currentRaid.runState.flags, "extracting"]));
+    // Switch the preview to the extract direction immediately.
+    const nextStep = stepBackward(currentRaid.map, currentRaid.operativePos);
+    const settledNextStep =
+      nextStep.x === currentRaid.operativePos.x &&
+      nextStep.y === currentRaid.operativePos.y
+        ? null
+        : nextStep;
     set({
       currentRaid: {
         ...currentRaid,
@@ -321,6 +364,7 @@ export const useGame = create<GameState>((set, get) => ({
         runState: { ...currentRaid.runState, flags },
         // pendingChoice is dropped on recall — branching prompts shouldn't block extract.
         pendingChoice: null,
+        nextStep: settledNextStep,
       },
       operative: { ...operative, state: "extracting" },
     });
@@ -358,7 +402,20 @@ export const useGame = create<GameState>((set, get) => ({
       operative: extracted
         ? { ...operative, state: "idle", injuryDebuff: false }
         : { ...operative, state: "idle", injuryDebuff: true },
+      // Only the death outcome forces a modal — extracts roll straight into the
+      // stash without an extra click.
+      raidOutcome: extracted
+        ? null
+        : {
+            type: "death",
+            recoveredCount: 0,
+            locationId: currentRaid.locationId,
+          },
     });
+  },
+
+  dismissRaidOutcome: () => {
+    set({ raidOutcome: null });
   },
 
   placeFromPending: (uid, x, y, rotation) => {
@@ -528,6 +585,7 @@ export const useGame = create<GameState>((set, get) => ({
       currentRaid: null,
       activePanel: "ops",
       rngSeed: Math.floor(Math.random() * 0xffffffff),
+      raidOutcome: null,
     });
   },
 

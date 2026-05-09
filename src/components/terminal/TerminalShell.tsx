@@ -9,6 +9,7 @@ import { StashPanel } from "@/components/panels/StashPanel";
 import { OpsPanel } from "@/components/panels/OpsPanel";
 import { FeedPanel } from "@/components/panels/FeedPanel";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
+import { RaidOutcomeModal } from "@/components/panels/RaidOutcomeModal";
 import { useRaidLoop } from "@/components/terminal/useRaidLoop";
 import { initSfx, playSfx } from "@/lib/sfx";
 
@@ -35,7 +36,15 @@ export function TerminalShell() {
       }
     };
     window.addEventListener("click", onClick);
-    return () => window.removeEventListener("click", onClick);
+    // Suppress the native right-click menu — we'll add our own UI later.
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("contextmenu", onContextMenu);
+    return () => {
+      window.removeEventListener("click", onClick);
+      window.removeEventListener("contextmenu", onContextMenu);
+    };
   }, [hydrate]);
 
   if (!hydrated) {
@@ -47,7 +56,7 @@ export function TerminalShell() {
   }
 
   return (
-    <div className="flex h-svh flex-col bg-background text-foreground">
+    <div className="flex h-svh flex-col select-none bg-background text-foreground">
       <Header />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
@@ -59,6 +68,7 @@ export function TerminalShell() {
           {panel === "settings" && <SettingsPanel />}
         </main>
       </div>
+      <RaidOutcomeModal />
     </div>
   );
 }

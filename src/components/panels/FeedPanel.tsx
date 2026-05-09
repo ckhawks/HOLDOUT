@@ -50,7 +50,7 @@ export function FeedPanel() {
         title="Comms Feed"
         subtitle={
           extracting
-            ? `Extracting · ${rs.distanceFromExtract} events out`
+            ? `Extracting · about ${rs.distanceFromExtract} rooms away`
             : `Channel open · ${LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId} · depth ${rs.depth}`
         }
         right={
@@ -113,7 +113,8 @@ export function FeedPanel() {
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-4 text-sm">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div ref={scrollRef} className="min-h-0 flex-1 select-text overflow-y-auto px-6 py-4 text-sm">
         {raid.log.map((entry, idx) => {
           const distFromEnd = raid.log.length - 1 - idx;
           const opacity = Math.max(0.25, 1 - distFromEnd * 0.05);
@@ -218,6 +219,7 @@ export function FeedPanel() {
         </div>
       </div>
       <RaidMap />
+      </div>
       <PackTetris />
       </div>
       <BranchModal />

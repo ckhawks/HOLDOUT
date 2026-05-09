@@ -1,13 +1,11 @@
 export const VOCAB = {
+  // {location} is now substituted from the current room type (see ROOM_NAMES
+  // in lib/data/events.ts). This pool is kept as a fallback for rolls without
+  // operative position info (e.g. tests).
   locations: [
-    "loading bay",
-    "shift office",
-    "boiler room",
+    "corridor",
     "supply corridor",
-    "collapsed catwalk",
-    "rusted stairwell",
     "service tunnel",
-    "old break room",
   ],
   brands: [
     "Korvex",

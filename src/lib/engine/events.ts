@@ -1,4 +1,4 @@
-import { EVENTS, EVENTS_BY_ID, ROOM_EVENT_BIAS } from "@/lib/data/events";
+import { EVENTS, EVENTS_BY_ID, ROOM_EVENT_BIAS, ROOM_NAMES } from "@/lib/data/events";
 import { pickVocab } from "@/lib/data/vocab";
 import { ITEMS, pickCommonItemId, pickItemForLocation, pickRareItemId } from "@/lib/data/items";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
@@ -68,6 +68,7 @@ export function rollEvent(
   state?: RunState,
   roomType?: RoomType,
   roomLooted?: boolean,
+  roomName?: string,
 ): RolledEvent {
   const def = pickEvent(rand, state, EVENTS, roomType, roomLooted);
   const tpl = def.templates[Math.floor(rand() * def.templates.length)];
@@ -84,8 +85,20 @@ export function rollEvent(
         : pickCommonItemId(rand, depth);
   }
 
+  // Prefer the operative's *specific* room name (fixed per tile at map gen)
+  // so the event log says the same thing the map tooltip says. Fall back to
+  // type-pool or vocab if no per-tile name is available.
+  let locationName: string;
+  if (roomName) {
+    locationName = roomName;
+  } else if (roomType && ROOM_NAMES[roomType]?.length) {
+    const pool = ROOM_NAMES[roomType];
+    locationName = pool[Math.floor(rand() * pool.length)];
+  } else {
+    locationName = pickVocab("locations", rand);
+  }
   const raw = tpl
-    .replace(/\{location\}/g, pickVocab("locations", rand))
+    .replace(/\{location\}/g, locationName)
     .replace(/\{brand\}/g, pickVocab("brands", rand))
     .replace(/\{adj\}/g, pickVocab("item_adjectives", rand))
     .replace(/\{npc\}/g, pickVocab("npc_names", rand))

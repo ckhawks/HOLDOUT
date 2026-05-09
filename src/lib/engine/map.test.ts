@@ -8,6 +8,7 @@ import {
   generateMap,
   isWalkable,
   markTileLooted,
+  revealFrom,
   stepBackward,
   stepForward,
   tileAt,
@@ -22,13 +23,21 @@ describe("generateMap", () => {
     expect(m.tiles).toHaveLength(MAP_WIDTH * MAP_HEIGHT);
   });
 
-  it("places entry at bottom-middle", () => {
+  it("places entry on the bottom row at one of the columns", () => {
     const m = generateMap(makeRng(1));
-    expect(m.entry).toEqual({
-      x: Math.floor(MAP_WIDTH / 2),
-      y: MAP_HEIGHT - 1,
-    });
+    expect(m.entry.y).toBe(MAP_HEIGHT - 1);
+    expect(m.entry.x).toBeGreaterThanOrEqual(0);
+    expect(m.entry.x).toBeLessThan(MAP_WIDTH);
     expect(tileAt(m, m.entry.x, m.entry.y)?.type).toBe("entry");
+  });
+
+  it("entry x varies across seeds", () => {
+    const xs = new Set<number>();
+    for (let seed = 1; seed < 100; seed++) {
+      xs.add(generateMap(makeRng(seed)).entry.x);
+    }
+    // Should hit at least 3 distinct columns over 100 seeds.
+    expect(xs.size).toBeGreaterThan(2);
   });
 
   it("never blocks the entry tile or the tile directly above it", () => {
@@ -166,6 +175,43 @@ describe("stepBackward", () => {
   it("at entry, stepBackward stays at entry", () => {
     const m = generateMap(makeRng(2));
     expect(stepBackward(m, m.entry)).toEqual(m.entry);
+  });
+});
+
+describe("revealFrom", () => {
+  it("starts with all tiles unseen", () => {
+    const m = generateMap(makeRng(1));
+    expect(m.tiles.every((t) => !t.seen)).toBe(true);
+  });
+
+  it("marks the target tile and its 4 orthogonal neighbors as seen", () => {
+    const m = generateMap(makeRng(1));
+    const cx = 2;
+    const cy = 5;
+    const next = revealFrom(m, cx, cy);
+    expect(tileAt(next, cx, cy)?.seen).toBe(true);
+    expect(tileAt(next, cx + 1, cy)?.seen).toBe(true);
+    expect(tileAt(next, cx - 1, cy)?.seen).toBe(true);
+    expect(tileAt(next, cx, cy + 1)?.seen).toBe(true);
+    expect(tileAt(next, cx, cy - 1)?.seen).toBe(true);
+    // Diagonals stay unseen.
+    expect(tileAt(next, cx + 1, cy + 1)?.seen).toBe(false);
+  });
+
+  it("returns the same map ref when nothing changes", () => {
+    let m = generateMap(makeRng(1));
+    m = revealFrom(m, 2, 5);
+    const same = revealFrom(m, 2, 5);
+    expect(same).toBe(m);
+  });
+
+  it("clips at map edges (no out-of-bounds)", () => {
+    const m = generateMap(makeRng(1));
+    const corner = revealFrom(m, 0, 0);
+    expect(tileAt(corner, 0, 0)?.seen).toBe(true);
+    expect(tileAt(corner, 1, 0)?.seen).toBe(true);
+    expect(tileAt(corner, 0, 1)?.seen).toBe(true);
+    // No tile at (-1, 0) — must not throw.
   });
 });
 

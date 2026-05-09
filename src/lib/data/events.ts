@@ -1,5 +1,18 @@
 import type { EventKind, RaidEventDef, RoomType } from "@/lib/types";
 
+// Bare-noun phrasings substituted into {location} based on the operative's
+// current tile type. Multiple synonyms per type for flavor. Templates supply
+// articles ("in the {location}") so entries here are bare nouns.
+export const ROOM_NAMES: Record<RoomType, string[]> = {
+  entry: ["entry", "access point"],
+  corridor: ["corridor", "hall", "passage"],
+  storage: ["storage bay", "supply locker", "loading bay", "old break room"],
+  office: ["office", "workstation", "console room", "shift office"],
+  mechanical: ["boiler room", "maintenance bay", "mech room", "service tunnel"],
+  gantry: ["gantry", "collapsed catwalk", "rusted stairwell"],
+  locked: ["sealed room"],
+};
+
 // Per-room-type event weight multipliers. Applied on top of the base weight in
 // pickEvent when the operative's current tile has a known type. corridor and
 // entry are pass-through (no bias). locked is unreachable so never queried.
@@ -236,9 +249,10 @@ export const EVENTS: RaidEventDef[] = [
     weight: 50,
     kind: "flavor",
     templates: [
-      "Pushing toward extract. {location} clear.",
+      "Pushing toward extract. The {location} is clear.",
       "Backtracking through the {location}. Quiet so far.",
-      "Cutting a fast path. Past a {brand} junction.",
+      "Cutting a fast path back through the {location}.",
+      "Past the {location}. Still no contact.",
     ],
     preconditions: (s) => s.flags.includes("extracting"),
     exclusive: true,
