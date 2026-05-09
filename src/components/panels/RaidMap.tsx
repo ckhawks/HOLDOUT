@@ -80,8 +80,9 @@ export function RaidMap() {
   const { map, operativePos } = raid;
   const previewPos = raid.nextStep;
 
-  // Render horizontal: entry on the left, deep on the right.
-  // Data tile (x, y) → visual column = (height - 1 - y), visual row = x.
+  // Data is already oriented horizontally: x = depth (0 = entry on the left,
+  // map.width-1 = deepest on the right), y = lane (0 = top row). Render is
+  // identity — no transposition.
   return (
     <aside className="flex shrink-0 flex-col border-t border-border/60">
       <div className="border-b border-border/60 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
@@ -101,8 +102,6 @@ export function RaidMap() {
                 hover && hover.tile.x === x && hover.tile.y === y;
               const isPreview =
                 !!previewPos && previewPos.x === x && previewPos.y === y;
-              const visualCol = map.height - y;
-              const visualRow = x + 1;
               return (
                 <Tile
                   key={`${x}-${y}`}
@@ -110,7 +109,7 @@ export function RaidMap() {
                   isOperative={isOperative}
                   isHovered={!!isHovered}
                   isPreview={isPreview}
-                  style={{ gridColumn: visualCol, gridRow: visualRow }}
+                  style={{ gridColumn: x + 1, gridRow: y + 1 }}
                   onPointerEnter={(e) =>
                     setHover({
                       tile,

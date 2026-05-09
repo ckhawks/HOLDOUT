@@ -23,28 +23,27 @@ describe("generateMap", () => {
     expect(m.tiles).toHaveLength(MAP_WIDTH * MAP_HEIGHT);
   });
 
-  it("places entry on the bottom row at one of the columns", () => {
+  it("places entry on the leftmost column at one of the lanes", () => {
     const m = generateMap(makeRng(1));
-    expect(m.entry.y).toBe(MAP_HEIGHT - 1);
-    expect(m.entry.x).toBeGreaterThanOrEqual(0);
-    expect(m.entry.x).toBeLessThan(MAP_WIDTH);
+    expect(m.entry.x).toBe(0);
+    expect(m.entry.y).toBeGreaterThanOrEqual(0);
+    expect(m.entry.y).toBeLessThan(MAP_HEIGHT);
     expect(tileAt(m, m.entry.x, m.entry.y)?.type).toBe("entry");
   });
 
-  it("entry x varies across seeds", () => {
-    const xs = new Set<number>();
+  it("entry y varies across seeds", () => {
+    const ys = new Set<number>();
     for (let seed = 1; seed < 100; seed++) {
-      xs.add(generateMap(makeRng(seed)).entry.x);
+      ys.add(generateMap(makeRng(seed)).entry.y);
     }
-    // Should hit at least 3 distinct columns over 100 seeds.
-    expect(xs.size).toBeGreaterThan(2);
+    expect(ys.size).toBeGreaterThan(2);
   });
 
-  it("never blocks the entry tile or the tile directly above it", () => {
+  it("never blocks the entry tile or the tile directly to its right", () => {
     for (let seed = 1; seed < 50; seed++) {
       const m = generateMap(makeRng(seed));
       expect(tileAt(m, m.entry.x, m.entry.y)?.blocked).toBe(false);
-      expect(tileAt(m, m.entry.x, m.entry.y - 1)?.blocked).toBe(false);
+      expect(tileAt(m, m.entry.x + 1, m.entry.y)?.blocked).toBe(false);
     }
   });
 
@@ -56,7 +55,6 @@ describe("generateMap", () => {
   });
 
   it("blocks a roughly BLOCKED_TILE_RATIO share of tiles (loose bound)", () => {
-    // Aggregate over many seeds to smooth variance.
     let total = 0;
     let blocked = 0;
     for (let seed = 1; seed < 200; seed++) {
@@ -85,7 +83,6 @@ describe("generateMap", () => {
         if (t.type === "office") officeCount++;
       }
     }
-    // office should be the dominant non-blocked type. Loose bound.
     expect(officeCount / nonEntryCount).toBeGreaterThan(0.2);
   });
 });
@@ -96,13 +93,12 @@ describe("distanceToEntry", () => {
     expect(distanceToEntry(m, m.entry.x, m.entry.y)).toBe(0);
   });
 
-  it("returns 1 for the tile directly above entry (always walkable)", () => {
+  it("returns 1 for the tile directly right of entry (always walkable)", () => {
     const m = generateMap(makeRng(1));
-    expect(distanceToEntry(m, m.entry.x, m.entry.y - 1)).toBe(1);
+    expect(distanceToEntry(m, m.entry.x + 1, m.entry.y)).toBe(1);
   });
 
   it("returns null for a blocked tile", () => {
-    // Build a map by seed-search until we find a blocked tile.
     for (let seed = 1; seed < 100; seed++) {
       const m = generateMap(makeRng(seed));
       const blocked = m.tiles.find((t) => t.blocked);
@@ -123,11 +119,11 @@ describe("distanceToEntry", () => {
 });
 
 describe("stepForward", () => {
-  it("from entry, the next step is one row up (always walkable by construction)", () => {
+  it("from entry, the next step is one column to the right (always walkable by construction)", () => {
     const m = generateMap(makeRng(1));
     const next = stepForward(m, m.entry, makeRng(1));
-    expect(next.y).toBe(m.entry.y - 1);
-    expect(Math.abs(next.x - m.entry.x)).toBeLessThanOrEqual(0); // first step from entry can drift only if up walkable + roll < 0.25
+    expect(next.x).toBe(m.entry.x + 1);
+    expect(next.y).toBe(m.entry.y);
   });
 
   it("never lands on a blocked tile", () => {
@@ -141,15 +137,15 @@ describe("stepForward", () => {
     }
   });
 
-  it("monotonically gets deeper or stays put — never moves down (toward entry)", () => {
+  it("monotonically pushes right or stays put — never moves left (back toward entry)", () => {
     for (let seed = 1; seed < 50; seed++) {
       const m = generateMap(makeRng(seed));
       let pos = { ...m.entry };
       for (let i = 0; i < 15; i++) {
         const prev = pos;
         pos = stepForward(m, pos, makeRng(seed * 11 + i));
-        // y should not increase (going down = toward entry)
-        expect(pos.y).toBeLessThanOrEqual(prev.y);
+        // x should not decrease (going left = toward entry)
+        expect(pos.x).toBeGreaterThanOrEqual(prev.x);
       }
     }
   });
@@ -158,7 +154,6 @@ describe("stepForward", () => {
 describe("stepBackward", () => {
   it("from a deep position, distance to entry strictly decreases or stays at 0", () => {
     const m = generateMap(makeRng(5));
-    // Walk forward 5 steps then trace back.
     let pos = { ...m.entry };
     for (let i = 0; i < 5; i++) pos = stepForward(m, pos, makeRng(i + 1));
     const startDist = distanceToEntry(m, pos.x, pos.y) ?? 0;
@@ -169,7 +164,7 @@ describe("stepBackward", () => {
       expect(d).toBeLessThanOrEqual(prevDist);
       prevDist = d;
     }
-    expect(prevDist).toBe(0); // arrived at entry
+    expect(prevDist).toBe(0);
   });
 
   it("at entry, stepBackward stays at entry", () => {
@@ -186,22 +181,21 @@ describe("revealFrom", () => {
 
   it("marks the target tile and its 4 orthogonal neighbors as seen", () => {
     const m = generateMap(makeRng(1));
-    const cx = 2;
-    const cy = 5;
+    const cx = 5;
+    const cy = 2;
     const next = revealFrom(m, cx, cy);
     expect(tileAt(next, cx, cy)?.seen).toBe(true);
     expect(tileAt(next, cx + 1, cy)?.seen).toBe(true);
     expect(tileAt(next, cx - 1, cy)?.seen).toBe(true);
     expect(tileAt(next, cx, cy + 1)?.seen).toBe(true);
     expect(tileAt(next, cx, cy - 1)?.seen).toBe(true);
-    // Diagonals stay unseen.
     expect(tileAt(next, cx + 1, cy + 1)?.seen).toBe(false);
   });
 
   it("returns the same map ref when nothing changes", () => {
     let m = generateMap(makeRng(1));
-    m = revealFrom(m, 2, 5);
-    const same = revealFrom(m, 2, 5);
+    m = revealFrom(m, 5, 2);
+    const same = revealFrom(m, 5, 2);
     expect(same).toBe(m);
   });
 
@@ -211,7 +205,6 @@ describe("revealFrom", () => {
     expect(tileAt(corner, 0, 0)?.seen).toBe(true);
     expect(tileAt(corner, 1, 0)?.seen).toBe(true);
     expect(tileAt(corner, 0, 1)?.seen).toBe(true);
-    // No tile at (-1, 0) — must not throw.
   });
 });
 

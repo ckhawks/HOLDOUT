@@ -1,8 +1,16 @@
 import type { Location, MapTile, RaidMap, RoomType } from "@/lib/types";
 import { ROOM_NAMES } from "@/lib/data/events";
 
-export const MAP_WIDTH = 5;
-export const MAP_HEIGHT = 12;
+// Coordinate convention matches the visual: x grows rightward (depth from
+// entry), y grows downward (lane). The map is a horizontal strip — entry on
+// the left, deep on the right.
+//
+//   forward  = right = x + 1
+//   backward = left  = x - 1   (toward entry / extract)
+//   up       = y - 1           (lane shift toward the top row)
+//   down     = y + 1           (lane shift toward the bottom row)
+export const MAP_WIDTH = 12; // depth (number of columns)
+export const MAP_HEIGHT = 5; // lanes (number of rows)
 export const BLOCKED_TILE_RATIO = 0.12;
 
 const DEFAULT_ROOM_WEIGHTS: Record<RoomType, number> = {
@@ -28,7 +36,6 @@ function pickWeighted<T extends string>(
   const entries = Object.entries(weights) as Array<[T, number]>;
   const total = entries.reduce((s, [, w]) => s + (w ?? 0), 0);
   if (total <= 0) {
-    // Fall back to first non-zero key, or first key.
     const fallback = entries.find(([, w]) => (w ?? 0) > 0)?.[0] ?? entries[0][0];
     return fallback;
   }
@@ -46,8 +53,8 @@ export function generateMap(
   width: number = MAP_WIDTH,
   height: number = MAP_HEIGHT,
 ): RaidMap {
-  // Entry is any tile on the bottom row — keeps insertion points varied.
-  const entry = { x: Math.floor(rand() * width), y: height - 1 };
+  // Entry is the leftmost column at any lane — keeps insertion points varied.
+  const entry = { x: 0, y: Math.floor(rand() * height) };
   const weights: Partial<Record<RoomType, number>> =
     location?.roomTypeWeights ?? DEFAULT_ROOM_WEIGHTS;
 
@@ -66,9 +73,9 @@ export function generateMap(
         });
         continue;
       }
-      // Tile directly above entry should never be blocked — guarantees the
-      // operative can step out of the entry cell.
-      const adjacentToEntry = x === entry.x && y === entry.y - 1;
+      // Tile directly forward from entry should never be blocked — guarantees
+      // the operative can step out of the entry cell.
+      const adjacentToEntry = x === entry.x + 1 && y === entry.y;
       const blocked = !adjacentToEntry && rand() < BLOCKED_TILE_RATIO;
       const type: RoomType = blocked ? "locked" : pickWeighted(rand, weights);
       tiles.push({
@@ -130,49 +137,47 @@ export function distanceToEntry(
   return null;
 }
 
-// Pick the next tile when pushing deeper. Prefers "up" (decreasing y) with a
-// ~25% chance to drift laterally for path variety. Falls back to a lateral
-// step when up is blocked, or stays in place if cornered. The drift makes
-// the result non-deterministic, which is why CurrentRaid.nextStep is
-// computed once at the end of the *previous* tick and stored — preview =
-// actual move.
+// Pick the next tile when pushing deeper. Prefers forward (right; x + 1)
+// with a ~25% chance to drift up or down a lane for path variety. Falls back
+// to a lane shift when right is blocked, or stays in place if cornered. The
+// drift is non-deterministic, which is why CurrentRaid.nextStep is computed
+// once at the end of the *previous* tick and stored — preview = actual move.
 export function stepForward(
   map: RaidMap,
   pos: { x: number; y: number },
   rand: () => number,
 ): { x: number; y: number } {
-  const up = { x: pos.x, y: pos.y - 1 };
-  const upOk = isWalkable(map, up.x, up.y);
-  if (upOk && rand() < 0.25) {
+  const fwd = { x: pos.x + 1, y: pos.y };
+  const fwdOk = isWalkable(map, fwd.x, fwd.y);
+  if (fwdOk && rand() < 0.25) {
     const dir = rand() < 0.5 ? -1 : 1;
-    const lat = { x: pos.x + dir, y: pos.y };
-    if (isWalkable(map, lat.x, lat.y)) return lat;
+    const lane = { x: pos.x, y: pos.y + dir };
+    if (isWalkable(map, lane.x, lane.y)) return lane;
   }
-  if (upOk) return up;
-  // Up is blocked: try lateral, prefer the side closer to map center.
-  const center = Math.floor(map.width / 2);
-  const order = pos.x < center ? [1, -1] : [-1, 1];
+  if (fwdOk) return fwd;
+  // Forward is blocked: try a lane shift, prefer the side closer to map mid-lane.
+  const mid = Math.floor(map.height / 2);
+  const order = pos.y < mid ? [1, -1] : [-1, 1];
   for (const dir of order) {
-    const lat = { x: pos.x + dir, y: pos.y };
-    if (isWalkable(map, lat.x, lat.y)) return lat;
+    const lane = { x: pos.x, y: pos.y + dir };
+    if (isWalkable(map, lane.x, lane.y)) return lane;
   }
   return pos;
 }
 
-// Pick a sideways tile for branches like Reposition where the operative
-// "slips around" rather than pushing deeper. Prefers the side that increases
-// manhattan distance from entry; falls back to the other side; returns the
-// same tile if both sides are blocked.
+// Pick an up/down lane shift for branches like Reposition where the
+// operative "slips around" rather than pushing deeper. Prefers the lane
+// direction (up or down) that increases manhattan distance from entry;
+// falls back to the other lane; returns the same tile if both are blocked.
 export function stepLateral(
   map: RaidMap,
   pos: { x: number; y: number },
 ): { x: number; y: number } {
-  // Pick the lateral direction that moves AWAY from entry.x. If we're already
-  // on entry.x, default to right (+1).
-  const dir = pos.x >= map.entry.x ? 1 : -1;
-  const out = { x: pos.x + dir, y: pos.y };
+  // Move AWAY from entry.y. If already on entry.y, default to +1.
+  const dir = pos.y >= map.entry.y ? 1 : -1;
+  const out = { x: pos.x, y: pos.y + dir };
   if (isWalkable(map, out.x, out.y)) return out;
-  const back = { x: pos.x - dir, y: pos.y };
+  const back = { x: pos.x, y: pos.y - dir };
   if (isWalkable(map, back.x, back.y)) return back;
   return pos;
 }
