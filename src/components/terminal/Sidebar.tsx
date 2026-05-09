@@ -20,11 +20,20 @@ const FOOTER_NAV: { id: PanelId; label: string; Icon: typeof Home }[] = [
 export function Sidebar() {
   const active = useGame((s) => s.activePanel);
   const setPanel = useGame((s) => s.setPanel);
+  const raidActive = useGame((s) => !!s.currentRaid?.active);
 
   return (
     <nav className="flex w-20 flex-col items-stretch border-r border-border/60 bg-background py-2">
       {NAV.map(({ id, label, Icon }) => (
-        <NavBtn key={id} id={id} label={label} Icon={Icon} active={active} setPanel={setPanel} />
+        <NavBtn
+          key={id}
+          id={id}
+          label={label}
+          Icon={Icon}
+          active={active}
+          setPanel={setPanel}
+          notify={id === "feed" && raidActive && active !== "feed"}
+        />
       ))}
       <div className="mt-auto">
         {FOOTER_NAV.map(({ id, label, Icon }) => (
@@ -41,12 +50,14 @@ function NavBtn({
   Icon,
   active,
   setPanel,
+  notify = false,
 }: {
   id: PanelId;
   label: string;
   Icon: typeof Home;
   active: PanelId;
   setPanel: (p: PanelId) => void;
+  notify?: boolean;
 }) {
   const selected = active === id;
   return (
@@ -60,11 +71,17 @@ function NavBtn({
     >
       <span
         className={cn(
-          "flex size-9 items-center justify-center rounded-sm border",
+          "relative flex size-9 items-center justify-center rounded-sm border",
           selected ? "border-foreground/40 bg-accent" : "border-transparent group-hover:border-border",
         )}
       >
         <Icon className="size-4" />
+        {notify ? (
+          <span className="absolute right-1 top-1 flex size-1.5">
+            <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-emerald-400" />
+          </span>
+        ) : null}
       </span>
       <span>{label}</span>
     </button>

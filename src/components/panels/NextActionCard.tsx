@@ -12,6 +12,7 @@ import {
   Package,
   Pause,
   Play,
+  SkipForward,
   X,
   Zap,
 } from "lucide-react";
@@ -44,6 +45,7 @@ export function NextActionCard() {
   const raid = useGame((s) => s.currentRaid);
   const overrideAction = useGame((s) => s.overrideAction);
   const togglePause = useGame((s) => s.togglePause);
+  const skipActionTimer = useGame((s) => s.skipActionTimer);
   const recall = useGame((s) => s.recall);
   const cancelRecall = useGame((s) => s.cancelRecall);
   const paused = !!raid?.pausedAt;
@@ -81,6 +83,15 @@ export function NextActionCard() {
           <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
             {seconds}s
           </span>
+          <button
+            type="button"
+            onClick={skipActionTimer}
+            disabled={paused || !!raid.pendingChoice}
+            title="Skip timer"
+            className="flex size-5 cursor-pointer items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <SkipForward className="size-3" />
+          </button>
           <button
             type="button"
             onClick={togglePause}

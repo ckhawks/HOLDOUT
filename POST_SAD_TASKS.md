@@ -57,6 +57,9 @@ Open ideas / wishlist (still relevant):
 - add locked doors (edges on map); action in action list to try to keypad/lockpick etc
 - add more items in inventory = more heat gain per turn (because you're louder moving around); maybe this could be based on weight (items get weight separate from cells size?)
 - add pulsing notification bubble on feed sidebar button when raid is active
+- need item that can restore HP
+- need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
+- show animation when purchased something from the shop so you know you bought it
 - DONE: concept of multiple bags/inventories to put items into
 - DONE: starting pockets, find a bag in raid to upgrade
 - DONE?: kit / loadout module: choose what from your stash to bring in

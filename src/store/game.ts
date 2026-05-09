@@ -18,6 +18,7 @@ import type {
   Upgrades,
 } from "@/lib/types";
 import {
+  ACTION_TIMER_MS,
   entranceLog,
   startRaid,
   tickAction,
@@ -96,6 +97,7 @@ interface GameState {
   resolvePendingChoice: (choiceId: string) => void;
   useBandage: () => void;
   togglePause: () => void;
+  skipActionTimer: () => void;
   recall: () => void;
   cancelRecall: () => void;
   endRaid: (extracted: boolean) => void;
@@ -495,6 +497,21 @@ export const useGame = create<GameState>((set, get) => ({
     } else {
       set({ currentRaid: { ...currentRaid, pausedAt: Date.now() } });
     }
+  },
+
+  skipActionTimer: () => {
+    const { currentRaid } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    if (currentRaid.pausedAt) return;
+    if (currentRaid.pendingChoice) return;
+    // Shift actionStartedAt back so the timer reads as fully elapsed; the
+    // raid loop effect re-fires with remaining=0 and ticks immediately.
+    set({
+      currentRaid: {
+        ...currentRaid,
+        actionStartedAt: Date.now() - ACTION_TIMER_MS,
+      },
+    });
   },
 
   useBandage: () => {
