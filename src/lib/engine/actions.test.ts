@@ -147,6 +147,69 @@ describe("tickAction loot", () => {
   });
 });
 
+describe("combat sub-mode", () => {
+  it("autoPickAction picks fight when combat_engaged is set", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ flags: ["combat_engaged"] }),
+    });
+    expect(autoPickAction(raid)).toBe("fight");
+  });
+
+  it("fight resolves to one of three outcomes (target_down / firefight / fled)", () => {
+    const raid = makeRaid({
+      queuedAction: "fight",
+      runState: freshRunState({ flags: ["combat_engaged"] }),
+    });
+    let downs = 0;
+    let firefights = 0;
+    let fleds = 0;
+    for (let seed = 1; seed < 200; seed++) {
+      const result = tickAction(raid, makeRng(seed));
+      const cleared = result.flagsRemoved.includes("combat_engaged");
+      if (cleared && result.droppedItem) downs++;
+      else if (cleared) fleds++;
+      else firefights++;
+    }
+    // Loose bounds — all three should fire.
+    expect(downs).toBeGreaterThan(20);
+    expect(firefights).toBeGreaterThan(20);
+    expect(fleds).toBeGreaterThan(5);
+  });
+
+  it("flee resolves to break-contact (clears flag) or failed flee (HP loss)", () => {
+    const raid = makeRaid({
+      queuedAction: "flee",
+      runState: freshRunState({ flags: ["combat_engaged"] }),
+    });
+    let breaks = 0;
+    let fails = 0;
+    for (let seed = 1; seed < 200; seed++) {
+      const result = tickAction(raid, makeRng(seed));
+      if (result.flagsRemoved.includes("combat_engaged")) breaks++;
+      else fails++;
+    }
+    expect(breaks).toBeGreaterThan(50);
+    expect(fails).toBeGreaterThan(20);
+  });
+
+  it("move_forward sometimes raises a patrol pendingChoice", () => {
+    const raid = makeRaid({ queuedAction: "move_forward" });
+    let saw = false;
+    for (let seed = 1; seed < 200 && !saw; seed++) {
+      const result = tickAction(raid, makeRng(seed));
+      if (result.pendingChoice) {
+        expect(result.movement).toBe("none");
+        expect(result.pendingChoice.options.length).toBeGreaterThanOrEqual(2);
+        const ids = result.pendingChoice.options.map((o) => o.id);
+        expect(ids).toContain("engage");
+        expect(ids).toContain("hide");
+        saw = true;
+      }
+    }
+    expect(saw).toBe(true);
+  });
+});
+
 describe("ACTIONS eligibility", () => {
   it("loot is ineligible on entry tile", () => {
     const raid = makeRaid();

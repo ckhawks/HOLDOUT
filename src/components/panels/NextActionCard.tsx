@@ -26,11 +26,14 @@ export function NextActionCard() {
   const pct = Math.max(0, Math.min(1, 1 - elapsed / ACTION_TIMER_MS));
   const seconds = Math.ceil(remaining / 1000);
 
-  // Stable order, never hidden — ineligible chips just disable.
+  // Stable order, never hidden — ineligible rows just disable.
+  const inCombat = raid.runState.flags.includes("combat_engaged");
   const isExtracting = raid.runState.flags.includes("extracting");
-  const order: ActionId[] = isExtracting
-    ? ["extract_step", "stay"]
-    : ["move_forward", "loot", "stay"];
+  const order: ActionId[] = inCombat
+    ? ["fight", "flee"]
+    : isExtracting
+      ? ["extract_step", "stay"]
+      : ["move_forward", "loot", "stay"];
 
   return (
     <div className="border-t border-border/60 bg-card/30 px-6 py-3">

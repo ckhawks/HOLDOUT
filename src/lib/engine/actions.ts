@@ -42,28 +42,44 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     description: "Move toward the extract point.",
     isEligible: (raid) => raid.runState.flags.includes("extracting"),
   },
+  fight: {
+    id: "fight",
+    label: "Fight back",
+    description: "Trade fire with the threat.",
+    isEligible: (raid) => raid.runState.flags.includes("combat_engaged"),
+  },
+  flee: {
+    id: "flee",
+    label: "Break contact",
+    description: "Try to disengage and slip out.",
+    isEligible: (raid) => raid.runState.flags.includes("combat_engaged"),
+  },
 };
 
 export function currentTile(raid: CurrentRaid): MapTile | undefined {
   return tileAt(raid.map, raid.operativePos.x, raid.operativePos.y);
 }
 
-// Pick what the operative would do next without player input. Simple rules
-// for v1: extract if extracting, loot if current room is unsearched & has
-// loot, otherwise push forward.
+// Pick what the operative would do next without player input. Combat
+// sub-mode locks to fight; extract sub-mode locks to extract_step. Otherwise
+// loot if available, else push forward.
 export function autoPickAction(raid: CurrentRaid): ActionId {
+  if (raid.runState.flags.includes("combat_engaged")) return "fight";
   if (raid.runState.flags.includes("extracting")) return "extract_step";
   if (ACTIONS.loot.isEligible(raid)) return "loot";
   if (ACTIONS.move_forward.isEligible(raid)) return "move_forward";
   return "stay";
 }
 
-// Returns the actions the player can override to right now. The auto-picked
-// action is always first; eligible alternatives follow.
+// Returns the actions the player can override to right now. Combat sub-mode
+// shows only fight/flee; extract sub-mode shows extract_step/stay; raiding
+// shows the regular trio.
 export function availableActions(raid: CurrentRaid): ActionDef[] {
-  const order: ActionId[] = raid.runState.flags.includes("extracting")
-    ? ["extract_step", "stay"]
-    : ["loot", "move_forward", "stay"];
+  const order: ActionId[] = raid.runState.flags.includes("combat_engaged")
+    ? ["fight", "flee"]
+    : raid.runState.flags.includes("extracting")
+      ? ["extract_step", "stay"]
+      : ["move_forward", "loot", "stay"];
   return order.map((id) => ACTIONS[id]).filter((a) => a.isEligible(raid));
 }
 

@@ -255,7 +255,9 @@ export type ActionId =
   | "move_forward"
   | "loot"
   | "stay"
-  | "extract_step";
+  | "extract_step"
+  | "fight"
+  | "flee";
 
 export interface Unlocks {
   workbench: boolean;

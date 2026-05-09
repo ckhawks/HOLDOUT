@@ -130,6 +130,51 @@ export function entranceLog(tile: import("@/lib/types").MapTile): LogEntry {
 
 export const ACTION_TIMER_MS = 6000;
 const INTERRUPT_CHANCE = 0.22;
+const PATROL_ENCOUNTER_CHANCE = 0.15;
+const PATROL_TIMER_MS = 10000;
+
+// A patrol encounter — fired as a forced-choice modal when the operative
+// runs into hostiles while pushing forward.
+function patrolPendingChoice(): PendingChoice {
+  return {
+    eventId: "spotted_patrol",
+    prompt:
+      "Movement up ahead — patrol in the next room. They haven't spotted me yet.",
+    defaultId: "hide",
+    startedAt: Date.now(),
+    timerMs: PATROL_TIMER_MS,
+    options: [
+      {
+        id: "engage",
+        label: "Engage",
+        description: "Open fire. Loud — and they'll fight back.",
+        effects: {
+          alertnessDelta: 14,
+          ammoDelta: -2,
+          flagsAdded: ["combat_engaged"],
+        },
+      },
+      {
+        id: "hide",
+        label: "Hide",
+        description: "Hold here. Quiet.",
+        effects: { alertnessDelta: -3, energyDelta: -2 },
+        isDefault: true,
+      },
+      {
+        id: "reposition",
+        label: "Reposition",
+        description: "Slip around them. Lane shift, +1 distance.",
+        effects: {
+          alertnessDelta: 3,
+          energyDelta: -3,
+          distanceAdvance: 1,
+          depthAdvance: 0,
+        },
+      },
+    ],
+  };
+}
 
 export interface ActionTickResult {
   logs: LogEntry[];
@@ -145,6 +190,10 @@ export interface ActionTickResult {
   movement: "none" | "forward" | "lateral" | "backward";
   // True if the action consumed one of the tile's loot containers.
   consumedLoot: boolean;
+  // Forced-choice modal raised by this action (e.g. patrol encounter on a
+  // move). When set, the store sets pendingChoice and the action that
+  // would have been applied is suppressed.
+  pendingChoice?: PendingChoice;
 }
 
 // Resolve one tick by carrying out the queued action on the current raid.
@@ -157,7 +206,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
   let healthDelta = -bleed;
   let alertnessDelta = 0;
   let energyDelta = -ENERGY_BASE_DRAIN;
-  const ammoDelta = 0;
+  let ammoDelta = 0;
   const flagsAdded: string[] = [];
   const flagsRemoved: string[] = [];
   let movement: ActionTickResult["movement"] = "none";
@@ -171,9 +220,25 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
 
   switch (action) {
     case "move_forward": {
+      // Roll for a patrol encounter before committing the move. If hit,
+      // the operative freezes in place and a forced-choice modal pops.
+      if (rand() < PATROL_ENCOUNTER_CHANCE) {
+        return {
+          logs: [
+            makeLog("flavor", "Movement in the next room. Holding.", undefined),
+          ],
+          alertnessDelta: 0,
+          healthDelta: -bleed,
+          energyDelta: 0,
+          ammoDelta: 0,
+          flagsAdded: [],
+          flagsRemoved: [],
+          movement: "none",
+          consumedLoot: false,
+          pendingChoice: patrolPendingChoice(),
+        };
+      }
       movement = "forward";
-      // Entrance flavor logged in the store after movement (it knows the
-      // destination tile). Skip the flat "Pushing forward" line.
       break;
     }
     case "loot": {
@@ -223,12 +288,90 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
       logs.push(makeLog("flavor", "Backtracking toward extract.", undefined));
       break;
     }
+    case "fight": {
+      // Resolve a round of combat. Three outcomes:
+      //   - target_down  (~55%): drop loot into current tile, clear combat
+      //   - firefight     (~30%): trade fire — HP/ammo cost, possible bleed
+      //   - target_fled  (~15%): no loot, alertness up, clear combat
+      const r = rand();
+      if (r < 0.55) {
+        // target_down — pull a loot drop from the current location.
+        const loc = LOCATIONS_BY_ID[raid.locationId];
+        const itemId = loc
+          ? pickItemForLocation(rand, loc, false, raid.runState.depth)
+          : undefined;
+        if (itemId) {
+          const item = ITEMS[itemId];
+          droppedItem = {
+            uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            itemId,
+          };
+          logs.push(
+            makeLog(
+              "combat_resolved",
+              `Target down. Looted ⟦${item?.name ?? itemId}⟧ off them.`,
+              itemId,
+            ),
+          );
+        } else {
+          logs.push(makeLog("combat_resolved", "Target down. Nothing on them.", undefined));
+        }
+        alertnessDelta += 4;
+        ammoDelta = -1;
+        flagsRemoved.push("combat_engaged");
+      } else if (r < 0.85) {
+        healthDelta -= 7;
+        ammoDelta = -2;
+        alertnessDelta += 5;
+        if (rand() < 0.25) flagsAdded.push("bleeding_minor");
+        logs.push(makeLog("damage", "Trading shots. Took a glancing hit.", undefined));
+      } else {
+        alertnessDelta += 8;
+        ammoDelta = -1;
+        flagsRemoved.push("combat_engaged");
+        logs.push(
+          makeLog(
+            "combat_resolved",
+            "Target broke contact and ran. Lost them.",
+            undefined,
+          ),
+        );
+      }
+      break;
+    }
+    case "flee": {
+      // 60% break-contact, 40% they keep on you.
+      if (rand() < 0.6) {
+        alertnessDelta += 6;
+        flagsRemoved.push("combat_engaged");
+        logs.push(
+          makeLog(
+            "combat_resolved",
+            "Broke contact — clear of the threat for now.",
+            undefined,
+          ),
+        );
+      } else {
+        healthDelta -= 5;
+        ammoDelta = -1;
+        if (rand() < 0.2) flagsAdded.push("bleeding_minor");
+        logs.push(
+          makeLog(
+            "damage",
+            "Couldn't break clean. Took a round on the way out.",
+            undefined,
+          ),
+        );
+      }
+      break;
+    }
   }
 
-  // Interrupt layer: small chance per tick of a hazard. Only took_damage and
-  // a benign heard_voices flavor for phase 1 — branching events (patrols,
-  // locked doors) come back as actions in a later phase.
-  if (rand() < INTERRUPT_CHANCE && action !== "extract_step") {
+  // Interrupt layer: small chance per tick of a hazard. Suppressed during
+  // extract and combat — those have their own resolution pools.
+  const inSubMode =
+    action === "extract_step" || action === "fight" || action === "flee";
+  if (!inSubMode && rand() < INTERRUPT_CHANCE) {
     if (rand() < 0.45) {
       // took_damage
       healthDelta -= 8;

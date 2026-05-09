@@ -8,6 +8,7 @@ import { Bandage, CornerDownRight, Crosshair, Droplet, Loader2, LogOut, Pause, P
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
 import { PackTetris } from "./PackTetris";
+import { BranchModal } from "./BranchModal";
 import { NextActionCard } from "./NextActionCard";
 import { RaidMap } from "./RaidMap";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
@@ -206,6 +207,7 @@ export function FeedPanel() {
       </div>
       <PackTetris />
       </div>
+      <BranchModal />
     </section>
   );
 }

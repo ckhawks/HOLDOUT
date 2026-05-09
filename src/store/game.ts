@@ -46,6 +46,7 @@ import {
   revealFrom,
   stepBackward,
   stepForward,
+  stepLateral,
   tileAt,
 } from "@/lib/engine/map";
 import {
@@ -81,6 +82,7 @@ interface GameState {
   beginRaid: (locationId: string) => void;
   doTick: () => void;
   overrideAction: (action: ActionId) => void;
+  resolvePendingChoice: (choiceId: string) => void;
   useBandage: () => void;
   togglePause: () => void;
   recall: () => void;
@@ -170,6 +172,20 @@ export const useGame = create<GameState>((set, get) => ({
 
     const rand = makeRng(rngSeed + currentRaid.log.length);
     const t = tickAction(currentRaid, rand);
+
+    // If the action raised a forced-choice (e.g. patrol encounter), set
+    // pendingChoice on the raid and bail. The action's other effects already
+    // came in suppressed.
+    if (t.pendingChoice) {
+      set({
+        currentRaid: {
+          ...currentRaid,
+          log: [...currentRaid.log, ...t.logs],
+          pendingChoice: t.pendingChoice,
+        },
+      });
+      return;
+    }
 
     // Apply movement based on action's intent.
     const isExtracting = currentRaid.runState.flags.includes("extracting");
@@ -297,6 +313,95 @@ export const useGame = create<GameState>((set, get) => ({
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
     set({ currentRaid: { ...currentRaid, queuedAction: action } });
+  },
+
+  resolvePendingChoice: (choiceId) => {
+    const { currentRaid } = get();
+    if (!currentRaid || !currentRaid.pendingChoice) return;
+    const choice =
+      currentRaid.pendingChoice.options.find((o) => o.id === choiceId) ??
+      currentRaid.pendingChoice.options.find(
+        (o) => o.id === currentRaid.pendingChoice!.defaultId,
+      ) ??
+      currentRaid.pendingChoice.options[0];
+    const fx = choice.effects ?? {};
+    const rs = currentRaid.runState;
+
+    // Build the next flag set from this choice.
+    const flagSet = new Set(rs.flags);
+    for (const f of fx.flagsAdded ?? []) flagSet.add(f);
+    for (const f of fx.flagsRemoved ?? []) flagSet.delete(f);
+    const flags = Array.from(flagSet);
+
+    // Optional spatial movement based on advance values.
+    let nextMap = currentRaid.map;
+    let nextPos = currentRaid.operativePos;
+    let nextStep = currentRaid.nextStep;
+    let depthChange = fx.depthAdvance ?? 0;
+    let distanceChange = fx.distanceAdvance ?? 0;
+    if (distanceChange > 0 && depthChange === 0) {
+      // Reposition-style: lateral lane shift away from entry's lane.
+      const lateral = stepLateral(nextMap, currentRaid.operativePos);
+      if (
+        lateral.x !== currentRaid.operativePos.x ||
+        lateral.y !== currentRaid.operativePos.y
+      ) {
+        nextPos = lateral;
+        nextMap = markTileVisited(nextMap, lateral.x, lateral.y);
+        nextMap = revealFrom(nextMap, lateral.x, lateral.y);
+        nextStep = stepForward(nextMap, lateral, makeRng(Date.now()));
+      } else {
+        // Couldn't slip — distance change null.
+        distanceChange = 0;
+      }
+    } else if (distanceChange > 0) {
+      // Forward push from a branch — rare for now, but supported.
+      const fwd = currentRaid.nextStep
+        ? { ...currentRaid.nextStep }
+        : stepForward(nextMap, currentRaid.operativePos, makeRng(Date.now()));
+      if (
+        fwd.x !== currentRaid.operativePos.x ||
+        fwd.y !== currentRaid.operativePos.y
+      ) {
+        nextPos = fwd;
+        nextMap = markTileVisited(nextMap, fwd.x, fwd.y);
+        nextMap = revealFrom(nextMap, fwd.x, fwd.y);
+        nextStep = stepForward(nextMap, fwd, makeRng(Date.now()));
+      } else {
+        distanceChange = 0;
+        depthChange = 0;
+      }
+    }
+
+    let raid: CurrentRaid = {
+      ...currentRaid,
+      log: [
+        ...currentRaid.log,
+        makeLog("choice_result", choice.label, undefined),
+      ],
+      pendingChoice: null,
+      operativePos: nextPos,
+      map: nextMap,
+      nextStep,
+      runState: {
+        ...rs,
+        alertness: Math.max(0, Math.min(100, rs.alertness + (fx.alertnessDelta ?? 0))),
+        health: Math.max(0, Math.min(100, rs.health + (fx.healthDelta ?? 0))),
+        energy: Math.max(0, Math.min(100, rs.energy + (fx.energyDelta ?? 0))),
+        ammo: Math.max(0, rs.ammo + (fx.ammoDelta ?? 0)),
+        depth: rs.depth + depthChange,
+        distanceFromExtract: Math.max(0, rs.distanceFromExtract + distanceChange),
+        flags,
+      },
+    };
+
+    // Auto-pick the next action and reset the timer.
+    raid = {
+      ...raid,
+      queuedAction: autoPickAction(raid),
+      actionStartedAt: Date.now(),
+    };
+    set({ currentRaid: raid });
   },
 
   togglePause: () => {
