@@ -1,33 +1,32 @@
-import type { Upgrades } from "@/lib/types";
+import type { Equipment, Upgrades } from "@/lib/types";
 
-export const BACKPACK_BASE_SLOTS = 12;
 export const STASH_BASE_SLOTS = 30;
-
-export const BACKPACK_SLOTS_PER_LEVEL = 2;
 export const STASH_SLOTS_PER_LEVEL = 10;
 
-export function backpackCapacity(u: Upgrades): number {
-  return BACKPACK_BASE_SLOTS + u.backpackLevel * BACKPACK_SLOTS_PER_LEVEL;
+// Pockets are the operative's built-in inventory grid. Width is fixed; height
+// grows with pocketsLevel. Equipped bag is a separate grid additive to this.
+export const POCKETS_WIDTH = 4;
+export const POCKETS_BASE_HEIGHT = 4;
+
+export function pocketsDimensions(u: Upgrades): { width: number; height: number } {
+  return { width: POCKETS_WIDTH, height: POCKETS_BASE_HEIGHT + u.pocketsLevel };
 }
 
-export const PACK_GRID_WIDTH = 4;
-export const PACK_GRID_BASE_HEIGHT = 4;
-
-export function packDimensions(u: Upgrades): { width: number; height: number } {
-  return { width: PACK_GRID_WIDTH, height: PACK_GRID_BASE_HEIGHT + u.backpackLevel };
-}
-
-export const PENDING_BASE_CAPACITY = 4;
-export function pendingCapacity(_u: Upgrades): number {
-  return PENDING_BASE_CAPACITY;
+// Total cells across pockets + equipped bag. Used by the kit summary chip.
+export function totalEquipmentCells(equipment: Equipment): number {
+  const p = equipment.pockets.grid.width * equipment.pockets.grid.height;
+  const b = equipment.bag
+    ? equipment.bag.grid.width * equipment.bag.grid.height
+    : 0;
+  return p + b;
 }
 
 export function stashCapacity(u: Upgrades): number {
   return STASH_BASE_SLOTS + u.stashLevel * STASH_SLOTS_PER_LEVEL;
 }
 
-export function backpackUpgradeCost(u: Upgrades): number {
-  return 500 + u.backpackLevel * 250;
+export function pocketsUpgradeCost(u: Upgrades): number {
+  return 500 + u.pocketsLevel * 250;
 }
 
 export function stashUpgradeCost(u: Upgrades): number {

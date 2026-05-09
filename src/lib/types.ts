@@ -8,7 +8,13 @@ export type ItemCategory =
   | "valuables"
   | "intel"
   | "military"
-  | "experimental";
+  | "experimental"
+  | "bag";
+
+// Equipment slots an item can occupy. `bag` is functional (defines the
+// secondary grid). `weapon`/`armor`/`helmet` are reserved — slots exist but
+// nothing reads stat effects yet.
+export type EquipSlot = "bag" | "weapon" | "armor" | "helmet";
 
 export type Cell = readonly [number, number];
 export type ShapeCells = ReadonlyArray<Cell>;
@@ -22,6 +28,10 @@ export interface Item {
   sellValue: number;
   weight: number;
   shape: ShapeCells;
+  // Which equip slot this item occupies when equipped. Undefined = not equippable.
+  slot?: EquipSlot;
+  // Bag items: the grid the bag provides when equipped.
+  bagGrid?: { width: number; height: number };
 }
 
 export interface StashItem {
@@ -73,11 +83,42 @@ export type OperativeState =
   | "extracting"
   | "injured";
 
+export interface SlotItem {
+  uid: string;
+  itemId: string;
+  flavor?: string;
+}
+
+export interface PocketsState {
+  grid: { width: number; height: number };
+  items: PackPlacement[];
+}
+
+// Equipped bag carries its own grid (from the item's bagGrid) and contents.
+// On bag swap, the old bag's contents return to stash (or refuse if stash
+// can't hold them).
+export interface BagState {
+  slot: SlotItem;
+  grid: { width: number; height: number };
+  items: PackPlacement[];
+}
+
+export interface Equipment {
+  pockets: PocketsState;
+  bag: BagState | null;
+  // Reserved slots — no stat effects yet. Persisted so future sprints can
+  // wire them in without another migration.
+  weapon: SlotItem | null;
+  armor: SlotItem | null;
+  helmet: SlotItem | null;
+}
+
 export interface Operative {
   name: string;
   state: OperativeState;
   injuryDebuff: boolean;
   skills: { sneak: number; shoot: number; scrounge: number };
+  equipment: Equipment;
 }
 
 export interface HideoutModule {
@@ -88,9 +129,10 @@ export interface HideoutModule {
 export interface Hideout {
   modules: {
     stash: HideoutModule;
-    backpack: HideoutModule;
+    pockets: HideoutModule;
     workbench: HideoutModule;
     medbay: HideoutModule;
+    loadout: HideoutModule;
   };
 }
 
@@ -251,8 +293,11 @@ export interface CurrentRaid {
   startedAt: number;
   runState: RunState;
   log: LogEntry[];
-  pack: PackPlacement[];
-  packGrid: { width: number; height: number };
+  // Operative's equipment for this raid. Mutated in place as items are picked
+  // up / dropped / rearranged. On Recall: remains intact and gets flushed
+  // back to operative.equipment. On death: contents wiped, bag/weapon/armor/
+  // helmet stripped, operative comes back with bare pockets.
+  equipment: Equipment;
   active: boolean;
   pendingChoice: PendingChoice | null;
   map: RaidMap;
@@ -289,6 +334,9 @@ export interface Unlocks {
 }
 
 export interface Upgrades {
-  backpackLevel: number;
+  // Pockets size upgrade — adds rows to the operative's built-in pockets
+  // grid. Replaces the previous "backpack +N slots" upgrade since pack is
+  // now split into pockets + equipped bag.
+  pocketsLevel: number;
   stashLevel: number;
 }

@@ -26,17 +26,25 @@ function freshState(): PersistedState {
       state: "idle",
       injuryDebuff: false,
       skills: { sneak: 1, shoot: 1, scrounge: 1 },
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
     },
     hideout: {
       modules: {
         stash: { unlocked: true, capacity: 30 },
-        backpack: { unlocked: true, capacity: 12 },
+        pockets: { unlocked: true, capacity: 16 },
         workbench: { unlocked: false },
         medbay: { unlocked: false },
+        loadout: { unlocked: true },
       },
     },
     unlocks: { workbench: false, medbay: false, biolab: false },
-    upgrades: { backpackLevel: 1, stashLevel: 2 },
+    upgrades: { pocketsLevel: 1, stashLevel: 2 },
     currentRaid: null,
   };
 }
@@ -84,8 +92,13 @@ describe("save round-trip", () => {
         flags: ["bleeding", "alarm_triggered"],
       },
       log: [],
-      pack: [],
-      packGrid: { width: 4, height: 4 },
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
       active: true,
       pendingChoice: null,
       map: { width: 1, height: 1, entry: { x: 0, y: 0 }, tiles: [{ x: 0, y: 0, type: "entry", name: "entry", blocked: false, visited: true, lootRemaining: 0, lootMax: 0, containers: [], lockedContainers: [], contents: [], seen: true, threat: false }] },

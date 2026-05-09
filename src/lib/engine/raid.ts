@@ -1,5 +1,6 @@
 import type {
   CurrentRaid,
+  Equipment,
   LogEntry,
   PendingChoice,
   RunState,
@@ -34,7 +35,7 @@ export function makeRng(seed: number): () => number {
 
 export function startRaid(
   locationId: string,
-  packGrid: { width: number; height: number },
+  equipment: Equipment,
   rand: () => number,
 ): CurrentRaid {
   const baseMap = generateMap(rand, LOCATIONS_BY_ID[locationId]);
@@ -60,8 +61,7 @@ export function startRaid(
     log: [
       makeLog("system", `Operative inserted at ${locationId}. Comms green.`),
     ],
-    pack: [],
-    packGrid,
+    equipment,
     active: true,
     pendingChoice: null,
     map,
@@ -624,17 +624,47 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
 }
 
 export function applyBandage(raid: CurrentRaid): CurrentRaid {
-  const idx = raid.pack.findIndex((p) => p.itemId === "bandage_pack");
-  if (idx === -1) return raid;
   const hadMinor = raid.runState.flags.includes("bleeding_minor");
   const hadMajor = raid.runState.flags.includes("bleeding_major");
   if (!hadMinor && !hadMajor) return raid;
+  // Pull a bandage from pockets first (closer to hand), then bag.
+  const eq = raid.equipment;
+  const pocketIdx = eq.pockets.items.findIndex((p) => p.itemId === "bandage_pack");
+  const bagIdx =
+    pocketIdx === -1 && eq.bag
+      ? eq.bag.items.findIndex((p) => p.itemId === "bandage_pack")
+      : -1;
+  if (pocketIdx === -1 && bagIdx === -1) return raid;
   const flags = raid.runState.flags.filter(
     (f) => f !== "bleeding_minor" && f !== "bleeding_major",
   );
+  const equipment: Equipment =
+    pocketIdx !== -1
+      ? {
+          ...eq,
+          pockets: {
+            ...eq.pockets,
+            items: [
+              ...eq.pockets.items.slice(0, pocketIdx),
+              ...eq.pockets.items.slice(pocketIdx + 1),
+            ],
+          },
+        }
+      : {
+          ...eq,
+          bag: eq.bag
+            ? {
+                ...eq.bag,
+                items: [
+                  ...eq.bag.items.slice(0, bagIdx),
+                  ...eq.bag.items.slice(bagIdx + 1),
+                ],
+              }
+            : null,
+        };
   return {
     ...raid,
-    pack: [...raid.pack.slice(0, idx), ...raid.pack.slice(idx + 1)],
+    equipment,
     runState: { ...raid.runState, flags },
     log: [
       ...raid.log,

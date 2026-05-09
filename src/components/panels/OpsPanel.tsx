@@ -5,7 +5,8 @@ import { LOCATIONS } from "@/lib/data/locations";
 import { useGame } from "@/store/game";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
-import { ArrowRight, Lock, Skull } from "lucide-react";
+import { ArrowRight, Backpack, Lock, Shirt, Skull } from "lucide-react";
+import { ITEMS } from "@/lib/data/items";
 import { cn } from "@/lib/utils";
 import type { Location, StashItem, Unlocks } from "@/lib/types";
 
@@ -71,6 +72,15 @@ export function OpsPanel() {
   const access = checkAccess(location, unlocks, stash);
   const operativeBusy = op.state !== "idle" || !!raid;
   const sendDisabled = operativeBusy || !access.accessible;
+
+  const eq = op.equipment;
+  const pUsed = eq.pockets.items.length;
+  const pTotal = eq.pockets.grid.width * eq.pockets.grid.height;
+  const bUsed = eq.bag?.items.length ?? 0;
+  const bTotal = eq.bag ? eq.bag.grid.width * eq.bag.grid.height : 0;
+  const kitValue =
+    eq.pockets.items.reduce((s, p) => s + (ITEMS[p.itemId]?.sellValue ?? 0), 0) +
+    (eq.bag?.items.reduce((s, p) => s + (ITEMS[p.itemId]?.sellValue ?? 0), 0) ?? 0);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -141,7 +151,7 @@ export function OpsPanel() {
             })}
           </div>
         </div>
-        <div>
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             disabled={sendDisabled}
             onClick={() => beginRaid(loc)}
@@ -158,6 +168,24 @@ export function OpsPanel() {
               <ArrowRight className="size-4" />
             )}
           </Button>
+          {!operativeBusy && (
+            <span
+              className="inline-flex items-center gap-2 rounded-sm border border-border/60 bg-card/30 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground"
+              title="Pockets · Bag · Kit value (manage in Stash)"
+            >
+              <Shirt className="size-3" />
+              <span className="tabular-nums text-foreground/80">{pUsed}/{pTotal}</span>
+              <span className="opacity-50">·</span>
+              <Backpack className="size-3" />
+              {eq.bag ? (
+                <span className="tabular-nums text-foreground/80">{bUsed}/{bTotal}</span>
+              ) : (
+                <span className="opacity-60">none</span>
+              )}
+              <span className="opacity-50">·</span>
+              <span className="tabular-nums text-foreground/80">¤{kitValue.toLocaleString()}</span>
+            </span>
+          )}
         </div>
       </div>
     </section>

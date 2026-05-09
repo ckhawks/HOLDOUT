@@ -1,28 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
-  BACKPACK_BASE_SLOTS,
-  BACKPACK_SLOTS_PER_LEVEL,
-  PACK_GRID_BASE_HEIGHT,
-  PACK_GRID_WIDTH,
-  PENDING_BASE_CAPACITY,
+  POCKETS_BASE_HEIGHT,
+  POCKETS_WIDTH,
   STASH_BASE_SLOTS,
   STASH_SLOTS_PER_LEVEL,
-  backpackCapacity,
-  backpackUpgradeCost,
-  packDimensions,
-  pendingCapacity,
+  pocketsDimensions,
+  pocketsUpgradeCost,
   stashCapacity,
   stashUpgradeCost,
 } from "./upgrades";
 
-const lvl = (b: number, s: number) => ({ backpackLevel: b, stashLevel: s });
+const lvl = (p: number, s: number) => ({ pocketsLevel: p, stashLevel: s });
 
-describe("backpackCapacity", () => {
-  it("starts at the base", () => {
-    expect(backpackCapacity(lvl(0, 0))).toBe(BACKPACK_BASE_SLOTS);
-  });
-  it("adds slots per level linearly", () => {
-    expect(backpackCapacity(lvl(3, 0))).toBe(BACKPACK_BASE_SLOTS + 3 * BACKPACK_SLOTS_PER_LEVEL);
+describe("pocketsDimensions", () => {
+  it("width is constant; height grows with pocketsLevel", () => {
+    expect(pocketsDimensions(lvl(0, 0))).toEqual({ width: POCKETS_WIDTH, height: POCKETS_BASE_HEIGHT });
+    expect(pocketsDimensions(lvl(2, 0))).toEqual({ width: POCKETS_WIDTH, height: POCKETS_BASE_HEIGHT + 2 });
   });
 });
 
@@ -35,25 +28,11 @@ describe("stashCapacity", () => {
   });
 });
 
-describe("packDimensions", () => {
-  it("width is constant; height grows with backpackLevel", () => {
-    expect(packDimensions(lvl(0, 0))).toEqual({ width: PACK_GRID_WIDTH, height: PACK_GRID_BASE_HEIGHT });
-    expect(packDimensions(lvl(2, 0))).toEqual({ width: PACK_GRID_WIDTH, height: PACK_GRID_BASE_HEIGHT + 2 });
-  });
-});
-
-describe("pendingCapacity", () => {
-  it("is constant regardless of upgrades for now", () => {
-    expect(pendingCapacity(lvl(0, 0))).toBe(PENDING_BASE_CAPACITY);
-    expect(pendingCapacity(lvl(10, 10))).toBe(PENDING_BASE_CAPACITY);
-  });
-});
-
 describe("upgrade costs", () => {
-  it("backpack cost grows by 250/level from 500", () => {
-    expect(backpackUpgradeCost(lvl(0, 0))).toBe(500);
-    expect(backpackUpgradeCost(lvl(1, 0))).toBe(750);
-    expect(backpackUpgradeCost(lvl(4, 0))).toBe(1500);
+  it("pockets cost grows by 250/level from 500", () => {
+    expect(pocketsUpgradeCost(lvl(0, 0))).toBe(500);
+    expect(pocketsUpgradeCost(lvl(1, 0))).toBe(750);
+    expect(pocketsUpgradeCost(lvl(4, 0))).toBe(1500);
   });
 
   it("stash cost grows by 400/level from 800", () => {
@@ -65,7 +44,7 @@ describe("upgrade costs", () => {
   it("costs are strictly increasing (endless progression assumption)", () => {
     let prev = -1;
     for (let i = 0; i < 20; i++) {
-      const c = backpackUpgradeCost(lvl(i, 0));
+      const c = pocketsUpgradeCost(lvl(i, 0));
       expect(c).toBeGreaterThan(prev);
       prev = c;
     }

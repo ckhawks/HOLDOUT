@@ -151,6 +151,23 @@ Open ideas / wishlist (still relevant):
 
 ---
 
+### Sprint J — Kit / equipment ✅ (partial — slots reserved)
+- `Operative.equipment` shape: `pockets` (built-in 4×4 grid, grows by row with `pocketsLevel`), `bag` (nullable, grid from the equipped item's `bagGrid`), and reserved `weapon`/`armor`/`helmet` slots (no stat effects yet).
+- Item additions: `slot?: EquipSlot` and `bagGrid?: {w,h}` on `Item`. Three bag items (`canvas_satchel` 4×4, `tactical_pack` 5×5, `raider_rucksack` 6×6). Bags excluded from random loot pools — they'll arrive via the shop / rare tagged drops.
+- Save schema v19: drops in-progress raids, renames `Upgrades.backpackLevel` → `pocketsLevel`, backfills `operative.equipment` with bare 4×4 pockets, renames `hideout.modules.backpack` → `pockets`, adds `loadout` module.
+- Store: 10 kit/equipment actions auto-route between `currentRaid.equipment` (raid) and `operative.equipment` (idle). `pickupFromFloor`, `dropToFloor`, `trashFromFloor`, `trashFromKit`, `moveKitItem`, `kitFromStash`, `stashFromKit`, `equipBag`, `unequipBag`, `emptyKitToStash`.
+- `endRaid` no longer auto-stashes on extract — equipment stays on the operative until the player unloads. Death wipes pockets contents and strips bag/weapon/armor/helmet (pockets grid persists since it's an upgrade level).
+- `PackTetris` is now a two-grid layout: pockets above, bag below, with cross-slot drag. `dropToFloor` and `trashFromKit` work from either grid.
+- `StashPanel` grows a left rail (when idle) showing pockets + bag with click-to-stash / click-to-trash, an "Empty kit" button, and `equip`/`unequip` controls. Stash items get a `→ kit` button using a first-fit auto-placer.
+- Hideout module tile renamed: "Backpack +N slots" → "Pockets +1 row · ¤cost". New "Loadout" module card deep-links to the Stash panel (where the kit lives).
+- Ops console gets a kit summary chip next to the Send button: `pockets X/Y · bag X/Y · ¤kitvalue`.
+
+### Follow-ups (next sprint)
+- **Bags in loot pool / shop** — currently the only way to obtain a bag is via `findFit` on a stash entry that doesn't exist yet. Need either a shop module (Hideout) selling `canvas_satchel`/`tactical_pack` + bandages + food, or rare bag drops from raids.
+- **Drag-based loadout in Stash panel** — current click-based UX ships, but the user wanted drag-from-stash → kit grids. Either reuse `PackTetris`'s drag engine in idle mode or extract a shared `KitColumn` component.
+- **Loadout presets** — save 2-3 named kit configurations (e.g. "scrounge run", "combat run") so it's not re-clicking every raid.
+- **Run-summary on extract** — silent extracts feel weird now that the player has to manually unload. A small banner ("extracted N items · ¤K kit value") confirms the haul.
+
 ## What's next
 
 ### Sprint I — Operator preferences
@@ -162,14 +179,6 @@ Make "scrounge / push / lay low" real instead of theatre.
   - **Push**: skips loot more often, gets to deep tiles faster.
   - **Lay low**: more frequent `stay` (cools heat), cautious about `move_forward` when heat is high.
 - [ ] Save preference per-operative (hooks into Sprint J kit/loadout).
-
-### Sprint J — Gear / kit
-- [ ] Gear slots on operative: `weapon`, `armor`, `pack`, `medPouch`. Each is an item with stats.
-- [ ] Pack stats (`gridWidth`, `gridHeight`) replace the flat-slot upgrade.
-- [ ] MedPouch with `bandageSlots` / `stimSlots` — fast-access consumables outside the pack grid.
-- [ ] Hideout panel: **Loadout** module. Drag gear from stash into operative slots pre-raid only.
-- [ ] Death loses kit. Kit = stash items moved into operative slots before raid; not auto-restored.
-- [ ] Starting kit intentionally bad so first upgrades feel impactful.
 
 ### Sprint K — Energy as hunger/thirst
 - [ ] At 0 energy, HP starts draining (-2/tick).

@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 export interface PersistedState {
   cash: number;
@@ -55,10 +55,14 @@ export function loadGame(): PersistedState | null {
 
 export function migrateSave(saved: SavedGame): SavedGame {
   const s = saved.state as PersistedState;
-  // v1 had no upgrades field
+  // v1 had no upgrades field. Field was named `backpackLevel` until v19;
+  // backfill with that name so the v19 rename branch picks it up correctly.
   if (saved.schemaVersion < 2) {
     if (!s.upgrades) {
-      s.upgrades = { backpackLevel: 0, stashLevel: 0 };
+      (s as unknown as { upgrades: { backpackLevel: number; stashLevel: number } }).upgrades = {
+        backpackLevel: 0,
+        stashLevel: 0,
+      };
     }
   }
   // v3: pack tetris — old in-progress raid format is incompatible. Drop it.
@@ -195,6 +199,41 @@ export function migrateSave(saved: SavedGame): SavedGame {
       if (typeof rs.heat !== "number" && typeof rs.alertness === "number") {
         rs.heat = rs.alertness;
         delete rs.alertness;
+      }
+    }
+  }
+  // v19: kit/equipment pivot. CurrentRaid drops `pack`/`packGrid` and gains
+  // `equipment`. Operative gains `equipment`. Upgrades.backpackLevel renamed
+  // to pocketsLevel. The in-raid format is incompatible — drop in-progress
+  // raids. Backfill operative.equipment with bare pockets (no bag/armor/etc).
+  if (saved.schemaVersion < 19) {
+    s.currentRaid = null;
+    if (s.upgrades) {
+      const up = s.upgrades as unknown as { backpackLevel?: number; pocketsLevel?: number; stashLevel: number };
+      if (typeof up.pocketsLevel !== "number") {
+        up.pocketsLevel = up.backpackLevel ?? 0;
+        delete up.backpackLevel;
+      }
+    }
+    if (s.operative) {
+      const op = s.operative as unknown as { equipment?: unknown };
+      if (!op.equipment) {
+        op.equipment = {
+          pockets: { grid: { width: 4, height: 4 }, items: [] },
+          bag: null,
+          weapon: null,
+          armor: null,
+          helmet: null,
+        };
+      }
+    }
+    // Hideout shape changed: backpack module is now "pockets". Rebuilt by
+    // store on hydrate, but to be safe drop the field here.
+    if (s.hideout?.modules) {
+      const mods = s.hideout.modules as unknown as { backpack?: unknown; pockets?: unknown };
+      if (mods.backpack && !mods.pockets) {
+        mods.pockets = mods.backpack;
+        delete mods.backpack;
       }
     }
   }

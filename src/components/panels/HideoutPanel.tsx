@@ -1,20 +1,20 @@
 "use client";
 
-import { Hammer, HeartPulse, Home, Package, Plus } from "lucide-react";
+import { Backpack, Hammer, HeartPulse, Package, Plus, Shirt } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  PACK_GRID_WIDTH,
+  POCKETS_WIDTH,
   STASH_SLOTS_PER_LEVEL,
-  backpackUpgradeCost,
-  packDimensions,
+  pocketsDimensions,
+  pocketsUpgradeCost,
   stashUpgradeCost,
 } from "@/lib/engine/upgrades";
 
 interface ModuleCardProps {
-  Icon: typeof Home;
+  Icon: typeof Package;
   name: string;
   status: string;
   unlocked: boolean;
@@ -52,11 +52,17 @@ export function HideoutPanel() {
   const unlocks = useGame((s) => s.unlocks);
   const cash = useGame((s) => s.cash);
   const upgrades = useGame((s) => s.upgrades);
-  const buyBackpack = useGame((s) => s.buyBackpackUpgrade);
+  const setPanel = useGame((s) => s.setPanel);
+  const buyPockets = useGame((s) => s.buyPocketsUpgrade);
   const buyStash = useGame((s) => s.buyStashUpgrade);
+  const equipment = useGame((s) => s.operative.equipment);
 
-  const backpackCost = backpackUpgradeCost(upgrades);
+  const pocketsCost = pocketsUpgradeCost(upgrades);
   const stashCost = stashUpgradeCost(upgrades);
+  const dim = pocketsDimensions(upgrades);
+  const bagSummary = equipment.bag
+    ? `${equipment.bag.grid.width}×${equipment.bag.grid.height} bag equipped`
+    : "no bag equipped";
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -81,20 +87,37 @@ export function HideoutPanel() {
           }
         />
         <ModuleCard
-          Icon={Home}
-          name="Backpack"
-          status={`${packDimensions(upgrades).width}×${packDimensions(upgrades).height} grid · level ${upgrades.backpackLevel}`}
+          Icon={Shirt}
+          name="Pockets"
+          status={`${dim.width}×${dim.height} grid · level ${upgrades.pocketsLevel}`}
           unlocked
           action={
             <Button
               variant="outline"
               size="sm"
-              disabled={cash < backpackCost}
-              onClick={buyBackpack}
+              disabled={cash < pocketsCost}
+              onClick={buyPockets}
               className="rounded-sm"
             >
               <Plus className="size-3.5" />
-              +1 row ({PACK_GRID_WIDTH} cells) · ¤{backpackCost.toLocaleString()}
+              +1 row ({POCKETS_WIDTH} cells) · ¤{pocketsCost.toLocaleString()}
+            </Button>
+          }
+        />
+        <ModuleCard
+          Icon={Backpack}
+          name="Loadout"
+          status={bagSummary}
+          unlocked
+          hint="Manage what your operative carries into the next raid"
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPanel("stash")}
+              className="rounded-sm"
+            >
+              Manage in Stash
             </Button>
           }
         />

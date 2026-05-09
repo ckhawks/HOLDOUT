@@ -232,7 +232,7 @@ describe("save migration v4 → v5", () => {
   it("drops legacy in-progress raids that predate the spatial map (v7+)", () => {
     // A v4 save's currentRaid has no map field. v7's migration step recognizes
     // that and drops the raid entirely rather than synthesizing a map.
-    const v4: SavedGame = {
+    const v4 = {
       schemaVersion: 4,
       timestamp: 0,
       state: {
@@ -257,7 +257,6 @@ describe("save migration v4 → v5", () => {
         currentRaid: {
           locationId: "warehouse",
           startedAt: 0,
-          // @ts-expect-error — exercising legacy shape on purpose
           runState: { heat: 0, health: 100, energy: 100, ammo: 30, depth: 7 },
           log: [],
           pack: [],
@@ -268,13 +267,13 @@ describe("save migration v4 → v5", () => {
         },
       },
     };
-    const migrated = migrateSave(v4);
+    const migrated = migrateSave(v4 as unknown as SavedGame);
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.state.currentRaid).toBeNull();
   });
 
   it("leaves null currentRaid alone", () => {
-    const v4: SavedGame = {
+    const v4 = {
       schemaVersion: 4,
       timestamp: 0,
       state: {
@@ -299,7 +298,7 @@ describe("save migration v4 → v5", () => {
         currentRaid: null,
       },
     };
-    const migrated = migrateSave(v4);
+    const migrated = migrateSave(v4 as unknown as SavedGame);
     expect(migrated.state.currentRaid).toBeNull();
   });
 });

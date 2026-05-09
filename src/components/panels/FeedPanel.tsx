@@ -48,7 +48,9 @@ export function FeedPanel() {
   const hasBleed =
     rs.flags.includes("bleeding_minor") || rs.flags.includes("bleeding_major");
   const hasMajor = rs.flags.includes("bleeding_major");
-  const hasBandage = raid.pack.some((p) => p.itemId === "bandage_pack");
+  const hasBandage =
+    raid.equipment.pockets.items.some((p) => p.itemId === "bandage_pack") ||
+    !!raid.equipment.bag?.items.some((p) => p.itemId === "bandage_pack");
   const extracting = rs.flags.includes("extracting");
 
   const locationName = LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId;
