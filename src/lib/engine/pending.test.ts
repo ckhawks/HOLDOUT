@@ -21,6 +21,7 @@ function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
     packGrid: { width: 4, height: 4 },
     pendingCapacity: 3,
     active: true,
+    pendingChoice: null,
     ...over,
   };
 }

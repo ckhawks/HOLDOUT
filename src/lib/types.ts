@@ -50,7 +50,14 @@ export interface RunState {
   flags: string[];
 }
 
-export type LogKind = "flavor" | "loot" | "damage" | "system" | "choice";
+export type LogKind =
+  | "flavor"
+  | "loot"
+  | "damage"
+  | "system"
+  | "choice"
+  | "choice_result"
+  | "combat_resolved";
 
 export interface LogEntry {
   id: string;
@@ -93,7 +100,40 @@ export type EventKind =
   | "found_rare"
   | "took_damage"
   | "locked_door"
-  | "heard_voices";
+  | "heard_voices"
+  | "target_down"
+  | "firefight_continues"
+  | "target_fled"
+  | "extract_clear"
+  | "extract_skirmish"
+  | "extract_corner_loot";
+
+export interface BranchEffects {
+  alertnessDelta?: number;
+  healthDelta?: number;
+  energyDelta?: number;
+  ammoDelta?: number;
+  depthAdvance?: number;
+  distanceAdvance?: number;
+  flagsAdded?: string[];
+  flagsRemoved?: string[];
+  rollLoot?: "common" | "rare";
+}
+
+export interface BranchOption {
+  id: string;
+  label: string;
+  description?: string;
+  effects?: BranchEffects;
+  isDefault?: boolean;
+}
+
+export interface PassiveEffects {
+  alertnessDelta?: number;
+  healthDelta?: number;
+  energyDelta?: number;
+  ammoDelta?: number;
+}
 
 export interface RaidEventDef {
   id: EventKind;
@@ -101,9 +141,24 @@ export interface RaidEventDef {
   kind: LogKind;
   templates: string[];
   preconditions?: (state: RunState) => boolean;
-  postconditions?: string[];
+  postconditions?: string[] | ((rand: () => number) => string[]);
+  removeFlags?: string[];
+  exclusive?: boolean;
+  passiveEffects?: PassiveEffects;
+  rollLoot?: "common" | "rare";
   depthAdvance?: number;
   distanceAdvance?: number;
+  branches?: BranchOption[];
+  branchTimerMs?: number;
+}
+
+export interface PendingChoice {
+  eventId: EventKind;
+  prompt: string;
+  options: BranchOption[];
+  defaultId: string;
+  startedAt: number;
+  timerMs: number;
 }
 
 export interface LocationUnlock {
@@ -133,6 +188,7 @@ export interface CurrentRaid {
   packGrid: { width: number; height: number };
   pendingCapacity: number;
   active: boolean;
+  pendingChoice: PendingChoice | null;
 }
 
 export interface Unlocks {

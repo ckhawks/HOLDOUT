@@ -1,10 +1,20 @@
-import type { CurrentRaid, LogEntry, PendingItem, RunState } from "@/lib/types";
+import type {
+  CurrentRaid,
+  LogEntry,
+  PendingItem,
+  PendingChoice,
+  RunState,
+} from "@/lib/types";
 import { rollEvent } from "@/lib/engine/events";
-import { ITEMS } from "@/lib/data/items";
+import { ITEMS, pickItemForLocation } from "@/lib/data/items";
+import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
 export const TICK_MIN_MS = 3000;
 export const TICK_MAX_MS = 8000;
 export const PENDING_EXPIRY_MS = 15000;
+export const BRANCH_TIMER_MS = 10000;
+export const BLEED_MINOR_DRAIN = 1;
+export const BLEED_MAJOR_DRAIN = 4;
 
 export function pushPending(raid: CurrentRaid, loot: PendingItem): CurrentRaid {
   const pending = [...raid.pending, loot];
@@ -74,7 +84,15 @@ export function startRaid(
     packGrid,
     pendingCapacity,
     active: true,
+    pendingChoice: null,
   };
+}
+
+export function bleedDrain(flags: ReadonlyArray<string>): number {
+  let d = 0;
+  if (flags.includes("bleeding_minor")) d += BLEED_MINOR_DRAIN;
+  if (flags.includes("bleeding_major")) d += BLEED_MAJOR_DRAIN;
+  return d;
 }
 
 export function makeLog(kind: LogEntry["kind"], text: string, itemId?: string): LogEntry {
@@ -97,9 +115,12 @@ export interface TickResult {
   alertnessDelta: number;
   healthDelta: number;
   energyDelta: number;
+  ammoDelta: number;
   depthAdvance: number;
   distanceAdvance: number;
   flagsAdded: string[];
+  flagsRemoved: string[];
+  pendingChoice: PendingChoice | null;
 }
 
 export const ENERGY_BASE_DRAIN = 3;
@@ -110,30 +131,49 @@ export function tickRaid(
   state?: RunState,
 ): TickResult {
   const ev = rollEvent(rand, locationId, state);
-  let alertnessDelta = 0;
-  let healthDelta = 0;
-  let energyDelta = -ENERGY_BASE_DRAIN;
-  let loot: PendingItem | undefined;
+  const flags = state?.flags ?? [];
+  const bleed = bleedDrain(flags);
 
-  if (ev.kind === "looted_container" || ev.kind === "found_rare") {
-    if (ev.itemId) {
-      loot = {
-        uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        itemId: ev.itemId,
-        arrivedAt: Date.now(),
-      };
-    }
+  // Branching event: emit a prompt log + pendingChoice. No stat deltas yet —
+  // those are applied at resolve time. Tick advance is also deferred so depth
+  // doesn't move until the player decides.
+  if (ev.branches && ev.branches.length > 0) {
+    const def = ev.branches.find((b) => b.isDefault) ?? ev.branches[0];
+    return {
+      log: makeLog("choice", ev.text, ev.itemId),
+      alertnessDelta: 0,
+      healthDelta: -bleed,
+      energyDelta: 0,
+      ammoDelta: 0,
+      depthAdvance: 0,
+      distanceAdvance: 0,
+      flagsAdded: [],
+      flagsRemoved: [],
+      pendingChoice: {
+        eventId: ev.kind,
+        prompt: ev.text,
+        options: ev.branches,
+        defaultId: def.id,
+        startedAt: Date.now(),
+        timerMs: ev.branchTimerMs ?? BRANCH_TIMER_MS,
+      },
+    };
   }
-  if (ev.kind === "spotted_patrol") {
-    alertnessDelta = 8;
-    energyDelta -= 2;
+
+  const fx = ev.passiveEffects ?? {};
+  const alertnessDelta = fx.alertnessDelta ?? 0;
+  const healthDelta = (fx.healthDelta ?? 0) - bleed;
+  const energyDelta = -ENERGY_BASE_DRAIN + (fx.energyDelta ?? 0);
+  const ammoDelta = fx.ammoDelta ?? 0;
+
+  let loot: PendingItem | undefined;
+  if (ev.itemId) {
+    loot = {
+      uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      itemId: ev.itemId,
+      arrivedAt: Date.now(),
+    };
   }
-  if (ev.kind === "took_damage") {
-    healthDelta = -10;
-    energyDelta -= 4;
-  }
-  if (ev.kind === "heard_voices") alertnessDelta = 3;
-  if (ev.kind === "locked_door") energyDelta -= 1;
 
   return {
     log: makeLog(ev.logKind, ev.text, ev.itemId),
@@ -141,8 +181,119 @@ export function tickRaid(
     alertnessDelta,
     healthDelta,
     energyDelta,
+    ammoDelta,
     depthAdvance: ev.depthAdvance,
     distanceAdvance: ev.distanceAdvance,
     flagsAdded: ev.postconditions ?? [],
+    flagsRemoved: ev.removeFlags ?? [],
+    pendingChoice: null,
   };
+}
+
+export interface ResolveResult {
+  raid: CurrentRaid;
+  loot?: PendingItem;
+}
+
+export function resolveBranch(
+  raid: CurrentRaid,
+  choiceId: string,
+  rand: () => number,
+): ResolveResult {
+  if (!raid.pendingChoice) return { raid };
+  const choice =
+    raid.pendingChoice.options.find((o) => o.id === choiceId) ??
+    raid.pendingChoice.options.find((o) => o.id === raid.pendingChoice!.defaultId) ??
+    raid.pendingChoice.options[0];
+  const fx = choice.effects ?? {};
+
+  const rs = raid.runState;
+  const nextFlags = applyFlags(rs.flags, fx.flagsAdded, fx.flagsRemoved);
+
+  const nextRunState: RunState = {
+    ...rs,
+    alertness: clamp(rs.alertness + (fx.alertnessDelta ?? 0)),
+    health: clamp(rs.health + (fx.healthDelta ?? 0)),
+    energy: clamp(rs.energy + (fx.energyDelta ?? 0)),
+    ammo: Math.max(0, rs.ammo + (fx.ammoDelta ?? 0)),
+    depth: rs.depth + (fx.depthAdvance ?? 1),
+    distanceFromExtract: Math.max(0, rs.distanceFromExtract + (fx.distanceAdvance ?? 1)),
+    flags: nextFlags,
+  };
+
+  let loot: PendingItem | undefined;
+  if (fx.rollLoot) {
+    const loc = LOCATIONS_BY_ID[raid.locationId];
+    const isRare = fx.rollLoot === "rare";
+    const itemId = loc
+      ? pickItemForLocation(rand, loc, isRare, nextRunState.depth)
+      : undefined;
+    if (itemId) {
+      loot = {
+        uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        itemId,
+        arrivedAt: Date.now(),
+      };
+    }
+  }
+
+  const choiceLog = makeLog("choice_result", choice.label, undefined);
+  let next: CurrentRaid = {
+    ...raid,
+    runState: nextRunState,
+    pendingChoice: null,
+    log: [...raid.log, choiceLog],
+  };
+  if (loot) {
+    next = pushPending(next, loot);
+    const item = ITEMS[loot.itemId];
+    if (item) {
+      next = {
+        ...next,
+        log: [
+          ...next.log,
+          makeLog("loot", `Picked up ⟦${item.name}⟧.`, loot.itemId),
+        ],
+      };
+    }
+  }
+  return { raid: next, loot };
+}
+
+export function applyBandage(raid: CurrentRaid): CurrentRaid {
+  const idx = raid.pack.findIndex((p) => p.itemId === "bandage_pack");
+  if (idx === -1) return raid;
+  const hadMinor = raid.runState.flags.includes("bleeding_minor");
+  const hadMajor = raid.runState.flags.includes("bleeding_major");
+  if (!hadMinor && !hadMajor) return raid;
+  const flags = raid.runState.flags.filter(
+    (f) => f !== "bleeding_minor" && f !== "bleeding_major",
+  );
+  return {
+    ...raid,
+    pack: [...raid.pack.slice(0, idx), ...raid.pack.slice(idx + 1)],
+    runState: { ...raid.runState, flags },
+    log: [
+      ...raid.log,
+      makeLog(
+        "system",
+        hadMajor ? "Bandage applied — bleed under control." : "Bandage applied.",
+      ),
+    ],
+  };
+}
+
+function clamp(n: number): number {
+  return Math.max(0, Math.min(100, n));
+}
+
+function applyFlags(
+  current: ReadonlyArray<string>,
+  add?: ReadonlyArray<string>,
+  remove?: ReadonlyArray<string>,
+): string[] {
+  const set = new Set(current);
+  if (add) for (const f of add) set.add(f);
+  if (remove) for (const f of remove) set.delete(f);
+  return Array.from(set);
 }

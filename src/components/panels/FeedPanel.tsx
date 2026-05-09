@@ -4,15 +4,17 @@ import { useEffect, useRef } from "react";
 import { useGame } from "@/store/game";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
-import { LogOut } from "lucide-react";
+import { Bandage, CornerDownRight, Crosshair, Droplet, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
 import { PackTetris } from "./PackTetris";
+import { BranchModal } from "./BranchModal";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
 export function FeedPanel() {
   const raid = useGame((s) => s.currentRaid);
   const recall = useGame((s) => s.recall);
+  const useBandage = useGame((s) => s.useBandage);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,33 +35,110 @@ export function FeedPanel() {
   }
 
   const rs = raid.runState;
+  const hasBleed =
+    rs.flags.includes("bleeding_minor") || rs.flags.includes("bleeding_major");
+  const hasMajor = rs.flags.includes("bleeding_major");
+  const hasBandage = raid.pack.some((p) => p.itemId === "bandage_pack");
+  const extracting = rs.flags.includes("extracting");
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <section className="relative flex min-h-0 flex-1 flex-col">
       <PanelHeader
         title="Comms Feed"
-        subtitle={`Channel open · ${LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId} · depth ${rs.depth}`}
+        subtitle={
+          extracting
+            ? `Extracting · ${rs.distanceFromExtract} events out`
+            : `Channel open · ${LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId} · depth ${rs.depth}`
+        }
         right={
           <Button
             variant="destructive"
             onClick={recall}
+            disabled={extracting}
             className="rounded-sm"
           >
-            Recall
+            {extracting ? "Extracting…" : "Recall"}
             <LogOut className="size-4" />
           </Button>
         }
       />
-      <div className="grid grid-cols-3 gap-3 border-b border-border/60 px-6 py-3 font-mono text-[11px] uppercase tracking-widest">
+      <div className="grid grid-cols-4 gap-3 border-b border-border/60 px-6 py-3 font-mono text-[11px] uppercase tracking-widest">
         <Stat label="Health" value={rs.health} tone={rs.health < 40 ? "warn" : "ok"} />
         <Stat label="Energy" value={rs.energy} tone={rs.energy < 30 ? "warn" : "ok"} />
         <Stat label="Alertness" value={rs.alertness} tone={rs.alertness > 60 ? "warn" : "ok"} />
+        <Stat label="Distance" value={rs.distanceFromExtract} />
       </div>
+      {hasBleed ? (
+        <div className="flex items-center gap-3 border-b border-border/60 bg-red-500/5 px-6 py-2">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest",
+              hasMajor ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-300",
+            )}
+          >
+            <Droplet className="size-3" />
+            {hasMajor ? "Major bleed" : "Minor bleed"}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            HP draining each tick.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!hasBandage}
+            onClick={useBandage}
+            className="ml-auto"
+          >
+            Bandage
+            <Bandage className="size-3.5" />
+          </Button>
+        </div>
+      ) : null}
       <div className="flex min-h-0 flex-1">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-4 text-sm">
         {raid.log.map((entry, idx) => {
           const distFromEnd = raid.log.length - 1 - idx;
           const opacity = Math.max(0.25, 1 - distFromEnd * 0.05);
+          if (entry.kind === "choice_result") {
+            return (
+              <div
+                key={entry.id}
+                className="flex items-center gap-2 py-0.5 pl-[7.25rem] text-[13px] text-amber-300/90 transition-opacity"
+                style={{ opacity }}
+              >
+                <CornerDownRight className="size-3.5 shrink-0 opacity-70" />
+                <span className="italic">{entry.text}</span>
+              </div>
+            );
+          }
+          if (entry.kind === "combat_resolved") {
+            return (
+              <div
+                key={entry.id}
+                className="my-1 flex items-center gap-3 border-l-2 border-amber-400/70 bg-amber-500/5 py-2 pl-3 pr-3 transition-opacity"
+                style={{ opacity }}
+              >
+                <Crosshair className="size-4 shrink-0 text-amber-300" />
+                <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-amber-300">
+                  Engagement
+                </span>
+                <span className="text-foreground leading-relaxed font-medium">
+                  {splitItemText(entry.text).parts.map((p, i) =>
+                    p.isItem ? (
+                      <span
+                        key={i}
+                        className={cn("font-semibold", tierColorFor(entry.itemId))}
+                      >
+                        {p.text}
+                      </span>
+                    ) : (
+                      <span key={i}>{p.text}</span>
+                    ),
+                  )}
+                </span>
+              </div>
+            );
+          }
           return (
           <div
             key={entry.id}
@@ -122,6 +201,7 @@ export function FeedPanel() {
       </div>
       <PackTetris />
       </div>
+      <BranchModal />
     </section>
   );
 }

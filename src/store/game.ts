@@ -17,8 +17,10 @@ import {
   PENDING_EXPIRY_MS,
   prunePending,
   pushPending,
+  resolveBranch,
   startRaid,
   tickRaid,
+  applyBandage,
   makeLog,
   makeRng,
 } from "@/lib/engine/raid";
@@ -63,6 +65,8 @@ interface GameState {
   setPanel: (p: PanelId) => void;
   beginRaid: (locationId: string) => void;
   doTick: () => void;
+  resolveBranch: (choiceId: string) => void;
+  useBandage: () => void;
   recall: () => void;
   endRaid: (extracted: boolean) => void;
   placeFromPending: (uid: string, x: number, y: number, rotation: Rotation) => boolean;
@@ -141,19 +145,26 @@ export const useGame = create<GameState>((set, get) => ({
   doTick: () => {
     const { currentRaid, rngSeed } = get();
     if (!currentRaid || !currentRaid.active) return;
+    if (currentRaid.pendingChoice) return; // tick paused while awaiting decision
     const rand = makeRng(rngSeed + currentRaid.log.length);
     const t = tickRaid(rand, currentRaid.locationId, currentRaid.runState);
-    const flags = t.flagsAdded.length
-      ? Array.from(new Set([...currentRaid.runState.flags, ...t.flagsAdded]))
-      : currentRaid.runState.flags;
+    let flags: string[] = currentRaid.runState.flags;
+    if (t.flagsAdded.length || t.flagsRemoved.length) {
+      const set = new Set(flags);
+      for (const f of t.flagsAdded) set.add(f);
+      for (const f of t.flagsRemoved) set.delete(f);
+      flags = Array.from(set);
+    }
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, t.log],
+      pendingChoice: t.pendingChoice,
       runState: {
         ...currentRaid.runState,
         alertness: Math.max(0, Math.min(100, currentRaid.runState.alertness + t.alertnessDelta)),
         health: Math.max(0, Math.min(100, currentRaid.runState.health + t.healthDelta)),
         energy: Math.max(0, Math.min(100, currentRaid.runState.energy + t.energyDelta)),
+        ammo: Math.max(0, currentRaid.runState.ammo + t.ammoDelta),
         depth: currentRaid.runState.depth + t.depthAdvance,
         distanceFromExtract: Math.max(
           0,
@@ -165,17 +176,90 @@ export const useGame = create<GameState>((set, get) => ({
     if (t.loot) {
       raid = pushPending(raid, t.loot);
     }
+
+    // Death check: HP at 0 ends the raid as a loss — pack contents lost.
+    if (raid.runState.health <= 0) {
+      raid = {
+        ...raid,
+        log: [
+          ...raid.log,
+          makeLog("system", "Vital signs flat. Operative is down."),
+        ],
+        active: false,
+      };
+      set({ currentRaid: raid });
+      setTimeout(() => get().endRaid(false), 800);
+      return;
+    }
+
+    // Extract complete: distance reached 0 while extracting flag is set.
+    const extracting = raid.runState.flags.includes("extracting");
+    if (extracting && raid.runState.distanceFromExtract <= 0) {
+      raid = {
+        ...raid,
+        log: [
+          ...raid.log,
+          makeLog("system", "At the extract point. Pulling out."),
+        ],
+        active: false,
+      };
+      set({ currentRaid: raid });
+      setTimeout(() => get().endRaid(true), 600);
+      return;
+    }
+
     set({ currentRaid: raid });
   },
 
-  recall: () => {
+  resolveBranch: (choiceId) => {
+    const { currentRaid, rngSeed } = get();
+    if (!currentRaid || !currentRaid.pendingChoice) return;
+    const rand = makeRng(rngSeed + currentRaid.log.length + 1);
+    let { raid } = resolveBranch(currentRaid, choiceId, rand);
+    if (raid.runState.health <= 0) {
+      raid = {
+        ...raid,
+        log: [...raid.log, makeLog("system", "Vital signs flat. Operative is down.")],
+        active: false,
+      };
+      set({ currentRaid: raid });
+      setTimeout(() => get().endRaid(false), 800);
+      return;
+    }
+    set({ currentRaid: raid });
+  },
+
+  useBandage: () => {
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
-    const log: LogEntry = makeLog("system", "RECALL acknowledged. Operative moving to extract.");
+    const next = applyBandage(currentRaid);
+    if (next === currentRaid) return;
+    set({ currentRaid: next });
+  },
+
+  recall: () => {
+    const { currentRaid, operative } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    if (currentRaid.runState.flags.includes("extracting")) return;
+    const log: LogEntry = makeLog(
+      "system",
+      `RECALL acknowledged. Backtracking to extract — ${currentRaid.runState.distanceFromExtract} events out.`,
+    );
+    const flags = Array.from(new Set([...currentRaid.runState.flags, "extracting"]));
     set({
-      currentRaid: { ...currentRaid, log: [...currentRaid.log, log] },
+      currentRaid: {
+        ...currentRaid,
+        log: [...currentRaid.log, log],
+        runState: { ...currentRaid.runState, flags },
+        // pendingChoice is dropped on recall — branching prompts shouldn't block extract.
+        pendingChoice: null,
+      },
+      operative: { ...operative, state: "extracting" },
     });
-    setTimeout(() => get().endRaid(true), 800);
+    // If already at extract (distance 0), finish immediately.
+    if (currentRaid.runState.distanceFromExtract <= 0) {
+      setTimeout(() => get().endRaid(true), 600);
+    }
   },
 
   endRaid: (extracted) => {
@@ -185,7 +269,6 @@ export const useGame = create<GameState>((set, get) => ({
     let nextStash = stash;
     let nextUnlocks = unlocks;
     if (extracted) {
-      // Only items placed in the pack make it home. Pending is left behind.
       const recovered: StashItem[] = currentRaid.pack.map((p) => ({
         uid: p.uid,
         itemId: p.itemId,
@@ -199,11 +282,14 @@ export const useGame = create<GameState>((set, get) => ({
         nextUnlocks = { ...nextUnlocks, biolab: true };
       }
     }
+    // Death loses pack contents, returns operative injured.
     set({
       currentRaid: null,
       stash: nextStash,
       unlocks: nextUnlocks,
-      operative: { ...operative, state: "idle" },
+      operative: extracted
+        ? { ...operative, state: "idle", injuryDebuff: false }
+        : { ...operative, state: "idle", injuryDebuff: true },
     });
   },
 

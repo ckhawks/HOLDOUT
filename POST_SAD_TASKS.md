@@ -40,6 +40,7 @@ Locked design calls from chat:
 - item value should fluctuate maybe
 - stash should show how long you've had an item for maybe
 - hacking minigame? keypads?
+- need warning when pack has more items than you have space for in the stash (this might be less of a problem if we don't auto-empty kit into stash)
 
 - hideout: foundry - melt metals down and forge stuff out of them. have to construct the foundry first
 

@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export interface PersistedState {
   cash: number;
@@ -79,6 +79,15 @@ export function migrateSave(saved: SavedGame): SavedGame {
       if (typeof rs.distanceFromExtract !== "number") {
         rs.distanceFromExtract = rs.depth ?? 0;
       }
+    }
+  }
+  // v6: branching events — CurrentRaid gains pendingChoice.
+  // Don't try to preserve a mid-raid pending decision across sessions; it
+  // would reference event defs that may have changed. Clear it; the next
+  // tick will roll a fresh event.
+  if (saved.schemaVersion < 6) {
+    if (s.currentRaid && !("pendingChoice" in s.currentRaid)) {
+      (s.currentRaid as { pendingChoice: null }).pendingChoice = null;
     }
   }
   return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };

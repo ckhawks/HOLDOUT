@@ -13,13 +13,17 @@ export function pickEvent(
     ? events.filter((e) => !e.preconditions || e.preconditions(state))
     : events;
   const eligible = pool.length > 0 ? pool : events;
-  const total = eligible.reduce((s, e) => s + e.weight, 0);
+  // Exclusive events (e.g. combat resolution while combat_engaged is set)
+  // shadow everything else when any are eligible.
+  const exclusive = eligible.filter((e) => e.exclusive);
+  const final = exclusive.length > 0 ? exclusive : eligible;
+  const total = final.reduce((s, e) => s + e.weight, 0);
   let r = rand() * total;
-  for (const e of eligible) {
+  for (const e of final) {
     r -= e.weight;
     if (r <= 0) return e;
   }
-  return eligible[0];
+  return final[0];
 }
 
 export interface RolledEvent {
@@ -28,8 +32,12 @@ export interface RolledEvent {
   itemId?: string;
   logKind: LogEntry["kind"];
   postconditions?: string[];
+  removeFlags?: string[];
+  passiveEffects?: RaidEventDef["passiveEffects"];
   depthAdvance: number;
   distanceAdvance: number;
+  branches?: RaidEventDef["branches"];
+  branchTimerMs?: number;
 }
 
 export function rollEvent(
@@ -43,31 +51,54 @@ export function rollEvent(
 
   const depth = state?.depth ?? 0;
   let itemId: string | undefined;
-  if (def.id === "looted_container") {
-    itemId = location ? pickItemForLocation(rand, location, false, depth) : pickCommonItemId(rand, depth);
-  } else if (def.id === "found_rare") {
-    itemId = location ? pickItemForLocation(rand, location, true, depth) : pickRareItemId(rand);
+  if (def.rollLoot) {
+    const isRare = def.rollLoot === "rare";
+    itemId = location
+      ? pickItemForLocation(rand, location, isRare, depth)
+      : isRare
+        ? pickRareItemId(rand)
+        : pickCommonItemId(rand, depth);
   }
 
-  const text = tpl
+  const raw = tpl
     .replace(/\{location\}/g, pickVocab("locations", rand))
     .replace(/\{brand\}/g, pickVocab("brands", rand))
     .replace(/\{adj\}/g, pickVocab("item_adjectives", rand))
     .replace(/\{npc\}/g, pickVocab("npc_names", rand))
     .replace(/\{condition\}/g, pickVocab("conditions", rand))
     .replace(/\{item\}/g, itemId ? `⟦${ITEMS[itemId].name}⟧` : "something");
+  const text = capitalizeSentences(raw);
+
+  const postconditions =
+    typeof def.postconditions === "function"
+      ? def.postconditions(rand)
+      : def.postconditions;
 
   return {
     kind: def.id,
     text,
     itemId,
     logKind: def.kind,
-    postconditions: def.postconditions,
+    postconditions,
+    removeFlags: def.removeFlags,
+    passiveEffects: def.passiveEffects,
     depthAdvance: def.depthAdvance ?? 1,
     distanceAdvance: def.distanceAdvance ?? 1,
+    branches: def.branches,
+    branchTimerMs: def.branchTimerMs,
   };
 }
 
 export function getEventDef(id: EventKind): RaidEventDef {
   return EVENTS_BY_ID[id];
+}
+
+// Capitalize the first letter of the string AND the first letter after every
+// sentence terminator (. ! ?) followed by whitespace. Items wrapped in ⟦…⟧ are
+// already correct-case (item names) so we don't touch the marker contents.
+export function capitalizeSentences(s: string): string {
+  return s.replace(/(^|[.!?]\s+)([a-z⟦])/g, (_m, lead, ch) => {
+    if (ch === "⟦") return lead + ch;
+    return lead + ch.toUpperCase();
+  });
 }

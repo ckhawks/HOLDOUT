@@ -11,6 +11,7 @@ export function useRaidLoop() {
 
   useEffect(() => {
     if (!raid || !raid.active) return;
+    if (raid.pendingChoice) return; // paused awaiting player decision
     const delay = TICK_MIN_MS + Math.floor(Math.random() * (TICK_MAX_MS - TICK_MIN_MS));
     const t = setTimeout(() => {
       doTick();

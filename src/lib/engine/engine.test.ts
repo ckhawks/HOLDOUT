@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { makeRng, tickRaid } from "./raid";
-import { pickEvent, rollEvent } from "./events";
+import { capitalizeSentences, pickEvent, rollEvent } from "./events";
 import { migrateSave, SCHEMA_VERSION, type SavedGame } from "./save";
 import { pickCommonItemId, pickItemForLocation } from "@/lib/data/items";
 import { ITEMS } from "@/lib/data/items";
@@ -108,24 +108,52 @@ describe("pickEvent precondition filter", () => {
 
 describe("tickRaid postconditions and advances", () => {
   it("returns postcondition flags when a postcondition'd event fires", () => {
-    // Force took_damage by seeding until we get one.
+    // took_damage rolls minor (~70%) or major (~30%) bleed.
     let saw = false;
     for (let seed = 1; seed < 200 && !saw; seed++) {
       const rand = makeRng(seed);
       const t = tickRaid(rand, undefined, freshRunState());
       if (t.log.kind === "damage") {
-        expect(t.flagsAdded).toContain("bleeding");
+        const f = t.flagsAdded;
+        expect(f.length).toBe(1);
+        expect(["bleeding_minor", "bleeding_major"]).toContain(f[0]);
         saw = true;
       }
     }
     expect(saw).toBe(true);
   });
 
-  it("defaults depthAdvance and distanceAdvance to 1", () => {
-    const rand = makeRng(5);
-    const t = tickRaid(rand, undefined, freshRunState());
-    expect(t.depthAdvance).toBe(1);
-    expect(t.distanceAdvance).toBe(1);
+  it("non-branching event defaults depthAdvance and distanceAdvance to 1", () => {
+    // looted_container, found_rare, took_damage are non-branching. Seed-search
+    // for one rather than relying on a specific seed.
+    let saw = false;
+    for (let seed = 1; seed < 200 && !saw; seed++) {
+      const rand = makeRng(seed);
+      const t = tickRaid(rand, undefined, freshRunState({ depth: 5 }));
+      if (!t.pendingChoice) {
+        expect(t.depthAdvance).toBe(1);
+        expect(t.distanceAdvance).toBe(1);
+        saw = true;
+      }
+    }
+    expect(saw).toBe(true);
+  });
+
+  it("branching event defers advances and emits a pendingChoice", () => {
+    let saw = false;
+    for (let seed = 1; seed < 200 && !saw; seed++) {
+      const rand = makeRng(seed);
+      const t = tickRaid(rand, undefined, freshRunState({ depth: 5 }));
+      if (t.pendingChoice) {
+        expect(t.depthAdvance).toBe(0);
+        expect(t.distanceAdvance).toBe(0);
+        expect(t.alertnessDelta).toBe(0);
+        expect(t.energyDelta).toBe(0);
+        expect(t.pendingChoice.options.length).toBeGreaterThanOrEqual(2);
+        saw = true;
+      }
+    }
+    expect(saw).toBe(true);
   });
 });
 
@@ -163,7 +191,43 @@ describe("depth-biased loot tier", () => {
   });
 });
 
+describe("capitalizeSentences", () => {
+  it("capitalizes the first letter of the string", () => {
+    expect(capitalizeSentences("dust hangs in the air")).toBe("Dust hangs in the air");
+  });
+  it("capitalizes after periods", () => {
+    expect(capitalizeSentences("two corridors over. dust hangs in the air.")).toBe(
+      "Two corridors over. Dust hangs in the air.",
+    );
+  });
+  it("capitalizes after question and exclamation marks", () => {
+    expect(capitalizeSentences("ready? go! now")).toBe("Ready? Go! Now");
+  });
+  it("does not touch already-capitalized text", () => {
+    expect(capitalizeSentences("Two corridors over. Dust hangs.")).toBe(
+      "Two corridors over. Dust hangs.",
+    );
+  });
+  it("does not break ⟦item⟧ markers when they start a sentence", () => {
+    expect(capitalizeSentences("⟦Scrap Metal⟧ on a shelf.")).toBe(
+      "⟦Scrap Metal⟧ on a shelf.",
+    );
+  });
+});
+
 describe("rollEvent template substitution", () => {
+  it("produces capitalized first letters even when templates start with vocab", () => {
+    const rand = makeRng(42);
+    for (let i = 0; i < 100; i++) {
+      const ev = rollEvent(rand, "warehouse", freshRunState({ depth: 4 }));
+      const first = ev.text.charAt(0);
+      // First char must be uppercase letter, ⟦ marker, or a punctuation start.
+      expect(first === "⟦" || first === first.toUpperCase()).toBe(true);
+    }
+  });
+});
+
+describe("rollEvent template substitution (unique-token check)", () => {
   it("expands {item} into ⟦Name⟧ markers for loot events", () => {
     // Force a loot event with a stub.
     const lootStub: RaidEventDef = {

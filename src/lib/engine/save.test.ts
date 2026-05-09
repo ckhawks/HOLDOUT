@@ -89,6 +89,7 @@ describe("save round-trip", () => {
       packGrid: { width: 4, height: 4 },
       pendingCapacity: 4,
       active: true,
+      pendingChoice: null,
     };
     saveGame(s);
     const loaded = loadGame();
