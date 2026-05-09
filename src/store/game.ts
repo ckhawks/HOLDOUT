@@ -6,12 +6,14 @@ import type {
   BagState,
   CurrentRaid,
   Equipment,
+  EquipSlot,
   Hideout,
   LogEntry,
   Operative,
   PackPlacement,
   Rotation,
   ShopState,
+  SlotItem,
   StashItem,
   Unlocks,
   Upgrades,
@@ -29,7 +31,6 @@ import { ITEMS } from "@/lib/data/items";
 import { refreshShop } from "@/lib/engine/shop";
 import {
   pocketsDimensions,
-  pocketsUpgradeCost,
   stashCapacity,
   stashUpgradeCost,
 } from "@/lib/engine/upgrades";
@@ -102,13 +103,17 @@ interface GameState {
   moveKitItem: (uid: string, slot: KitSlot, x: number, y: number, rotation: Rotation) => boolean;
   kitFromStash: (uid: string, slot: KitSlot, x: number, y: number, rotation: Rotation) => boolean;
   stashFromKit: (uid: string) => boolean;
-  equipBag: (uid: string) => boolean;
-  unequipBag: () => boolean;
+  // Equip/unequip the four slots (bag/weapon/armor/helmet). Source/dest
+  // is stash when idle and tile floor when in raid. The drag UI picks the
+  // right action based on context.
+  equipFromStash: (uid: string) => boolean;
+  unequipToStash: (slot: EquipSlot) => boolean;
+  equipFromFloor: (uid: string) => boolean;
+  unequipToFloor: (slot: EquipSlot) => boolean;
   emptyKitToStash: () => void;
   sellItem: (uid: string) => void;
   sellAllJunk: () => void;
   buyOffer: (offerId: string) => boolean;
-  buyPocketsUpgrade: () => void;
   buyStashUpgrade: () => void;
   resetGame: () => void;
   hydrate: () => void;
@@ -720,41 +725,74 @@ export const useGame = create<GameState>((set, get) => ({
     return true;
   },
 
-  equipBag: (uid) => {
+  equipFromStash: (uid) => {
     const { currentRaid, operative, stash } = get();
     if (currentRaid) return false;
-    if (operative.equipment.bag) return false; // unequip first
     const idx = stash.findIndex((s) => s.uid === uid);
     if (idx === -1) return false;
-    const item = stash[idx];
-    const def = ITEMS[item.itemId];
-    if (!def || def.slot !== "bag" || !def.bagGrid) return false;
-    const nextStash = [...stash.slice(0, idx), ...stash.slice(idx + 1)];
-    const bag: BagState = {
-      slot: { uid: item.uid, itemId: item.itemId, flavor: item.flavor },
-      grid: { width: def.bagGrid.width, height: def.bagGrid.height },
-      items: [],
-    };
+    const equipped = equipItem(operative.equipment, stash[idx]);
+    if (!equipped) return false;
     set({
-      stash: nextStash,
-      operative: { ...operative, equipment: { ...operative.equipment, bag } },
+      stash: [...stash.slice(0, idx), ...stash.slice(idx + 1)],
+      operative: { ...operative, equipment: equipped },
     });
     return true;
   },
 
-  unequipBag: () => {
+  unequipToStash: (slot) => {
     const { currentRaid, operative, stash, hideout } = get();
     if (currentRaid) return false;
-    const bag = operative.equipment.bag;
-    if (!bag) return false;
-    if (bag.items.length > 0) return false; // empty contents first
+    const result = unequipItem(operative.equipment, slot);
+    if (!result) return false;
     const cap = hideout.modules.stash.capacity ?? Infinity;
     if (stash.length >= cap) return false;
-    const stashItem: StashItem = { uid: bag.slot.uid, itemId: bag.slot.itemId, flavor: bag.slot.flavor };
+    const stashItem: StashItem = {
+      uid: result.removed.uid,
+      itemId: result.removed.itemId,
+      flavor: result.removed.flavor,
+    };
     set({
       stash: [...stash, stashItem],
-      operative: { ...operative, equipment: { ...operative.equipment, bag: null } },
+      operative: { ...operative, equipment: result.next },
     });
+    return true;
+  },
+
+  equipFromFloor: (uid) => {
+    const { currentRaid } = get();
+    if (!currentRaid) return false;
+    const tile = tileAt(currentRaid.map, currentRaid.operativePos.x, currentRaid.operativePos.y);
+    const item = tile?.contents.find((c) => c.uid === uid);
+    if (!item) return false;
+    const equipped = equipItem(currentRaid.equipment, item);
+    if (!equipped) return false;
+    const { map: nextMap } = removeFromTileContents(
+      currentRaid.map,
+      currentRaid.operativePos.x,
+      currentRaid.operativePos.y,
+      uid,
+    );
+    set({ currentRaid: { ...currentRaid, map: nextMap, equipment: equipped } });
+    return true;
+  },
+
+  unequipToFloor: (slot) => {
+    const { currentRaid } = get();
+    if (!currentRaid) return false;
+    const result = unequipItem(currentRaid.equipment, slot);
+    if (!result) return false;
+    const dropped: StashItem = {
+      uid: result.removed.uid,
+      itemId: result.removed.itemId,
+      flavor: result.removed.flavor,
+    };
+    const nextMap = addToTileContents(
+      currentRaid.map,
+      currentRaid.operativePos.x,
+      currentRaid.operativePos.y,
+      dropped,
+    );
+    set({ currentRaid: { ...currentRaid, equipment: result.next, map: nextMap } });
     return true;
   },
 
@@ -835,35 +873,6 @@ export const useGame = create<GameState>((set, get) => ({
       shop: { ...shop, offers: nextOffers },
     });
     return true;
-  },
-
-  buyPocketsUpgrade: () => {
-    const { cash, upgrades, hideout, operative, currentRaid } = get();
-    if (currentRaid) return; // can't upgrade mid-raid
-    const cost = pocketsUpgradeCost(upgrades);
-    if (cash < cost) return;
-    const next: Upgrades = { ...upgrades, pocketsLevel: upgrades.pocketsLevel + 1 };
-    const dim = pocketsDimensions(next);
-    // Grow operative's actual pockets grid too — items keep their placements.
-    const nextOperative: Operative = {
-      ...operative,
-      equipment: {
-        ...operative.equipment,
-        pockets: { grid: dim, items: operative.equipment.pockets.items },
-      },
-    };
-    set({
-      cash: cash - cost,
-      upgrades: next,
-      operative: nextOperative,
-      hideout: {
-        ...hideout,
-        modules: {
-          ...hideout.modules,
-          pockets: { ...hideout.modules.pockets, capacity: dim.width * dim.height },
-        },
-      },
-    });
   },
 
   buyStashUpgrade: () => {
@@ -1009,6 +1018,49 @@ function moveBetweenSlots(
     ...next,
     bag: { ...(next.bag as BagState), items: [...(next.bag as BagState).items, placement] },
   };
+}
+
+// Equip an item into its declared slot. Refuses if the slot is occupied
+// (caller must unequip first) or the item isn't equippable. For bags, the
+// bag arrives empty — its `bagGrid` becomes the new grid; items inside it
+// before equip are not preserved (bags only exist as inert items pre-equip).
+function equipItem(
+  eq: Equipment,
+  src: { uid: string; itemId: string; flavor?: string },
+): Equipment | null {
+  const def = ITEMS[src.itemId];
+  if (!def?.slot) return null;
+  if (def.slot === "bag") {
+    if (eq.bag) return null; // refuse swap; must unequip first
+    if (!def.bagGrid) return null;
+    const bag: BagState = {
+      slot: { uid: src.uid, itemId: src.itemId, flavor: src.flavor },
+      grid: { width: def.bagGrid.width, height: def.bagGrid.height },
+      items: [],
+    };
+    return { ...eq, bag };
+  }
+  // weapon / armor / helmet — single-cell slots, reserved (no stat effects yet).
+  if (eq[def.slot]) return null;
+  const slotItem: SlotItem = { uid: src.uid, itemId: src.itemId, flavor: src.flavor };
+  return { ...eq, [def.slot]: slotItem };
+}
+
+// Unequip a slot to a SlotItem-shaped record the caller can route to
+// stash or floor. Refuses if slot is empty, or (for bag) the bag has
+// contents — bag must be emptied first.
+function unequipItem(
+  eq: Equipment,
+  slot: EquipSlot,
+): { next: Equipment; removed: SlotItem } | null {
+  if (slot === "bag") {
+    if (!eq.bag) return null;
+    if (eq.bag.items.length > 0) return null;
+    return { next: { ...eq, bag: null }, removed: eq.bag.slot };
+  }
+  const cur = eq[slot];
+  if (!cur) return null;
+  return { next: { ...eq, [slot]: null }, removed: cur };
 }
 
 function removeFromKit(

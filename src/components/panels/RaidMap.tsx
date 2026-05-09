@@ -116,8 +116,10 @@ export function RaidMap() {
   // identity — no transposition.
   return (
     <aside className="flex shrink-0 flex-col border-t border-border/60">
-      <div className="border-b border-border/60 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-        Map · entry → deep
+      <div className="flex items-center gap-1 border-b border-border/60 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+        Map · entry
+        <ArrowRight className="size-3" />
+        deep
       </div>
       <div className="flex flex-1 items-center justify-center px-4 py-3">
         <div

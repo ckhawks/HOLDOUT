@@ -1,15 +1,20 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/store/game";
 import { ITEMS } from "@/lib/data/items";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
 import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { Button } from "@/components/ui/button";
-import { Backpack, Coins, PackageOpen, Shirt } from "lucide-react";
+import { ArrowLeft, ArrowRight, Backpack, Coins, PackageOpen, Shirt } from "lucide-react";
 import { buildOccupancy, canPlace, shapeBounds, shapeFor } from "@/lib/engine/shapes";
-import type { BagState, Equipment, PocketsState, Rotation, StashItem } from "@/lib/types";
+import type { BagState, Equipment, EquipSlot, PocketsState, Rotation, StashItem } from "@/lib/types";
+import { EquippedColumn, SLOT_ORDER, type SlotHover, type SlotRefMap } from "./EquippedColumn";
+import { ItemTooltip, Tooltip } from "@/components/ui/Tooltip";
+import { KitDragGhost, KitGrid, KIT_CELL, type KitHover } from "./KitGrid";
+import type { KitSlot } from "@/store/game";
+import { playSfx } from "@/lib/sfx";
 
 const CELL = 28;
 
@@ -45,9 +50,188 @@ export function StashPanel() {
   const sellAllJunk = useGame((s) => s.sellAllJunk);
   const kitFromStash = useGame((s) => s.kitFromStash);
   const stashFromKit = useGame((s) => s.stashFromKit);
-  const equipBag = useGame((s) => s.equipBag);
-  const unequipBag = useGame((s) => s.unequipBag);
+  const moveKitItem = useGame((s) => s.moveKitItem);
+  const trashFromKit = useGame((s) => s.trashFromKit);
+  const equipFromStash = useGame((s) => s.equipFromStash);
+  const unequipToStash = useGame((s) => s.unequipToStash);
   const emptyKit = useGame((s) => s.emptyKitToStash);
+
+  // Drag state covering all stash-side interactions:
+  //  - stash row → equipped slot / kit grid
+  //  - equipped slot → stash list
+  //  - kit item → other kit slot (rearrange) / stash list
+  type DragSource =
+    | { kind: "stash"; uid: string; itemId: string }
+    | { kind: "slot"; slot: EquipSlot; itemId: string }
+    | {
+        kind: "kit";
+        from: KitSlot;
+        uid: string;
+        itemId: string;
+        rotation: Rotation;
+        grabDx: number;
+        grabDy: number;
+      };
+  const [drag, setDrag] = useState<(DragSource & { mouseX: number; mouseY: number }) | null>(null);
+  const [slotHover, setSlotHover] = useState<SlotHover>(null);
+  const [kitHover, setKitHover] = useState<{ slot: KitSlot } & KitHover | null>(null);
+  const [overStash, setOverStash] = useState(false);
+
+  // Refs declared at the top level so the hook count is stable across
+  // renders and HMR. Bundling them into an object literal calling useRef()
+  // inline can confuse React fast-refresh under some edit sequences.
+  const helmetRef = useRef<HTMLDivElement>(null);
+  const armorRef = useRef<HTMLDivElement>(null);
+  const weaponRef = useRef<HTMLDivElement>(null);
+  const bagSlotRef = useRef<HTMLDivElement>(null);
+  const slotRefs = useMemo<SlotRefMap>(
+    () => ({ helmet: helmetRef, armor: armorRef, weapon: weaponRef, bag: bagSlotRef }),
+    [],
+  );
+  const stashListRef = useRef<HTMLDivElement>(null);
+  const pocketsRef = useRef<HTMLDivElement>(null);
+  const bagRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!drag) return;
+    const isInside = (el: HTMLElement | null, x: number, y: number) => {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    };
+    const slotUnder = (x: number, y: number): EquipSlot | null => {
+      for (const s of SLOT_ORDER) {
+        if (isInside(slotRefs[s].current, x, y)) return s;
+      }
+      return null;
+    };
+    const gridCellAt = (
+      el: HTMLElement | null,
+      x: number,
+      y: number,
+    ): { x: number; y: number } | null => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const lx = x - r.left;
+      const ly = y - r.top;
+      if (lx < 0 || ly < 0 || lx >= r.width || ly >= r.height) return null;
+      return { x: Math.floor(lx / KIT_CELL), y: Math.floor(ly / KIT_CELL) };
+    };
+    const slotIsValidTarget = (s: EquipSlot, src: typeof drag): boolean => {
+      if (!src) return false;
+      if (src.kind === "stash") {
+        const def = ITEMS[src.itemId];
+        if (def?.slot !== s) return false;
+        if (s === "bag") return !equipment.bag;
+        return !equipment[s];
+      }
+      return s === (src.kind === "slot" ? src.slot : null);
+    };
+    // Validity check for placing the dragged item into a kit grid at (ox, oy).
+    const evalKitDrop = (
+      target: KitSlot,
+      ox: number,
+      oy: number,
+    ): boolean => {
+      const grid = target === "pockets" ? equipment.pockets : equipment.bag;
+      if (!grid) return false;
+      const itemId = drag.kind === "stash" || drag.kind === "kit" ? drag.itemId : null;
+      if (!itemId) return false;
+      const rotation = drag.kind === "kit" ? drag.rotation : 0;
+      const cells = shapeFor(itemId, rotation);
+      const ignoreUid =
+        drag.kind === "kit" && drag.from === target ? drag.uid : undefined;
+      const occ = buildOccupancy(grid.items, grid.grid.width, grid.grid.height, ignoreUid);
+      return canPlace(cells, ox, oy, grid.grid.width, grid.grid.height, occ);
+    };
+
+    const onMove = (e: PointerEvent) => {
+      // Slot hit-test first (priority for slot drops).
+      const s = slotUnder(e.clientX, e.clientY);
+      if (s) {
+        setSlotHover({ slot: s, valid: slotIsValidTarget(s, drag) });
+        setKitHover(null);
+        setOverStash(false);
+      } else {
+        setSlotHover(null);
+        // Kit grid hit-test (only for stash + kit drag sources).
+        const dragHasShape = drag.kind === "stash" || drag.kind === "kit";
+        const grabDx = drag.kind === "kit" ? drag.grabDx : 0;
+        const grabDy = drag.kind === "kit" ? drag.grabDy : 0;
+        const pCell = dragHasShape ? gridCellAt(pocketsRef.current, e.clientX, e.clientY) : null;
+        const bCell = !pCell && dragHasShape && equipment.bag
+          ? gridCellAt(bagRef.current, e.clientX, e.clientY)
+          : null;
+        if (pCell) {
+          const ox = pCell.x - grabDx;
+          const oy = pCell.y - grabDy;
+          setKitHover({ slot: "pockets", x: ox, y: oy, valid: evalKitDrop("pockets", ox, oy) });
+          setOverStash(false);
+        } else if (bCell) {
+          const ox = bCell.x - grabDx;
+          const oy = bCell.y - grabDy;
+          setKitHover({ slot: "bag", x: ox, y: oy, valid: evalKitDrop("bag", ox, oy) });
+          setOverStash(false);
+        } else {
+          setKitHover(null);
+          setOverStash(isInside(stashListRef.current, e.clientX, e.clientY));
+        }
+      }
+      setDrag((d) => (d ? { ...d, mouseX: e.clientX, mouseY: e.clientY } : d));
+    };
+
+    const onUp = (e: PointerEvent) => {
+      let played = false;
+      const s = slotUnder(e.clientX, e.clientY);
+      const grabDx = drag.kind === "kit" ? drag.grabDx : 0;
+      const grabDy = drag.kind === "kit" ? drag.grabDy : 0;
+      const pCell = gridCellAt(pocketsRef.current, e.clientX, e.clientY);
+      const bCell = !pCell && equipment.bag
+        ? gridCellAt(bagRef.current, e.clientX, e.clientY)
+        : null;
+      const kitTarget: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
+      const cell = pCell ?? bCell;
+      const onStashList = isInside(stashListRef.current, e.clientX, e.clientY);
+
+      if (drag.kind === "slot") {
+        // Slot drag: dropped on a slot → no-op (must unequip first to swap).
+        // Anywhere else → unequip to stash. The user's intent dragging out of
+        // the slot is unambiguous, so we don't require a precise stash-list hit.
+        if (!s) {
+          if (unequipToStash(drag.slot)) played = true;
+        }
+      } else if (drag.kind === "stash") {
+        if (s) {
+          if (equipFromStash(drag.uid)) played = true;
+        } else if (kitTarget && cell) {
+          if (kitFromStash(drag.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, 0)) {
+            played = true;
+          }
+        }
+      } else if (drag.kind === "kit") {
+        if (s) {
+          // kit → slot: no-op (kit items don't equip).
+        } else if (kitTarget && cell) {
+          if (moveKitItem(drag.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, drag.rotation)) {
+            played = true;
+          }
+        } else if (onStashList) {
+          if (stashFromKit(drag.uid)) played = true;
+        }
+      }
+      if (played) playSfx("inventory");
+      setDrag(null);
+      setSlotHover(null);
+      setKitHover(null);
+      setOverStash(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, [drag, equipment, equipFromStash, unequipToStash, kitFromStash, stashFromKit, moveKitItem, slotRefs]);
 
   const junkValue = stash.reduce((sum, si) => {
     const item = ITEMS[si.itemId];
@@ -76,72 +260,144 @@ export function StashPanel() {
         }
       />
       <div className="flex min-h-0 flex-1">
+        {/* Equipped column (far left) — only meaningful when idle */}
+        {!inRaid && (
+          <aside className="flex shrink-0 flex-col border-r border-border/60 bg-card/20 px-3 py-4">
+            <EquippedColumn
+              equipment={equipment}
+              refs={slotRefs}
+              hover={slotHover}
+              draggingForSlot={
+                drag?.kind === "stash" ? (ITEMS[drag.itemId]?.slot ?? null) : null
+              }
+              onSlotPointerDown={(slot, e) => {
+                const item = slot === "bag" ? equipment.bag?.slot : equipment[slot];
+                if (!item) return;
+                // Ctrl/Cmd+click on an equipped slot fast-unequips back to stash.
+                if (e.ctrlKey || e.metaKey) {
+                  if (unequipToStash(slot)) playSfx("inventory");
+                  return;
+                }
+                setDrag({
+                  kind: "slot",
+                  slot,
+                  itemId: item.itemId,
+                  mouseX: e.clientX,
+                  mouseY: e.clientY,
+                });
+              }}
+            />
+          </aside>
+        )}
         {/* Kit sidebar — only meaningful when idle */}
         {!inRaid && (
           <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border/60 bg-card/20 px-4 py-4">
-            <KitGridDisplay
-              title="Pockets"
+            <KitGrid
+              slot="pockets"
+              label="Pockets"
               Icon={Shirt}
               grid={equipment.pockets}
-              onClickItem={(uid) => stashFromKit(uid)}
-              clickHint="Click → stash"
-              stashFull={stashFull}
+              gridRef={pocketsRef}
+              drag={
+                drag && (drag.kind === "kit" || drag.kind === "stash")
+                  ? {
+                      uid: drag.kind === "kit" ? drag.uid : drag.uid,
+                      itemId: drag.itemId,
+                      rotation: drag.kind === "kit" ? drag.rotation : 0,
+                    }
+                  : null
+              }
+              draggingFromThisGrid={drag?.kind === "kit" && drag.from === "pockets"}
+              hover={kitHover && kitHover.slot === "pockets" ? { x: kitHover.x, y: kitHover.y, valid: kitHover.valid } : null}
+              onPick={(uid, itemId, rotation, dx, dy, mouseX, mouseY) =>
+                setDrag({
+                  kind: "kit",
+                  from: "pockets",
+                  uid,
+                  itemId,
+                  rotation,
+                  grabDx: dx,
+                  grabDy: dy,
+                  mouseX,
+                  mouseY,
+                })
+              }
+              onCtrlClick={(uid) => {
+                if (stashFromKit(uid)) playSfx("inventory");
+              }}
             />
             {equipment.bag ? (
-              <>
-                <KitGridDisplay
-                  title={`Bag · ${ITEMS[equipment.bag.slot.itemId]?.name ?? "Bag"}`}
-                  Icon={Backpack}
-                  grid={equipment.bag}
-                  onClickItem={(uid) => stashFromKit(uid)}
-                  clickHint="Click → stash"
-                  stashFull={stashFull}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => unequipBag()}
-                  disabled={equipment.bag.items.length > 0 || stashFull}
-                  className="rounded-sm"
-                  title={
-                    equipment.bag.items.length > 0
-                      ? "Empty the bag first"
-                      : stashFull
-                        ? "Stash full"
-                        : ""
-                  }
-                >
-                  Unequip bag
-                </Button>
-              </>
+              <KitGrid
+                slot="bag"
+                label={`Bag · ${ITEMS[equipment.bag.slot.itemId]?.name ?? "Bag"}`}
+                Icon={Backpack}
+                grid={equipment.bag}
+                gridRef={bagRef}
+                drag={
+                  drag && (drag.kind === "kit" || drag.kind === "stash")
+                    ? {
+                        uid: drag.kind === "kit" ? drag.uid : drag.uid,
+                        itemId: drag.itemId,
+                        rotation: drag.kind === "kit" ? drag.rotation : 0,
+                      }
+                    : null
+                }
+                draggingFromThisGrid={drag?.kind === "kit" && drag.from === "bag"}
+                hover={kitHover && kitHover.slot === "bag" ? { x: kitHover.x, y: kitHover.y, valid: kitHover.valid } : null}
+                onPick={(uid, itemId, rotation, dx, dy, mouseX, mouseY) =>
+                  setDrag({
+                    kind: "kit",
+                    from: "bag",
+                    uid,
+                    itemId,
+                    rotation,
+                    grabDx: dx,
+                    grabDy: dy,
+                    mouseX,
+                    mouseY,
+                  })
+                }
+                onCtrlClick={(uid) => {
+                  if (stashFromKit(uid)) playSfx("inventory");
+                }}
+              />
             ) : (
               <div className="rounded-sm border border-dashed border-border/40 p-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">
                 <Backpack className="mr-2 inline size-3" />
-                no bag equipped · equip from stash
+                no bag equipped · drag from stash
               </div>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => emptyKit()}
-              disabled={!canEmptyAll}
-              className="rounded-sm"
-              title={
+            <Tooltip
+              text={
                 !canEmptyAll
                   ? "Nothing to empty"
                   : stashFull
                     ? "Stash full — some items may not transfer"
-                    : ""
+                    : "Move all kit items to stash"
               }
             >
-              <PackageOpen className="size-3.5" />
-              Empty kit
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => emptyKit()}
+                disabled={!canEmptyAll}
+                className="rounded-sm"
+              >
+                <PackageOpen className="size-3.5" />
+                Empty kit
+              </Button>
+            </Tooltip>
           </aside>
         )}
 
         {/* Stash list */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 text-sm">
+        <div
+          ref={stashListRef}
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto px-6 py-4 text-sm transition-colors",
+            overStash && drag?.kind === "slot" && "bg-emerald-500/5",
+          )}
+        >
           {stash.length === 0 ? (
             <div className="flex h-full items-center justify-center font-mono text-xs uppercase tracking-widest text-muted-foreground">
               stash empty · run a raid
@@ -152,254 +408,136 @@ export function StashPanel() {
                 const item = ITEMS[si.itemId];
                 if (!item) return null;
                 const sellable = item.sellValue > 0;
-                const equippableBag = item.slot === "bag";
-                const fit = !inRaid && !equippableBag ? findFit(equipment, si) : null;
-                const canEquip =
-                  !inRaid && equippableBag && !equipment.bag;
-                const ctrlClickAction = canEquip
-                  ? () => equipBag(si.uid)
+                const equippable = item.slot != null;
+                const equippableNow =
+                  !inRaid && equippable && (
+                    item.slot === "bag" ? !equipment.bag : !equipment[item.slot!]
+                  );
+                const fit = !inRaid && !equippable ? findFit(equipment, si) : null;
+                const ctrlClickAction = equippableNow
+                  ? () => equipFromStash(si.uid)
                   : fit
                     ? () => kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
                     : null;
-                const ctrlHint = canEquip
-                  ? "Ctrl+click to equip"
+                const ctrlHint = equippableNow
+                  ? `Ctrl+click to equip · drag to ${item.slot} slot`
                   : fit
-                    ? `Ctrl+click → ${fit.slot}`
+                    ? `Ctrl+click to move into kit`
                     : "";
+                const beingDragged = drag?.kind === "stash" && drag.uid === si.uid;
                 return (
-                  <div
-                    key={si.uid}
-                    title={`${item.tier}${sellable ? ` · sells for ¤${item.sellValue}` : " · cannot be sold"}${ctrlHint ? ` · ${ctrlHint}` : ""}`}
-                    onClick={(e) => {
-                      // Ctrl/Cmd+click is the fast move-to-kit (or equip) shortcut.
-                      // Stops the click from bubbling up and triggering button SFX
-                      // on the wrapper.
-                      if ((e.ctrlKey || e.metaKey) && ctrlClickAction) {
+                  <ItemTooltip key={si.uid} itemId={si.itemId} hint={ctrlHint || undefined}>
+                    <div
+                      onPointerDown={(e) => {
+                        if (inRaid) return;
+                        if ((e.target as HTMLElement).closest("button")) return;
                         e.preventDefault();
-                        e.stopPropagation();
-                        ctrlClickAction();
-                      }
-                    }}
-                    className={cn(
-                      "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2",
-                      ctrlClickAction && "hover:border-emerald-500/40",
-                    )}
-                  >
-                    <span className={cn("min-w-0 truncate text-sm font-semibold", TIER_COLOR[item.tier])}>
-                      {item.name}
-                    </span>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                        ¤{item.sellValue}
+                        setDrag({
+                          kind: "stash",
+                          uid: si.uid,
+                          itemId: si.itemId,
+                          mouseX: e.clientX,
+                          mouseY: e.clientY,
+                        });
+                      }}
+                      onClick={(e) => {
+                        if ((e.ctrlKey || e.metaKey) && ctrlClickAction) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          ctrlClickAction();
+                          playSfx("inventory");
+                        }
+                      }}
+                      className={cn(
+                        "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2",
+                        !inRaid && "cursor-grab active:cursor-grabbing",
+                        ctrlClickAction && "hover:border-emerald-500/40",
+                        beingDragged && "opacity-30",
+                      )}
+                    >
+                      <span className={cn("min-w-0 truncate text-sm font-semibold", TIER_COLOR[item.tier])}>
+                        {item.name}
                       </span>
-                      {canEquip && (
-                        <button
-                          onClick={() => equipBag(si.uid)}
-                          className="cursor-pointer rounded-sm border border-transparent px-2 py-0.5 text-xs text-emerald-300/80 transition hover:border-emerald-500/40 hover:text-emerald-300"
-                        >
-                          equip
-                        </button>
-                      )}
-                      {fit && (
-                        <button
-                          onClick={() =>
-                            kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
-                          }
-                          className="cursor-pointer rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
-                          title={`Move to ${fit.slot}`}
-                        >
-                          → kit
-                        </button>
-                      )}
-                      {sellable && (
-                        <button
-                          onClick={() => sellItem(si.uid)}
-                          className="cursor-pointer rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
-                        >
-                          sell
-                        </button>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1">
+                        <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                          ¤{item.sellValue}
+                        </span>
+                        {fit && (
+                          <Tooltip text={`Move to ${fit.slot}`}>
+                            <button
+                              onClick={() =>
+                                kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
+                              }
+                              className="inline-flex cursor-pointer items-center gap-0.5 rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
+                            >
+                              <ArrowLeft className="size-3" />
+                              kit
+                            </button>
+                          </Tooltip>
+                        )}
+                        {sellable && (
+                          <button
+                            onClick={() => sellItem(si.uid)}
+                            className="cursor-pointer rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
+                          >
+                            sell
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  </ItemTooltip>
                 );
               })}
             </div>
           )}
         </div>
       </div>
+      {drag &&
+        (drag.kind === "kit" ? (
+          <KitDragGhost
+            itemId={drag.itemId}
+            rotation={drag.rotation}
+            mouseX={drag.mouseX}
+            mouseY={drag.mouseY}
+            grabDx={drag.grabDx}
+            grabDy={drag.grabDy}
+          />
+        ) : (
+          <StashDragGhost itemId={drag.itemId} mouseX={drag.mouseX} mouseY={drag.mouseY} />
+        ))}
     </section>
   );
 }
 
-function KitGridDisplay({
-  title,
-  Icon,
-  grid,
-  onClickItem,
-  clickHint,
-  stashFull,
+function StashDragGhost({
+  itemId,
+  mouseX,
+  mouseY,
 }: {
-  title: string;
-  Icon: typeof Backpack;
-  grid: PocketsState | BagState;
-  onClickItem: (uid: string) => void;
-  clickHint: string;
-  stashFull: boolean;
+  itemId: string;
+  mouseX: number;
+  mouseY: number;
 }) {
-  const w = grid.grid.width;
-  const h = grid.grid.height;
+  const item = ITEMS[itemId];
+  const fg = tierColorFor(itemId);
+  const bg = tileBgFor(itemId);
+  const label = item?.name ?? itemId;
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Icon className="size-3" />
-          {title}
-        </span>
-        <span className="tabular-nums">
-          {grid.items.length}/{w * h}
-        </span>
-      </div>
+    <div
+      className="pointer-events-none fixed z-50 opacity-90"
+      style={{ left: mouseX + 12, top: mouseY + 12 }}
+    >
       <div
-        className="relative select-none border border-border/80 bg-background/40"
-        style={{ width: w * CELL, height: h * CELL }}
+        className={cn(
+          "flex items-center gap-2 rounded-sm border border-border/80 px-2 py-1 shadow-md backdrop-blur",
+          bg,
+        )}
       >
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage:
-              `linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),` +
-              `linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px)`,
-            backgroundSize: `${CELL}px ${CELL}px`,
-          }}
-        />
-        {grid.items.map((p) => {
-          const cells = shapeFor(p.itemId, p.rotation);
-          const item = ITEMS[p.itemId];
-          return (
-            <div
-              key={p.uid}
-              className="absolute"
-              style={{ left: p.x * CELL, top: p.y * CELL }}
-            >
-              <ClickableTiles
-                cells={cells}
-                itemId={p.itemId}
-                label={item?.name ?? p.itemId}
-                onClick={() => onClickItem(p.uid)}
-                disabled={stashFull}
-                clickHint={clickHint}
-              />
-            </div>
-          );
-        })}
-      </div>
-      <div className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground/60">
-        {clickHint}
-        {stashFull ? " · stash full" : ""}
+        <span className={cn("font-mono text-[10px] font-semibold uppercase tracking-widest", fg)}>
+          {label}
+        </span>
       </div>
     </div>
   );
 }
 
-function ClickableTiles({
-  cells,
-  itemId,
-  label,
-  onClick,
-  disabled,
-  clickHint,
-}: {
-  cells: ReturnType<typeof shapeFor>;
-  itemId: string;
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-  clickHint: string;
-}) {
-  const bg = tileBgFor(itemId);
-  const fg = tierColorFor(itemId);
-  const { w, h } = shapeBounds(cells);
-  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const tier = ITEMS[itemId]?.tier ?? "common";
-  const sellValue = ITEMS[itemId]?.sellValue ?? 0;
-
-  useLayoutEffect(() => {
-    const el = tooltipRef.current;
-    if (!cursor || !el) return;
-    const r = el.getBoundingClientRect();
-    const margin = 8;
-    const offset = 14;
-    let left = cursor.x + offset;
-    let top = cursor.y + offset;
-    if (left + r.width > window.innerWidth - margin) left = cursor.x - r.width - offset;
-    if (top + r.height > window.innerHeight - margin) top = cursor.y - r.height - offset;
-    if (left < margin) left = margin;
-    if (top < margin) top = margin;
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
-  }, [cursor]);
-
-  const update = (e: React.PointerEvent) => setCursor({ x: e.clientX, y: e.clientY });
-  const clear = () => setCursor(null);
-
-  return (
-    <>
-      <div className="pointer-events-none relative" style={{ width: w * CELL, height: h * CELL }}>
-        {cells.map(([dx, dy], i) => (
-          <div
-            key={`${dx}-${dy}-${i}`}
-            className={cn(
-              "pointer-events-auto absolute border transition-[filter]",
-              bg,
-              cursor && !disabled && "brightness-125",
-              disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
-            )}
-            style={{
-              left: dx * CELL,
-              top: dy * CELL,
-              width: CELL,
-              height: CELL,
-            }}
-            onPointerEnter={update}
-            onPointerMove={update}
-            onPointerLeave={clear}
-            onClick={(e) => {
-              e.preventDefault();
-              clear();
-              if (!disabled) onClick();
-            }}
-          />
-        ))}
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[9px] font-semibold uppercase tracking-widest",
-            fg,
-          )}
-        >
-          {abbreviate(label)}
-        </div>
-      </div>
-      {cursor && (
-        <div
-          ref={tooltipRef}
-          className="pointer-events-none fixed z-[60] whitespace-nowrap rounded-sm border border-border/80 bg-popover/95 px-2 py-1 font-mono text-[10px] uppercase tracking-widest shadow-md backdrop-blur"
-          style={{ left: cursor.x + 14, top: cursor.y + 14 }}
-        >
-          <div className={cn("font-semibold", fg)}>{label}</div>
-          <div className="text-muted-foreground">
-            {tier}
-            {sellValue > 0 && ` · ¤${sellValue}`}
-          </div>
-          <div className="mt-0.5 text-muted-foreground/70">{clickHint}</div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function abbreviate(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return parts.slice(0, 3).map((p) => p[0]).join("").toUpperCase();
-  return name.slice(0, 3).toUpperCase();
-}

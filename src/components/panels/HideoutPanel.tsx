@@ -1,15 +1,13 @@
 "use client";
 
-import { Backpack, Hammer, HeartPulse, Package, Plus, Shirt } from "lucide-react";
+import { Backpack, Hammer, HeartPulse, Package, Plus } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/Tooltip";
 import {
-  POCKETS_WIDTH,
   STASH_SLOTS_PER_LEVEL,
-  pocketsDimensions,
-  pocketsUpgradeCost,
   stashUpgradeCost,
 } from "@/lib/engine/upgrades";
 
@@ -23,13 +21,12 @@ interface ModuleCardProps {
 }
 
 function ModuleCard({ Icon, name, status, unlocked, hint, action }: ModuleCardProps) {
-  return (
+  const card = (
     <div
       className={cn(
         "flex flex-col gap-2 rounded-sm border bg-card/40 p-4 text-sm",
         unlocked ? "border-border" : "border-dashed border-border/50 opacity-70",
       )}
-      title={hint}
     >
       <div className="flex items-center gap-2">
         <Icon className="size-4" />
@@ -44,6 +41,7 @@ function ModuleCard({ Icon, name, status, unlocked, hint, action }: ModuleCardPr
       {action && <div className="mt-2">{action}</div>}
     </div>
   );
+  return hint ? <Tooltip text={hint}>{card}</Tooltip> : card;
 }
 
 export function HideoutPanel() {
@@ -53,13 +51,10 @@ export function HideoutPanel() {
   const cash = useGame((s) => s.cash);
   const upgrades = useGame((s) => s.upgrades);
   const setPanel = useGame((s) => s.setPanel);
-  const buyPockets = useGame((s) => s.buyPocketsUpgrade);
   const buyStash = useGame((s) => s.buyStashUpgrade);
   const equipment = useGame((s) => s.operative.equipment);
 
-  const pocketsCost = pocketsUpgradeCost(upgrades);
   const stashCost = stashUpgradeCost(upgrades);
-  const dim = pocketsDimensions(upgrades);
   const bagSummary = equipment.bag
     ? `${equipment.bag.grid.width}×${equipment.bag.grid.height} bag equipped`
     : "no bag equipped";
@@ -83,24 +78,6 @@ export function HideoutPanel() {
             >
               <Plus className="size-3.5" />
               +{STASH_SLOTS_PER_LEVEL} slots · ¤{stashCost.toLocaleString()}
-            </Button>
-          }
-        />
-        <ModuleCard
-          Icon={Shirt}
-          name="Pockets"
-          status={`${dim.width}×${dim.height} grid · level ${upgrades.pocketsLevel}`}
-          unlocked
-          action={
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={cash < pocketsCost}
-              onClick={buyPockets}
-              className="rounded-sm"
-            >
-              <Plus className="size-3.5" />
-              +1 row ({POCKETS_WIDTH} cells) · ¤{pocketsCost.toLocaleString()}
             </Button>
           }
         />

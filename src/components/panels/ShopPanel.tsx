@@ -7,6 +7,7 @@ import { PanelHeader } from "./PanelHeader";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TIER_COLOR } from "@/lib/itemDisplay";
+import { ItemTooltip, Tooltip } from "@/components/ui/Tooltip";
 import type { ItemCategory, ShopOffer } from "@/lib/types";
 
 const CATEGORY_ORDER: ItemCategory[] = ["bag", "chems", "consumables", "military"];
@@ -97,35 +98,38 @@ function OfferCard({
   if (!item) return null;
   const tooPoor = cash < offer.price;
   const disabled = tooPoor || stashFull;
-  const tooltip = stashFull
+  const buyTooltip = stashFull
     ? "Stash full"
     : tooPoor
       ? `Need ¤${(offer.price - cash).toLocaleString()} more`
-      : "";
+      : `Buy for ¤${offer.price.toLocaleString()}`;
   return (
     <div className="flex items-start justify-between gap-3 rounded-sm border border-border/60 bg-card/40 px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className={cn("truncate text-sm font-semibold", TIER_COLOR[item.tier])}>
-          {item.name}
+      <ItemTooltip itemId={offer.itemId}>
+        <div className="min-w-0 flex-1">
+          <div className={cn("truncate text-sm font-semibold", TIER_COLOR[item.tier])}>
+            {item.name}
+          </div>
+          <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <Coins className="size-3" />¤{offer.price.toLocaleString()}
+            </span>
+            <span className="opacity-50">·</span>
+            <span className="tabular-nums">{offer.stock} in stock</span>
+          </div>
         </div>
-        <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <Coins className="size-3" />¤{offer.price.toLocaleString()}
-          </span>
-          <span className="opacity-50">·</span>
-          <span className="tabular-nums">{offer.stock} in stock</span>
-        </div>
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={disabled}
-        onClick={onBuy}
-        title={tooltip}
-        className="rounded-sm"
-      >
-        Buy
-      </Button>
+      </ItemTooltip>
+      <Tooltip text={buyTooltip}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={onBuy}
+          className="rounded-sm"
+        >
+          Buy
+        </Button>
+      </Tooltip>
     </div>
   );
 }

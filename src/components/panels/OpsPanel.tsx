@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
 import { ArrowRight, Backpack, Lock, Shirt, Skull } from "lucide-react";
 import { ITEMS } from "@/lib/data/items";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
 import type { Location, StashItem, Unlocks } from "@/lib/types";
 
@@ -169,22 +170,21 @@ export function OpsPanel() {
             )}
           </Button>
           {!operativeBusy && (
-            <span
-              className="inline-flex items-center gap-2 rounded-sm border border-border/60 bg-card/30 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground"
-              title="Pockets · Bag · Kit value (manage in Stash)"
-            >
-              <Shirt className="size-3" />
-              <span className="tabular-nums text-foreground/80">{pUsed}/{pTotal}</span>
-              <span className="opacity-50">·</span>
-              <Backpack className="size-3" />
-              {eq.bag ? (
-                <span className="tabular-nums text-foreground/80">{bUsed}/{bTotal}</span>
-              ) : (
-                <span className="opacity-60">none</span>
-              )}
-              <span className="opacity-50">·</span>
-              <span className="tabular-nums text-foreground/80">¤{kitValue.toLocaleString()}</span>
-            </span>
+            <Tooltip text="Pockets · Bag · Kit value (manage in Stash)">
+              <span className="inline-flex items-center gap-2 rounded-sm border border-border/60 bg-card/30 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                <Shirt className="size-3" />
+                <span className="tabular-nums text-foreground/80">{pUsed}/{pTotal}</span>
+                <span className="opacity-50">·</span>
+                <Backpack className="size-3" />
+                {eq.bag ? (
+                  <span className="tabular-nums text-foreground/80">{bUsed}/{bTotal}</span>
+                ) : (
+                  <span className="opacity-60">none</span>
+                )}
+                <span className="opacity-50">·</span>
+                <span className="tabular-nums text-foreground/80">¤{kitValue.toLocaleString()}</span>
+              </span>
+            </Tooltip>
           )}
         </div>
       </div>

@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Backpack, Shirt, Trash2 } from "lucide-react";
 import { useGame, type KitSlot } from "@/store/game";
-import type { PocketsState, BagState, Rotation } from "@/lib/types";
+import type { EquipSlot, PocketsState, BagState, Rotation } from "@/lib/types";
+import { EquippedColumn, SLOT_ORDER, type SlotHover, type SlotRefMap } from "./EquippedColumn";
+import { KitDragGhost, KitGrid, KIT_CELL } from "./KitGrid";
+import { ItemTooltip } from "@/components/ui/Tooltip";
 import { ITEMS } from "@/lib/data/items";
 import { playSfx } from "@/lib/sfx";
 import {
@@ -15,9 +18,10 @@ import {
 import { cn } from "@/lib/utils";
 import { tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 
-const CELL = 32;
+const CELL = KIT_CELL;
 
-type DragSource = "floor" | "pockets" | "bag";
+// "bag" = the kit bag grid; "slot:bag"/"slot:weapon" etc. = the equipped slots.
+type DragSource = "floor" | "pockets" | "bag" | `slot:${EquipSlot}`;
 
 type DragState = {
   source: DragSource;
@@ -41,18 +45,43 @@ export function PackTetris() {
   const dropToFloor = useGame((s) => s.dropToFloor);
   const trashFromFloor = useGame((s) => s.trashFromFloor);
   const trashFromKit = useGame((s) => s.trashFromKit);
+  const equipFromFloor = useGame((s) => s.equipFromFloor);
+  const unequipToFloor = useGame((s) => s.unequipToFloor);
 
   const pocketsRef = useRef<HTMLDivElement>(null);
   const bagRef = useRef<HTMLDivElement>(null);
   const trashRef = useRef<HTMLDivElement>(null);
   const floorRef = useRef<HTMLDivElement>(null);
+  // Stable refs (declared individually) so the hook count never changes
+  // across renders / HMR — bundling useRef() into an object literal can
+  // confuse fast-refresh.
+  const helmetRef = useRef<HTMLDivElement>(null);
+  const armorRef = useRef<HTMLDivElement>(null);
+  const weaponRef = useRef<HTMLDivElement>(null);
+  const bagSlotRef = useRef<HTMLDivElement>(null);
+  const slotRefs = useMemo<SlotRefMap>(
+    () => ({ helmet: helmetRef, armor: armorRef, weapon: weaponRef, bag: bagSlotRef }),
+    [],
+  );
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hover, setHover] = useState<HoverState>(null);
+  const [slotHover, setSlotHover] = useState<SlotHover>(null);
 
-  // Ctrl/Cmd+click fast-move: floor → first-fit kit slot. Picks pockets first
-  // (like room-contents pickup naturally lands in the closer pouch), then bag.
+  // Ctrl/Cmd+click fast-move on a floor item:
+  //  - If equippable (item has `slot`) and that slot is empty → equip directly.
+  //  - Otherwise → first-fit pickup into pockets, then bag.
   const ctrlPickup = (uid: string, itemId: string) => {
     if (!raid) return;
+    const def = ITEMS[itemId];
+    if (def?.slot) {
+      const slotEmpty = def.slot === "bag" ? !raid.equipment.bag : !raid.equipment[def.slot];
+      if (slotEmpty) {
+        if (equipFromFloor(uid)) {
+          playSfx("inventory");
+          return;
+        }
+      }
+    }
     const tryGrid = (grid: PocketsState | BagState | null, slot: KitSlot): boolean => {
       if (!grid) return false;
       for (let r = 0; r < 4; r++) {
@@ -116,43 +145,88 @@ export function PackTetris() {
       return valid;
     }
 
+    const slotUnder = (x: number, y: number): EquipSlot | null => {
+      for (const s of SLOT_ORDER) {
+        if (isOverElement(slotRefs[s].current, x, y)) return s;
+      }
+      return null;
+    };
+    const slotIsValidTarget = (s: EquipSlot, d: DragState): boolean => {
+      if (d.source === "floor") {
+        const def = ITEMS[d.itemId];
+        if (def?.slot !== s) return false;
+        if (s === "bag") return !raid.equipment.bag;
+        return !raid.equipment[s];
+      }
+      if (d.source === `slot:${s}`) return true; // dropping back on itself = no-op
+      return false;
+    };
+
     const onMove = (e: PointerEvent) => {
       if (!drag || !raid) return;
       let h: HoverState = null;
-      const pCell = pockets ? gridCellAt(pocketsRef.current, e.clientX, e.clientY) : null;
-      if (pCell && pockets) {
-        const ox = pCell.x - drag.grabDx;
-        const oy = pCell.y - drag.grabDy;
-        h = { slot: "pockets", x: ox, y: oy, valid: evalDrop(drag, "pockets", pockets, ox, oy) };
-      } else if (bag) {
-        const bCell = gridCellAt(bagRef.current, e.clientX, e.clientY);
-        if (bCell) {
-          const ox = bCell.x - drag.grabDx;
-          const oy = bCell.y - drag.grabDy;
-          h = { slot: "bag", x: ox, y: oy, valid: evalDrop(drag, "bag", bag, ox, oy) };
+      let sh: SlotHover = null;
+      const sUnder = slotUnder(e.clientX, e.clientY);
+      if (sUnder) {
+        sh = { slot: sUnder, valid: slotIsValidTarget(sUnder, drag) };
+      } else {
+        const pCell = pockets ? gridCellAt(pocketsRef.current, e.clientX, e.clientY) : null;
+        if (pCell && pockets) {
+          const ox = pCell.x - drag.grabDx;
+          const oy = pCell.y - drag.grabDy;
+          h = { slot: "pockets", x: ox, y: oy, valid: evalDrop(drag, "pockets", pockets, ox, oy) };
+        } else if (bag) {
+          const bCell = gridCellAt(bagRef.current, e.clientX, e.clientY);
+          if (bCell) {
+            const ox = bCell.x - drag.grabDx;
+            const oy = bCell.y - drag.grabDy;
+            h = { slot: "bag", x: ox, y: oy, valid: evalDrop(drag, "bag", bag, ox, oy) };
+          }
         }
       }
       setHover(h);
+      setSlotHover(sh);
       setDrag((d) => (d ? { ...d, mouseX: e.clientX, mouseY: e.clientY } : d));
     };
 
     const onUp = (e: PointerEvent) => {
       if (!drag) return;
       let played = false;
-      if (isOverElement(trashRef.current, e.clientX, e.clientY)) {
-        if (drag.source === "floor") trashFromFloor(drag.uid);
-        else trashFromKit(drag.uid);
-        played = true;
-      } else if (drag.source !== "floor" && isOverElement(floorRef.current, e.clientX, e.clientY)) {
-        dropToFloor(drag.uid);
-        played = true;
+      const sUnder = slotUnder(e.clientX, e.clientY);
+      if (sUnder) {
+        // Drop on equipped slot.
+        if (drag.source === "floor") {
+          if (equipFromFloor(drag.uid)) played = true;
+        }
+        // Slot → same slot or different slot: no-op for now.
+      } else if (isOverElement(trashRef.current, e.clientX, e.clientY)) {
+        if (drag.source === "floor") {
+          trashFromFloor(drag.uid);
+          played = true;
+        } else if (drag.source === "pockets" || drag.source === "bag") {
+          trashFromKit(drag.uid);
+          played = true;
+        } else if (drag.source.startsWith("slot:")) {
+          // Trashing an equipped item: route to floor instead so the player
+          // has to confirm by trashing it from the floor. Avoids accidental
+          // bag loss with one drag.
+          const slot = drag.source.slice(5) as EquipSlot;
+          if (unequipToFloor(slot)) played = true;
+        }
+      } else if (isOverElement(floorRef.current, e.clientX, e.clientY)) {
+        if (drag.source === "pockets" || drag.source === "bag") {
+          dropToFloor(drag.uid);
+          played = true;
+        } else if (drag.source.startsWith("slot:")) {
+          const slot = drag.source.slice(5) as EquipSlot;
+          if (unequipToFloor(slot)) played = true;
+        }
       } else {
-        // Try pockets first, then bag.
         const pCell = pockets ? gridCellAt(pocketsRef.current, e.clientX, e.clientY) : null;
         const bCell = !pCell && bag ? gridCellAt(bagRef.current, e.clientX, e.clientY) : null;
         const slot: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
         const cell = pCell ?? bCell;
-        if (slot && cell) {
+        if (slot && cell && (drag.source === "floor" || drag.source === "pockets" || drag.source === "bag")) {
           const ox = cell.x - drag.grabDx;
           const oy = cell.y - drag.grabDy;
           const ok =
@@ -165,6 +239,7 @@ export function PackTetris() {
       if (played) playSfx("inventory");
       setDrag(null);
       setHover(null);
+      setSlotHover(null);
     };
 
     const onKey = (e: KeyboardEvent) => {
@@ -205,6 +280,9 @@ export function PackTetris() {
     dropToFloor,
     trashFromFloor,
     trashFromKit,
+    equipFromFloor,
+    unequipToFloor,
+    slotRefs,
   ]);
 
   if (!raid || !pockets) return null;
@@ -296,8 +374,9 @@ export function PackTetris() {
             Icon={Shirt}
             grid={pockets}
             gridRef={pocketsRef}
-            drag={drag}
-            hover={hover && hover.slot === "pockets" ? hover : null}
+            drag={drag ? { uid: drag.uid, itemId: drag.itemId, rotation: drag.rotation } : null}
+            draggingFromThisGrid={drag?.source === "pockets"}
+            hover={hover && hover.slot === "pockets" ? { x: hover.x, y: hover.y, valid: hover.valid } : null}
             onPick={(uid, itemId, rotation, dx, dy, mouseX, mouseY) =>
               setDrag({
                 source: "pockets",
@@ -322,8 +401,9 @@ export function PackTetris() {
               Icon={Backpack}
               grid={bag}
               gridRef={bagRef}
-              drag={drag}
-              hover={hover && hover.slot === "bag" ? hover : null}
+              drag={drag ? { uid: drag.uid, itemId: drag.itemId, rotation: drag.rotation } : null}
+              draggingFromThisGrid={drag?.source === "bag"}
+              hover={hover && hover.slot === "bag" ? { x: hover.x, y: hover.y, valid: hover.valid } : null}
               onPick={(uid, itemId, rotation, dx, dy, mouseX, mouseY) =>
                 setDrag({
                   source: "bag",
@@ -351,200 +431,50 @@ export function PackTetris() {
             drag · R or right-click to rotate
           </div>
         </div>
+
+        {/* Equipped column (far right) */}
+        <div className="flex shrink-0 items-start pl-3">
+          <EquippedColumn
+            equipment={raid.equipment}
+            refs={slotRefs}
+            hover={slotHover}
+            draggingForSlot={
+              drag?.source === "floor" ? (ITEMS[drag.itemId]?.slot ?? null) : null
+            }
+            onSlotPointerDown={(slot, e) => {
+              const item = slot === "bag" ? raid.equipment.bag?.slot : raid.equipment[slot];
+              if (!item) return;
+              // Ctrl/Cmd+click on an equipped slot fast-unequips to floor.
+              if (e.ctrlKey || e.metaKey) {
+                if (unequipToFloor(slot)) playSfx("inventory");
+                return;
+              }
+              setDrag({
+                source: `slot:${slot}`,
+                uid: item.uid,
+                itemId: item.itemId,
+                rotation: 0,
+                grabDx: 0,
+                grabDy: 0,
+                mouseX: e.clientX,
+                mouseY: e.clientY,
+              });
+            }}
+          />
+        </div>
       </div>
 
-      {drag && <DragGhost drag={drag} />}
-    </aside>
-  );
-}
-
-function KitGrid({
-  slot,
-  label,
-  Icon,
-  grid,
-  gridRef,
-  drag,
-  hover,
-  onPick,
-  onCtrlClick,
-}: {
-  slot: KitSlot;
-  label: string;
-  Icon: typeof Backpack;
-  grid: PocketsState | BagState;
-  gridRef: React.RefObject<HTMLDivElement | null>;
-  drag: DragState | null;
-  hover: HoverState;
-  onPick: (
-    uid: string,
-    itemId: string,
-    rotation: Rotation,
-    dx: number,
-    dy: number,
-    mouseX: number,
-    mouseY: number,
-  ) => void;
-  onCtrlClick: (uid: string) => void;
-}) {
-  const w = grid.grid.width;
-  const h = grid.grid.height;
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        <span className="flex items-center gap-1">
-          <Icon className="size-3" />
-          {label}
-        </span>
-        <span className="tabular-nums">
-          {grid.items.length}/{w * h}
-        </span>
-      </div>
-      <div
-        ref={gridRef}
-        className="relative select-none border border-border/80 bg-background/40"
-        style={{ width: w * CELL, height: h * CELL }}
-      >
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage:
-              `linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),` +
-              `linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px)`,
-            backgroundSize: `${CELL}px ${CELL}px`,
-          }}
+      {drag && (
+        <KitDragGhost
+          itemId={drag.itemId}
+          rotation={drag.rotation}
+          mouseX={drag.mouseX}
+          mouseY={drag.mouseY}
+          grabDx={drag.grabDx}
+          grabDy={drag.grabDy}
         />
-        {grid.items.map((p) => {
-          const cells = shapeFor(p.itemId, p.rotation);
-          const item = ITEMS[p.itemId];
-          const beingDragged =
-            drag &&
-            ((slot === "pockets" && drag.source === "pockets") ||
-              (slot === "bag" && drag.source === "bag")) &&
-            drag.uid === p.uid;
-          return (
-            <div
-              key={p.uid}
-              className={cn("absolute", beingDragged && "opacity-30")}
-              style={{ left: p.x * CELL, top: p.y * CELL }}
-            >
-              <ItemTiles
-                cells={cells}
-                itemId={p.itemId}
-                onPointerDown={(e, dx, dy) => {
-                  e.preventDefault();
-                  // Ctrl/Cmd+click is the fast drop-to-floor shortcut.
-                  if (e.ctrlKey || e.metaKey) {
-                    onCtrlClick(p.uid);
-                    return;
-                  }
-                  onPick(p.uid, p.itemId, p.rotation, dx, dy, e.clientX, e.clientY);
-                }}
-                label={item?.name ?? p.itemId}
-              />
-            </div>
-          );
-        })}
-        {drag && hover && (
-          <HoverPreview
-            x={hover.x}
-            y={hover.y}
-            valid={hover.valid}
-            cells={shapeFor(drag.itemId, drag.rotation)}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ItemTiles({
-  cells,
-  itemId,
-  onPointerDown,
-  label,
-}: {
-  cells: ReturnType<typeof shapeFor>;
-  itemId: string;
-  onPointerDown: (e: React.PointerEvent, dx: number, dy: number) => void;
-  label: string;
-}) {
-  const bg = tileBgFor(itemId);
-  const fg = tierColorFor(itemId);
-  const { w, h } = shapeBounds(cells);
-  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const tier = ITEMS[itemId]?.tier ?? "common";
-  const sellValue = ITEMS[itemId]?.sellValue ?? 0;
-
-  useLayoutEffect(() => {
-    const el = tooltipRef.current;
-    if (!cursor || !el) return;
-    const r = el.getBoundingClientRect();
-    const margin = 8;
-    const offset = 14;
-    let left = cursor.x + offset;
-    let top = cursor.y + offset;
-    if (left + r.width > window.innerWidth - margin) left = cursor.x - r.width - offset;
-    if (top + r.height > window.innerHeight - margin) top = cursor.y - r.height - offset;
-    if (left < margin) left = margin;
-    if (top < margin) top = margin;
-    el.style.left = `${left}px`;
-    el.style.top = `${top}px`;
-  }, [cursor]);
-
-  const update = (e: React.PointerEvent) => setCursor({ x: e.clientX, y: e.clientY });
-  const clear = () => setCursor(null);
-
-  return (
-    <>
-      <div className="pointer-events-none relative" style={{ width: w * CELL, height: h * CELL }}>
-        {cells.map(([dx, dy], i) => (
-          <div
-            key={`${dx}-${dy}-${i}`}
-            className={cn(
-              "pointer-events-auto absolute cursor-grab border transition-[filter] active:cursor-grabbing",
-              bg,
-              cursor && "brightness-125",
-            )}
-            style={{
-              left: dx * CELL,
-              top: dy * CELL,
-              width: CELL,
-              height: CELL,
-            }}
-            onPointerEnter={update}
-            onPointerMove={update}
-            onPointerLeave={clear}
-            onPointerDown={(e) => {
-              clear();
-              onPointerDown(e, dx, dy);
-            }}
-          />
-        ))}
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[9px] font-semibold uppercase tracking-widest",
-            fg,
-          )}
-        >
-          {abbreviate(label)}
-        </div>
-      </div>
-      {cursor && (
-        <div
-          ref={tooltipRef}
-          className="pointer-events-none fixed z-[60] whitespace-nowrap rounded-sm border border-border/80 bg-popover/95 px-2 py-1 font-mono text-[10px] uppercase tracking-widest shadow-md backdrop-blur"
-          style={{ left: cursor.x + 14, top: cursor.y + 14 }}
-        >
-          <div className={cn("font-semibold", fg)}>{label}</div>
-          <div className="text-muted-foreground">
-            {tier}
-            {sellValue > 0 && ` · ¤${sellValue}`}
-          </div>
-        </div>
       )}
-    </>
+    </aside>
   );
 }
 
@@ -565,13 +495,14 @@ function FloorTile({
   const { w, h } = shapeBounds(cells);
   const px = CELL - 2;
   return (
-    <div
-      className={cn(
-        "group relative cursor-grab rounded-sm border border-border/60 bg-card/40 p-1.5 transition-colors active:cursor-grabbing",
-        hidden && "opacity-30",
-      )}
-      onPointerDown={onPointerDown}
-    >
+    <ItemTooltip itemId={itemId} hint="Drag to kit · Ctrl+click to fast-pickup">
+      <div
+        className={cn(
+          "group relative cursor-grab rounded-sm border border-border/60 bg-card/40 p-1.5 transition-colors active:cursor-grabbing",
+          hidden && "opacity-30",
+        )}
+        onPointerDown={onPointerDown}
+      >
       <div className="relative" style={{ width: w * px, height: h * px }}>
         {cells.map(([dx, dy], i) => (
           <div
@@ -589,76 +520,8 @@ function FloorTile({
           {abbreviate(label)}
         </div>
       </div>
-    </div>
-  );
-}
-
-function HoverPreview({
-  x,
-  y,
-  valid,
-  cells,
-}: {
-  x: number;
-  y: number;
-  valid: boolean;
-  cells: ReturnType<typeof shapeFor>;
-}) {
-  return (
-    <>
-      {cells.map(([dx, dy], i) => (
-        <div
-          key={i}
-          className={cn(
-            "pointer-events-none absolute border",
-            valid ? "border-emerald-400/80 bg-emerald-500/20" : "border-red-400/80 bg-red-500/20",
-          )}
-          style={{
-            left: (x + dx) * CELL,
-            top: (y + dy) * CELL,
-            width: CELL,
-            height: CELL,
-          }}
-        />
-      ))}
-    </>
-  );
-}
-
-function DragGhost({ drag }: { drag: DragState }) {
-  const cells = shapeFor(drag.itemId, drag.rotation);
-  const item = ITEMS[drag.itemId];
-  const bg = tileBgFor(drag.itemId);
-  const fg = tierColorFor(drag.itemId);
-  const { w, h } = shapeBounds(cells);
-  const left = drag.mouseX - (drag.grabDx * CELL + CELL / 2);
-  const top = drag.mouseY - (drag.grabDy * CELL + CELL / 2);
-  return (
-    <div
-      className="pointer-events-none fixed z-50 opacity-80"
-      style={{ left, top, width: w * CELL, height: h * CELL }}
-    >
-      {cells.map(([dx, dy], i) => (
-        <div
-          key={i}
-          className={cn("absolute border-2", bg)}
-          style={{
-            left: dx * CELL,
-            top: dy * CELL,
-            width: CELL,
-            height: CELL,
-          }}
-        />
-      ))}
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[9px] font-semibold uppercase tracking-widest drop-shadow",
-          fg,
-        )}
-      >
-        {abbreviate(item?.name ?? drag.itemId)}
       </div>
-    </div>
+    </ItemTooltip>
   );
 }
 
