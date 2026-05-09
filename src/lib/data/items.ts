@@ -82,12 +82,14 @@ export const ITEMS: Record<string, Item> = {
 
 export const ITEM_IDS = Object.keys(ITEMS);
 
-// Bags + tagged unlock items are excluded so they don't drop from generic
-// loot. Bags will land via the shop / rare tagged drops once those ship.
+// Tagged unlock items are excluded so they only drop from location-tagged
+// rare events. Bags participate in the regular pools at their natural tier
+// rate, so they can land in regular containers (via pickCommonItemId/
+// pickRareItemId) and locked containers (via pickItemForLocation fallback).
 const TIER_POOLS: Record<string, string[]> = {
-  common: Object.values(ITEMS).filter((i) => i.tier === "common" && i.category !== "bag").map((i) => i.id),
-  uncommon: Object.values(ITEMS).filter((i) => i.tier === "uncommon" && i.category !== "bag").map((i) => i.id),
-  rare: Object.values(ITEMS).filter((i) => i.tier === "rare" && i.category !== "bag" && i.id !== "datacenter_keycard").map((i) => i.id),
+  common: Object.values(ITEMS).filter((i) => i.tier === "common").map((i) => i.id),
+  uncommon: Object.values(ITEMS).filter((i) => i.tier === "uncommon").map((i) => i.id),
+  rare: Object.values(ITEMS).filter((i) => i.tier === "rare" && i.id !== "datacenter_keycard").map((i) => i.id),
   experimental: Object.values(ITEMS).filter((i) => i.tier === "experimental" && i.id !== "biolab_coords" && i.id !== "workbench_schematic").map((i) => i.id),
 };
 

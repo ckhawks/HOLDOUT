@@ -1,45 +1,23 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "@/store/game";
 import { ITEMS } from "@/lib/data/items";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
 import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, Backpack, Coins, PackageOpen, Shirt } from "lucide-react";
-import { buildOccupancy, canPlace, shapeBounds, shapeFor } from "@/lib/engine/shapes";
-import type { BagState, Equipment, EquipSlot, PocketsState, Rotation, StashItem } from "@/lib/types";
+import { ArrowLeft, Backpack, Coins, PackageOpen, Shirt } from "lucide-react";
+import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
+import { findFit } from "@/lib/engine/equipment";
+import { gridCellAt, isInside, slotUnder } from "@/lib/dnd";
+import { useDragDrop } from "@/lib/useDragDrop";
+import type { EquipSlot, Rotation } from "@/lib/types";
 import { EquippedColumn, SLOT_ORDER, type SlotHover, type SlotRefMap } from "./EquippedColumn";
 import { ItemTooltip, Tooltip } from "@/components/ui/Tooltip";
 import { KitDragGhost, KitGrid, KIT_CELL, type KitHover } from "./KitGrid";
 import type { KitSlot } from "@/store/game";
 import { playSfx } from "@/lib/sfx";
-
-const CELL = 28;
-
-type KitTarget = { slot: "pockets" | "bag"; x: number; y: number; rotation: Rotation };
-
-// First-fit placement search across pockets, then bag. Returns null if it
-// won't fit anywhere with any rotation.
-function findFit(eq: Equipment, item: StashItem): KitTarget | null {
-  const tryGrid = (grid: PocketsState | BagState, slot: "pockets" | "bag"): KitTarget | null => {
-    for (let r = 0; r < 4; r++) {
-      const rotation = r as Rotation;
-      const cells = shapeFor(item.itemId, rotation);
-      const occ = buildOccupancy(grid.items, grid.grid.width, grid.grid.height);
-      for (let y = 0; y < grid.grid.height; y++) {
-        for (let x = 0; x < grid.grid.width; x++) {
-          if (canPlace(cells, x, y, grid.grid.width, grid.grid.height, occ)) {
-            return { slot, x, y, rotation };
-          }
-        }
-      }
-    }
-    return null;
-  };
-  return tryGrid(eq.pockets, "pockets") ?? (eq.bag ? tryGrid(eq.bag, "bag") : null);
-}
 
 export function StashPanel() {
   const stash = useGame((s) => s.stash);
@@ -92,146 +70,106 @@ export function StashPanel() {
   const pocketsRef = useRef<HTMLDivElement>(null);
   const bagRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!drag) return;
-    const isInside = (el: HTMLElement | null, x: number, y: number) => {
-      if (!el) return false;
-      const r = el.getBoundingClientRect();
-      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-    };
-    const slotUnder = (x: number, y: number): EquipSlot | null => {
-      for (const s of SLOT_ORDER) {
-        if (isInside(slotRefs[s].current, x, y)) return s;
-      }
-      return null;
-    };
-    const gridCellAt = (
-      el: HTMLElement | null,
-      x: number,
-      y: number,
-    ): { x: number; y: number } | null => {
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      const lx = x - r.left;
-      const ly = y - r.top;
-      if (lx < 0 || ly < 0 || lx >= r.width || ly >= r.height) return null;
-      return { x: Math.floor(lx / KIT_CELL), y: Math.floor(ly / KIT_CELL) };
-    };
-    const slotIsValidTarget = (s: EquipSlot, src: typeof drag): boolean => {
-      if (!src) return false;
-      if (src.kind === "stash") {
-        const def = ITEMS[src.itemId];
+  type Drag = NonNullable<typeof drag>;
+
+  const onMove = useCallback((e: PointerEvent, d: Drag) => {
+    const slotIsValidTarget = (s: EquipSlot): boolean => {
+      if (d.kind === "stash") {
+        const def = ITEMS[d.itemId];
         if (def?.slot !== s) return false;
         if (s === "bag") return !equipment.bag;
         return !equipment[s];
       }
-      return s === (src.kind === "slot" ? src.slot : null);
+      return s === (d.kind === "slot" ? d.slot : null);
     };
-    // Validity check for placing the dragged item into a kit grid at (ox, oy).
-    const evalKitDrop = (
-      target: KitSlot,
-      ox: number,
-      oy: number,
-    ): boolean => {
+    const evalKitDrop = (target: KitSlot, ox: number, oy: number): boolean => {
       const grid = target === "pockets" ? equipment.pockets : equipment.bag;
       if (!grid) return false;
-      const itemId = drag.kind === "stash" || drag.kind === "kit" ? drag.itemId : null;
+      const itemId = d.kind === "stash" || d.kind === "kit" ? d.itemId : null;
       if (!itemId) return false;
-      const rotation = drag.kind === "kit" ? drag.rotation : 0;
+      const rotation = d.kind === "kit" ? d.rotation : 0;
       const cells = shapeFor(itemId, rotation);
-      const ignoreUid =
-        drag.kind === "kit" && drag.from === target ? drag.uid : undefined;
+      const ignoreUid = d.kind === "kit" && d.from === target ? d.uid : undefined;
       const occ = buildOccupancy(grid.items, grid.grid.width, grid.grid.height, ignoreUid);
       return canPlace(cells, ox, oy, grid.grid.width, grid.grid.height, occ);
     };
 
-    const onMove = (e: PointerEvent) => {
-      // Slot hit-test first (priority for slot drops).
-      const s = slotUnder(e.clientX, e.clientY);
-      if (s) {
-        setSlotHover({ slot: s, valid: slotIsValidTarget(s, drag) });
-        setKitHover(null);
-        setOverStash(false);
-      } else {
-        setSlotHover(null);
-        // Kit grid hit-test (only for stash + kit drag sources).
-        const dragHasShape = drag.kind === "stash" || drag.kind === "kit";
-        const grabDx = drag.kind === "kit" ? drag.grabDx : 0;
-        const grabDy = drag.kind === "kit" ? drag.grabDy : 0;
-        const pCell = dragHasShape ? gridCellAt(pocketsRef.current, e.clientX, e.clientY) : null;
-        const bCell = !pCell && dragHasShape && equipment.bag
-          ? gridCellAt(bagRef.current, e.clientX, e.clientY)
-          : null;
-        if (pCell) {
-          const ox = pCell.x - grabDx;
-          const oy = pCell.y - grabDy;
-          setKitHover({ slot: "pockets", x: ox, y: oy, valid: evalKitDrop("pockets", ox, oy) });
-          setOverStash(false);
-        } else if (bCell) {
-          const ox = bCell.x - grabDx;
-          const oy = bCell.y - grabDy;
-          setKitHover({ slot: "bag", x: ox, y: oy, valid: evalKitDrop("bag", ox, oy) });
-          setOverStash(false);
-        } else {
-          setKitHover(null);
-          setOverStash(isInside(stashListRef.current, e.clientX, e.clientY));
-        }
-      }
-      setDrag((d) => (d ? { ...d, mouseX: e.clientX, mouseY: e.clientY } : d));
-    };
-
-    const onUp = (e: PointerEvent) => {
-      let played = false;
-      const s = slotUnder(e.clientX, e.clientY);
-      const grabDx = drag.kind === "kit" ? drag.grabDx : 0;
-      const grabDy = drag.kind === "kit" ? drag.grabDy : 0;
-      const pCell = gridCellAt(pocketsRef.current, e.clientX, e.clientY);
-      const bCell = !pCell && equipment.bag
-        ? gridCellAt(bagRef.current, e.clientX, e.clientY)
-        : null;
-      const kitTarget: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
-      const cell = pCell ?? bCell;
-      const onStashList = isInside(stashListRef.current, e.clientX, e.clientY);
-
-      if (drag.kind === "slot") {
-        // Slot drag: dropped on a slot → no-op (must unequip first to swap).
-        // Anywhere else → unequip to stash. The user's intent dragging out of
-        // the slot is unambiguous, so we don't require a precise stash-list hit.
-        if (!s) {
-          if (unequipToStash(drag.slot)) played = true;
-        }
-      } else if (drag.kind === "stash") {
-        if (s) {
-          if (equipFromStash(drag.uid)) played = true;
-        } else if (kitTarget && cell) {
-          if (kitFromStash(drag.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, 0)) {
-            played = true;
-          }
-        }
-      } else if (drag.kind === "kit") {
-        if (s) {
-          // kit → slot: no-op (kit items don't equip).
-        } else if (kitTarget && cell) {
-          if (moveKitItem(drag.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, drag.rotation)) {
-            played = true;
-          }
-        } else if (onStashList) {
-          if (stashFromKit(drag.uid)) played = true;
-        }
-      }
-      if (played) playSfx("inventory");
-      setDrag(null);
-      setSlotHover(null);
+    const s = slotUnder(slotRefs, SLOT_ORDER, e.clientX, e.clientY);
+    if (s) {
+      setSlotHover({ slot: s, valid: slotIsValidTarget(s) });
       setKitHover(null);
       setOverStash(false);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, [drag, equipment, equipFromStash, unequipToStash, kitFromStash, stashFromKit, moveKitItem, slotRefs]);
+    } else {
+      setSlotHover(null);
+      const dragHasShape = d.kind === "stash" || d.kind === "kit";
+      const grabDx = d.kind === "kit" ? d.grabDx : 0;
+      const grabDy = d.kind === "kit" ? d.grabDy : 0;
+      const pCell = dragHasShape ? gridCellAt(pocketsRef.current, KIT_CELL, e.clientX, e.clientY) : null;
+      const bCell = !pCell && dragHasShape && equipment.bag
+        ? gridCellAt(bagRef.current, KIT_CELL, e.clientX, e.clientY)
+        : null;
+      if (pCell) {
+        const ox = pCell.x - grabDx;
+        const oy = pCell.y - grabDy;
+        setKitHover({ slot: "pockets", x: ox, y: oy, valid: evalKitDrop("pockets", ox, oy) });
+        setOverStash(false);
+      } else if (bCell) {
+        const ox = bCell.x - grabDx;
+        const oy = bCell.y - grabDy;
+        setKitHover({ slot: "bag", x: ox, y: oy, valid: evalKitDrop("bag", ox, oy) });
+        setOverStash(false);
+      } else {
+        setKitHover(null);
+        setOverStash(isInside(stashListRef.current, e.clientX, e.clientY));
+      }
+    }
+    setDrag((cur) => (cur ? { ...cur, mouseX: e.clientX, mouseY: e.clientY } : cur));
+  }, [equipment, slotRefs]);
+
+  const onUp = useCallback((e: PointerEvent, d: Drag) => {
+    let played = false;
+    const s = slotUnder(slotRefs, SLOT_ORDER, e.clientX, e.clientY);
+    const grabDx = d.kind === "kit" ? d.grabDx : 0;
+    const grabDy = d.kind === "kit" ? d.grabDy : 0;
+    const pCell = gridCellAt(pocketsRef.current, KIT_CELL, e.clientX, e.clientY);
+    const bCell = !pCell && equipment.bag
+      ? gridCellAt(bagRef.current, KIT_CELL, e.clientX, e.clientY)
+      : null;
+    const kitTarget: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
+    const cell = pCell ?? bCell;
+    const onStashList = isInside(stashListRef.current, e.clientX, e.clientY);
+
+    if (d.kind === "slot") {
+      if (!s) {
+        if (unequipToStash(d.slot)) played = true;
+      }
+    } else if (d.kind === "stash") {
+      if (s) {
+        if (equipFromStash(d.uid)) played = true;
+      } else if (kitTarget && cell) {
+        if (kitFromStash(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, 0)) {
+          played = true;
+        }
+      }
+    } else if (d.kind === "kit") {
+      if (s) {
+        // kit → slot: no-op
+      } else if (kitTarget && cell) {
+        if (moveKitItem(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, d.rotation)) {
+          played = true;
+        }
+      } else if (onStashList) {
+        if (stashFromKit(d.uid)) played = true;
+      }
+    }
+    if (played) playSfx("inventory");
+    setDrag(null);
+    setSlotHover(null);
+    setKitHover(null);
+    setOverStash(false);
+  }, [equipment, equipFromStash, unequipToStash, kitFromStash, stashFromKit, moveKitItem, slotRefs]);
+
+  useDragDrop(drag, { onMove, onUp });
 
   const junkValue = stash.reduce((sum, si) => {
     const item = ITEMS[si.itemId];

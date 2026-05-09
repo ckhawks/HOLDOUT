@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Backpack, Shirt, Trash2 } from "lucide-react";
 import { useGame, type KitSlot } from "@/store/game";
 import type { EquipSlot, PocketsState, BagState, Rotation } from "@/lib/types";
 import { EquippedColumn, SLOT_ORDER, type SlotHover, type SlotRefMap } from "./EquippedColumn";
 import { KitDragGhost, KitGrid, KIT_CELL } from "./KitGrid";
 import { ItemTooltip } from "@/components/ui/Tooltip";
+import { gridCellAt, isInside, slotUnder } from "@/lib/dnd";
+import { useDragDrop } from "@/lib/useDragDrop";
 import { ITEMS } from "@/lib/data/items";
 import { playSfx } from "@/lib/sfx";
 import {
@@ -16,7 +18,7 @@ import {
   shapeFor,
 } from "@/lib/engine/shapes";
 import { cn } from "@/lib/utils";
-import { tierColorFor, tileBgFor } from "@/lib/itemDisplay";
+import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 
 const CELL = KIT_CELL;
 
@@ -111,29 +113,9 @@ export function PackTetris() {
   const pockets = raid?.equipment.pockets;
   const bag = raid?.equipment.bag;
 
-  useEffect(() => {
-    if (!drag || !raid) return;
-
-    function gridCellAt(
-      el: HTMLElement | null,
-      clientX: number,
-      clientY: number,
-    ): { x: number; y: number } | null {
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      const lx = clientX - r.left;
-      const ly = clientY - r.top;
-      if (lx < 0 || ly < 0 || lx >= r.width || ly >= r.height) return null;
-      return { x: Math.floor(lx / CELL), y: Math.floor(ly / CELL) };
-    }
-
-    function isOverElement(el: HTMLElement | null, x: number, y: number): boolean {
-      if (!el) return false;
-      const r = el.getBoundingClientRect();
-      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-    }
-
-    function evalDrop(d: DragState, slot: KitSlot, eq: PocketsState | BagState, ox: number, oy: number) {
+  const onMove = useCallback((e: PointerEvent, d: DragState) => {
+    if (!raid) return;
+    const evalDrop = (slot: KitSlot, eq: PocketsState | BagState, ox: number, oy: number): boolean => {
       const cells = shapeFor(d.itemId, d.rotation);
       const ignoreUid =
         (d.source === "pockets" && slot === "pockets") ||
@@ -141,149 +123,113 @@ export function PackTetris() {
           ? d.uid
           : undefined;
       const occ = buildOccupancy(eq.items, eq.grid.width, eq.grid.height, ignoreUid);
-      const valid = canPlace(cells, ox, oy, eq.grid.width, eq.grid.height, occ);
-      return valid;
-    }
-
-    const slotUnder = (x: number, y: number): EquipSlot | null => {
-      for (const s of SLOT_ORDER) {
-        if (isOverElement(slotRefs[s].current, x, y)) return s;
-      }
-      return null;
+      return canPlace(cells, ox, oy, eq.grid.width, eq.grid.height, occ);
     };
-    const slotIsValidTarget = (s: EquipSlot, d: DragState): boolean => {
+    const slotIsValidTarget = (s: EquipSlot): boolean => {
       if (d.source === "floor") {
         const def = ITEMS[d.itemId];
         if (def?.slot !== s) return false;
         if (s === "bag") return !raid.equipment.bag;
         return !raid.equipment[s];
       }
-      if (d.source === `slot:${s}`) return true; // dropping back on itself = no-op
+      if (d.source === `slot:${s}`) return true;
       return false;
     };
-
-    const onMove = (e: PointerEvent) => {
-      if (!drag || !raid) return;
-      let h: HoverState = null;
-      let sh: SlotHover = null;
-      const sUnder = slotUnder(e.clientX, e.clientY);
-      if (sUnder) {
-        sh = { slot: sUnder, valid: slotIsValidTarget(sUnder, drag) };
-      } else {
-        const pCell = pockets ? gridCellAt(pocketsRef.current, e.clientX, e.clientY) : null;
-        if (pCell && pockets) {
-          const ox = pCell.x - drag.grabDx;
-          const oy = pCell.y - drag.grabDy;
-          h = { slot: "pockets", x: ox, y: oy, valid: evalDrop(drag, "pockets", pockets, ox, oy) };
-        } else if (bag) {
-          const bCell = gridCellAt(bagRef.current, e.clientX, e.clientY);
-          if (bCell) {
-            const ox = bCell.x - drag.grabDx;
-            const oy = bCell.y - drag.grabDy;
-            h = { slot: "bag", x: ox, y: oy, valid: evalDrop(drag, "bag", bag, ox, oy) };
-          }
+    let h: HoverState = null;
+    let sh: SlotHover = null;
+    const sUnder = slotUnder(slotRefs, SLOT_ORDER, e.clientX, e.clientY);
+    if (sUnder) {
+      sh = { slot: sUnder, valid: slotIsValidTarget(sUnder) };
+    } else {
+      const pCell = pockets ? gridCellAt(pocketsRef.current, KIT_CELL, e.clientX, e.clientY) : null;
+      if (pCell && pockets) {
+        const ox = pCell.x - d.grabDx;
+        const oy = pCell.y - d.grabDy;
+        h = { slot: "pockets", x: ox, y: oy, valid: evalDrop("pockets", pockets, ox, oy) };
+      } else if (bag) {
+        const bCell = gridCellAt(bagRef.current, KIT_CELL, e.clientX, e.clientY);
+        if (bCell) {
+          const ox = bCell.x - d.grabDx;
+          const oy = bCell.y - d.grabDy;
+          h = { slot: "bag", x: ox, y: oy, valid: evalDrop("bag", bag, ox, oy) };
         }
       }
-      setHover(h);
-      setSlotHover(sh);
-      setDrag((d) => (d ? { ...d, mouseX: e.clientX, mouseY: e.clientY } : d));
-    };
+    }
+    setHover(h);
+    setSlotHover(sh);
+    setDrag((cur) => (cur ? { ...cur, mouseX: e.clientX, mouseY: e.clientY } : cur));
+  }, [raid, pockets, bag, slotRefs]);
 
-    const onUp = (e: PointerEvent) => {
-      if (!drag) return;
-      let played = false;
-      const sUnder = slotUnder(e.clientX, e.clientY);
-      if (sUnder) {
-        // Drop on equipped slot.
-        if (drag.source === "floor") {
-          if (equipFromFloor(drag.uid)) played = true;
-        }
-        // Slot → same slot or different slot: no-op for now.
-      } else if (isOverElement(trashRef.current, e.clientX, e.clientY)) {
-        if (drag.source === "floor") {
-          trashFromFloor(drag.uid);
-          played = true;
-        } else if (drag.source === "pockets" || drag.source === "bag") {
-          trashFromKit(drag.uid);
-          played = true;
-        } else if (drag.source.startsWith("slot:")) {
-          // Trashing an equipped item: route to floor instead so the player
-          // has to confirm by trashing it from the floor. Avoids accidental
-          // bag loss with one drag.
-          const slot = drag.source.slice(5) as EquipSlot;
-          if (unequipToFloor(slot)) played = true;
-        }
-      } else if (isOverElement(floorRef.current, e.clientX, e.clientY)) {
-        if (drag.source === "pockets" || drag.source === "bag") {
-          dropToFloor(drag.uid);
-          played = true;
-        } else if (drag.source.startsWith("slot:")) {
-          const slot = drag.source.slice(5) as EquipSlot;
-          if (unequipToFloor(slot)) played = true;
-        }
-      } else {
-        const pCell = pockets ? gridCellAt(pocketsRef.current, e.clientX, e.clientY) : null;
-        const bCell = !pCell && bag ? gridCellAt(bagRef.current, e.clientX, e.clientY) : null;
-        const slot: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
-        const cell = pCell ?? bCell;
-        if (slot && cell && (drag.source === "floor" || drag.source === "pockets" || drag.source === "bag")) {
-          const ox = cell.x - drag.grabDx;
-          const oy = cell.y - drag.grabDy;
-          const ok =
-            drag.source === "floor"
-              ? pickupFromFloor(drag.uid, slot, ox, oy, drag.rotation)
-              : moveKitItem(drag.uid, slot, ox, oy, drag.rotation);
-          if (ok) played = true;
-        }
+  const onUp = useCallback((e: PointerEvent, d: DragState) => {
+    let played = false;
+    const sUnder = slotUnder(slotRefs, SLOT_ORDER, e.clientX, e.clientY);
+    if (sUnder) {
+      if (d.source === "floor") {
+        if (equipFromFloor(d.uid)) played = true;
       }
-      if (played) playSfx("inventory");
-      setDrag(null);
-      setHover(null);
-      setSlotHover(null);
-    };
+    } else if (isInside(trashRef.current, e.clientX, e.clientY)) {
+      if (d.source === "floor") {
+        trashFromFloor(d.uid);
+        played = true;
+      } else if (d.source === "pockets" || d.source === "bag") {
+        trashFromKit(d.uid);
+        played = true;
+      } else if (d.source.startsWith("slot:")) {
+        // Routes equipped item to floor instead of /dev/null so a one-drag
+        // trash doesn't accidentally vaporize a bag.
+        const slot = d.source.slice(5) as EquipSlot;
+        if (unequipToFloor(slot)) played = true;
+      }
+    } else if (isInside(floorRef.current, e.clientX, e.clientY)) {
+      if (d.source === "pockets" || d.source === "bag") {
+        dropToFloor(d.uid);
+        played = true;
+      } else if (d.source.startsWith("slot:")) {
+        const slot = d.source.slice(5) as EquipSlot;
+        if (unequipToFloor(slot)) played = true;
+      }
+    } else {
+      const pCell = pockets ? gridCellAt(pocketsRef.current, KIT_CELL, e.clientX, e.clientY) : null;
+      const bCell = !pCell && bag ? gridCellAt(bagRef.current, KIT_CELL, e.clientX, e.clientY) : null;
+      const slot: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
+      const cell = pCell ?? bCell;
+      if (slot && cell && (d.source === "floor" || d.source === "pockets" || d.source === "bag")) {
+        const ox = cell.x - d.grabDx;
+        const oy = cell.y - d.grabDy;
+        const ok =
+          d.source === "floor"
+            ? pickupFromFloor(d.uid, slot, ox, oy, d.rotation)
+            : moveKitItem(d.uid, slot, ox, oy, d.rotation);
+        if (ok) played = true;
+      }
+    }
+    if (played) playSfx("inventory");
+    setDrag(null);
+    setHover(null);
+    setSlotHover(null);
+  }, [pockets, bag, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, trashFromFloor, trashFromKit, equipFromFloor, unequipToFloor]);
 
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "r" || e.key === "R") {
-        e.preventDefault();
-        rotateInPlace();
-      }
-    };
-    const onContextMenu = (e: MouseEvent) => {
+  const rotateInPlace = useCallback(() => {
+    setDrag((d) => {
+      if (!d) return d;
+      const newRot = ((d.rotation + 1) % 4) as Rotation;
+      return { ...d, rotation: newRot, grabDx: 0, grabDy: 0 };
+    });
+  }, []);
+
+  const onKey = useCallback((e: KeyboardEvent) => {
+    if (e.key === "r" || e.key === "R") {
       e.preventDefault();
       rotateInPlace();
-    };
-    function rotateInPlace() {
-      setDrag((d) => {
-        if (!d) return d;
-        const newRot = ((d.rotation + 1) % 4) as Rotation;
-        return { ...d, rotation: newRot, grabDx: 0, grabDy: 0 };
-      });
     }
+  }, [rotateInPlace]);
 
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("contextmenu", onContextMenu);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("contextmenu", onContextMenu);
-    };
-  }, [
-    drag,
-    raid,
-    pockets,
-    bag,
-    pickupFromFloor,
-    moveKitItem,
-    dropToFloor,
-    trashFromFloor,
-    trashFromKit,
-    equipFromFloor,
-    unequipToFloor,
-    slotRefs,
-  ]);
+  const onContextMenu = useCallback((e: MouseEvent) => {
+    e.preventDefault();
+    rotateInPlace();
+  }, [rotateInPlace]);
+
+  useDragDrop(drag, { onMove, onUp, onKey, onContextMenu });
 
   if (!raid || !pockets) return null;
 
@@ -525,8 +471,3 @@ function FloorTile({
   );
 }
 
-function abbreviate(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return parts.slice(0, 3).map((p) => p[0]).join("").toUpperCase();
-  return name.slice(0, 3).toUpperCase();
-}

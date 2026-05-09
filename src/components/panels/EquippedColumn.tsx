@@ -4,7 +4,7 @@ import { Backpack, HardHat, Shield, Swords } from "lucide-react";
 import type { Equipment, EquipSlot, SlotItem } from "@/lib/types";
 import { ITEMS } from "@/lib/data/items";
 import { cn } from "@/lib/utils";
-import { tierColorFor, tileBgFor } from "@/lib/itemDisplay";
+import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { ItemTooltip, Tooltip } from "@/components/ui/Tooltip";
 
 const SLOT_META: Record<EquipSlot, { label: string; Icon: typeof Backpack }> = {
@@ -139,8 +139,3 @@ function SlotTile({
   );
 }
 
-function abbreviate(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return parts.slice(0, 3).map((p) => p[0]).join("").toUpperCase();
-  return name.slice(0, 3).toUpperCase();
-}

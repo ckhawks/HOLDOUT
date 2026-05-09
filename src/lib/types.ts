@@ -16,6 +16,11 @@ export type ItemCategory =
 // nothing reads stat effects yet.
 export type EquipSlot = "bag" | "weapon" | "armor" | "helmet";
 
+// Which kit grid an item lives in. Distinct from EquipSlot — pockets isn't
+// a slot, it's a built-in grid; "bag" here means the equipped bag's grid,
+// not the bag-equip slot.
+export type KitSlot = "pockets" | "bag";
+
 export type Cell = readonly [number, number];
 export type ShapeCells = ReadonlyArray<Cell>;
 export type Rotation = 0 | 1 | 2 | 3;

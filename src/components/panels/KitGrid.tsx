@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { Backpack } from "lucide-react";
 import { ITEMS } from "@/lib/data/items";
 import { shapeBounds, shapeFor } from "@/lib/engine/shapes";
-import { tierColorFor, tileBgFor } from "@/lib/itemDisplay";
+import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { cn } from "@/lib/utils";
 import type { BagState, PocketsState, Rotation } from "@/lib/types";
 import type { KitSlot } from "@/store/game";
@@ -294,8 +294,3 @@ export function KitDragGhost({
   );
 }
 
-function abbreviate(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return parts.slice(0, 3).map((p) => p[0]).join("").toUpperCase();
-  return name.slice(0, 3).toUpperCase();
-}

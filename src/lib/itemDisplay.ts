@@ -27,6 +27,15 @@ export function tierColorFor(itemId: string | undefined): string {
   return tier ? TIER_COLOR[tier] : TIER_COLOR.common;
 }
 
+// 2-3 letter monogram for an item — used as the inner label on inventory
+// tiles where the full name doesn't fit. Multi-word names get one letter
+// per word (up to 3); single-word names get the first 3 letters.
+export function abbreviate(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return parts.slice(0, 3).map((p) => p[0]).join("").toUpperCase();
+  return name.slice(0, 3).toUpperCase();
+}
+
 export function splitItemText(text: string): { parts: { text: string; isItem: boolean }[] } {
   const parts: { text: string; isItem: boolean }[] = [];
   const re = /⟦(.+?)⟧/g;
