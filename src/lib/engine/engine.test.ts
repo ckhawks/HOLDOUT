@@ -260,6 +260,23 @@ describe("rollEvent template substitution (unique-token check)", () => {
       expect(ev.text).not.toMatch(/\{[a-z]+\}/);
     }
   });
+
+  it("never produces doubled ⟦⟦ or ⟧⟧ markers (templates must not pre-wrap {item})", () => {
+    const rand = makeRng(53);
+    // Sweep both raid and extract/combat states.
+    const states = [
+      freshRunState({ depth: 5 }),
+      freshRunState({ flags: ["combat_engaged"], depth: 5 }),
+      freshRunState({ flags: ["extracting"], depth: 5, distanceFromExtract: 8 }),
+    ];
+    for (const state of states) {
+      for (let i = 0; i < 200; i++) {
+        const ev = rollEvent(rand, "warehouse", state);
+        expect(ev.text).not.toMatch(/⟦⟦/);
+        expect(ev.text).not.toMatch(/⟧⟧/);
+      }
+    }
+  });
 });
 
 describe("doTick flag/distance plumbing (via tickRaid + manual apply)", () => {

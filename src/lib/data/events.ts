@@ -14,6 +14,9 @@ export const EVENTS: RaidEventDef[] = [
       "Found a {item} in the {location}. {adj}.",
     ],
     rollLoot: "common",
+    // Looting happens in place — operative isn't pushing deeper this tick.
+    depthAdvance: 0,
+    distanceAdvance: 0,
   },
   {
     id: "spotted_patrol",
@@ -47,6 +50,8 @@ export const EVENTS: RaidEventDef[] = [
           alertnessDelta: 14,
           ammoDelta: -3,
           flagsAdded: ["combat_engaged"],
+          depthAdvance: 0,
+          distanceAdvance: 0,
         },
       },
       {
@@ -137,6 +142,9 @@ export const EVENTS: RaidEventDef[] = [
       "{condition}. Can hear breathing on the other side.",
     ],
     passiveEffects: { alertnessDelta: 3 },
+    // Stopping to listen is lateral — no deeper, no closer to extract change.
+    depthAdvance: 0,
+    distanceAdvance: 0,
   },
 
   // ---------- Combat resolution pool (exclusive while combat_engaged) ----------
@@ -145,15 +153,17 @@ export const EVENTS: RaidEventDef[] = [
     weight: 55,
     kind: "combat_resolved",
     templates: [
-      "Target down. Looted ⟦{item}⟧ off them.",
-      "Eliminated. Pulled ⟦{item}⟧ before the alarm.",
-      "Threat neutralized. ⟦{item}⟧ recovered.",
+      "Target down. Looted {item} off them.",
+      "Eliminated. Pulled {item} before the alarm.",
+      "Threat neutralized. {item} recovered.",
     ],
     preconditions: (s) => s.flags.includes("combat_engaged"),
     exclusive: true,
     rollLoot: "common",
     removeFlags: ["combat_engaged"],
     passiveEffects: { alertnessDelta: 4 },
+    depthAdvance: 0,
+    distanceAdvance: 0,
   },
   {
     id: "firefight_continues",
@@ -169,6 +179,8 @@ export const EVENTS: RaidEventDef[] = [
     passiveEffects: { healthDelta: -6, ammoDelta: -2, alertnessDelta: 5 },
     // Sustained fire occasionally cuts: ~25% minor bleed, no major from this event.
     postconditions: (rand) => (rand() < 0.25 ? ["bleeding_minor"] : []),
+    depthAdvance: 0,
+    distanceAdvance: 0,
   },
   {
     id: "target_fled",
@@ -182,6 +194,8 @@ export const EVENTS: RaidEventDef[] = [
     exclusive: true,
     removeFlags: ["combat_engaged"],
     passiveEffects: { alertnessDelta: 8, ammoDelta: -1 },
+    depthAdvance: 0,
+    distanceAdvance: 0,
   },
 
   // ---------- Extract pool (exclusive while extracting flag is set) ----------
@@ -225,7 +239,9 @@ export const EVENTS: RaidEventDef[] = [
       "Snatched a {item} on the way past — {adj}.",
       "Crate spilled in the {location}. Grabbed a {item}.",
     ],
-    preconditions: (s) => s.flags.includes("extracting"),
+    // No loot grabs in the last 3 events — operative is focused on the door.
+    preconditions: (s) =>
+      s.flags.includes("extracting") && s.distanceFromExtract > 3,
     exclusive: true,
     rollLoot: "common",
     distanceAdvance: -1,

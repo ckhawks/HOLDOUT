@@ -55,7 +55,7 @@ export const ITEMS: Record<string, Item> = {
   corp_id:          { id: "corp_id",          name: "Corp ID Badge",     tier: "uncommon",     category: "intel",       sellValue: 38,  weight: 1, shape: S.one },
   redacted_dossier: { id: "redacted_dossier", name: "Redacted Dossier",  tier: "uncommon",     category: "intel",       sellValue: 55,  weight: 1, shape: S.horiz2 },
   encrypted_drive:  { id: "encrypted_drive",  name: "Encrypted Drive",   tier: "rare",         category: "intel",       sellValue: 140, weight: 1, shape: S.horiz2 },
-  datacenter_keycard:{ id: "datacenter_keycard", name: "Datacenter Keycard", tier: "rare",     category: "intel",       sellValue: 0,   weight: 1, shape: S.horiz2 },
+  datacenter_keycard:{ id: "datacenter_keycard", name: "Keycard: Datacenter", tier: "rare",     category: "intel",       sellValue: 0,   weight: 1, shape: S.horiz2 },
   biolab_coords:    { id: "biolab_coords",    name: "Biolab Coordinates", tier: "experimental", category: "intel",      sellValue: 0,   weight: 1, shape: S.one },
 
   // military
@@ -71,7 +71,7 @@ export const ITEMS: Record<string, Item> = {
   exotic_alloy:     { id: "exotic_alloy",     name: "Exotic Alloy Slab", tier: "rare",         category: "experimental", sellValue: 320, weight: 3, shape: S.square2 },
   prototype_lens:   { id: "prototype_lens",   name: "Prototype Lens",    tier: "experimental", category: "experimental", sellValue: 450, weight: 1, shape: S.one },
   black_box:        { id: "black_box",        name: "Black Box",         tier: "experimental", category: "experimental", sellValue: 500, weight: 2, shape: S.t4 },
-  workbench_schematic:{ id: "workbench_schematic", name: "Workbench Schematic", tier: "experimental", category: "experimental", sellValue: 0, weight: 1, shape: S.s4 },
+  workbench_schematic:{ id: "workbench_schematic", name: "Schematic: Workbench", tier: "experimental", category: "experimental", sellValue: 0, weight: 1, shape: S.s4 },
 };
 
 export const ITEM_IDS = Object.keys(ITEMS);

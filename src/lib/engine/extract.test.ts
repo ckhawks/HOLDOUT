@@ -54,6 +54,34 @@ describe("extract event pool", () => {
     }
   });
 
+  it("does not roll loot in the last 3 events of extract", () => {
+    // distance <= 3: extract_corner_loot must never fire.
+    for (const dist of [3, 2, 1]) {
+      const state = freshRunState({
+        flags: ["extracting"],
+        distanceFromExtract: dist,
+      });
+      for (let seed = 1; seed < 200; seed++) {
+        const t = tickRaid(makeRng(seed), "warehouse", state);
+        // corner_loot is the only extract event with a rolled item.
+        expect(t.loot).toBeUndefined();
+      }
+    }
+  });
+
+  it("CAN roll corner loot when distance > 3", () => {
+    const state = freshRunState({
+      flags: ["extracting"],
+      distanceFromExtract: 10,
+    });
+    let saw = false;
+    for (let seed = 1; seed < 500 && !saw; seed++) {
+      const t = tickRaid(makeRng(seed), "warehouse", state);
+      if (t.loot) saw = true;
+    }
+    expect(saw).toBe(true);
+  });
+
   it("extract_skirmish can produce minor bleed sometimes (~35%)", () => {
     const state = freshRunState({ flags: ["extracting"] });
     let damage = 0;

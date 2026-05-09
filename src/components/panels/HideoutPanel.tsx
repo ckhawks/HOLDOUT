@@ -103,7 +103,7 @@ export function HideoutPanel() {
           name="Workbench"
           status={unlocks.workbench ? "schematic recovered · install pending" : "no schematic"}
           unlocked={unlocks.workbench}
-          hint="Find the Workbench Schematic on a raid"
+          hint="Find Schematic: Workbench on a raid"
         />
         <ModuleCard
           Icon={HeartPulse}

@@ -65,7 +65,7 @@ export const LOCATIONS: Location[] = [
     unlock: {
       type: "consumable",
       itemId: "datacenter_keycard",
-      label: "Datacenter Keycard",
+      label: "Keycard: Datacenter",
     },
   },
   {
