@@ -51,9 +51,14 @@ function chipsFor(opt: BranchOption): Chip[] {
 }
 
 export function BranchModal() {
+  // BranchModal is dormant in the action-driven phase 1; pendingChoice is
+  // never set. Kept around for phase 2 forced-choice interrupts (patrols,
+  // locked-door encounters).
   const choice = useGame((s) => s.currentRaid?.pendingChoice ?? null);
   const paused = useGame((s) => s.currentRaid?.pausedAt ?? null);
-  const resolve = useGame((s) => s.resolveBranch);
+  const resolve = (_id: string) => {
+    /* no-op until phase 2 wires forced-choice interrupts */
+  };
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {

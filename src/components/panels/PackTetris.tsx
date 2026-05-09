@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { PENDING_EXPIRY_MS, useGame } from "@/store/game";
+import { useGame } from "@/store/game";
 import type { Rotation } from "@/lib/types";
 import { ITEMS } from "@/lib/data/items";
 import { playSfx } from "@/lib/sfx";
@@ -43,22 +43,12 @@ export function PackTetris() {
   const pendingRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hoverCell, setHoverCell] = useState<{ x: number; y: number; valid: boolean } | null>(null);
-  const [now, setNow] = useState(() => Date.now());
 
-  // Drive countdown + expiry pruning at 200ms. Frozen while paused so
-  // countdown bars don't tick down and items don't expire mid-pause.
-  useEffect(() => {
-    if (!raid?.active) return;
-    if (raid.pausedAt) {
-      setNow(raid.pausedAt);
-      return;
-    }
-    const id = setInterval(() => {
-      pruneExpiredPending();
-      setNow(Date.now());
-    }, 200);
-    return () => clearInterval(id);
-  }, [raid?.active, raid?.pausedAt, pruneExpiredPending]);
+  // Items in the operative's current room.
+  const currentTile = raid
+    ? raid.map.tiles[raid.operativePos.y * raid.map.width + raid.operativePos.x]
+    : undefined;
+  const roomContents = currentTile?.contents ?? [];
 
   // Global pointer + key listeners while dragging
   useEffect(() => {
@@ -182,11 +172,11 @@ export function PackTetris() {
       </div>
 
       <div className="flex flex-1 items-stretch gap-3 px-4 py-3">
-        {/* Left rail: incoming + trash */}
+        {/* Left rail: room contents + trash */}
         <div className="flex w-40 shrink-0 flex-col gap-3">
           <div className="flex flex-1 flex-col">
             <div className="mb-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              Incoming · {raid.pending.length}/{raid.pendingCapacity}
+              Room · {roomContents.length}
             </div>
             <div
               ref={pendingRef}
@@ -195,12 +185,12 @@ export function PackTetris() {
                 drag?.source === "pack" && "border-sky-500/70 bg-sky-950/20",
               )}
             >
-              {raid.pending.length === 0 && (
+              {roomContents.length === 0 && (
                 <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">
-                  empty
+                  nothing on the floor
                 </span>
               )}
-              {raid.pending.map((p) => {
+              {roomContents.map((p) => {
                 const item = ITEMS[p.itemId];
                 const beingDragged = drag?.source === "pending" && drag.uid === p.uid;
                 return (
@@ -209,8 +199,6 @@ export function PackTetris() {
                     itemId={p.itemId}
                     label={item?.name ?? p.itemId}
                     hidden={beingDragged}
-                    arrivedAt={p.arrivedAt}
-                    now={now}
                     onPointerDown={(e) => {
                       e.preventDefault();
                       setDrag({
@@ -491,25 +479,17 @@ function PendingTile({
   label,
   onPointerDown,
   hidden,
-  arrivedAt,
-  now,
 }: {
   itemId: string;
   label: string;
   onPointerDown: (e: React.PointerEvent) => void;
   hidden?: boolean;
-  arrivedAt: number;
-  now: number;
 }) {
   const bg = tileBgFor(itemId);
   const fg = tierColorFor(itemId);
   const cells = shapeFor(itemId, 0);
   const { w, h } = shapeBounds(cells);
   const px = CELL - 2;
-  const elapsed = now - arrivedAt;
-  const remaining = Math.max(0, PENDING_EXPIRY_MS - elapsed);
-  const pct = (remaining / PENDING_EXPIRY_MS) * 100;
-  const urgent = remaining < 5000;
   return (
     <HoverTooltip
       itemId={itemId}
@@ -537,12 +517,6 @@ function PendingTile({
         >
           {abbreviate(label)}
         </div>
-      </div>
-      <div className="mt-1 h-1 w-full overflow-hidden rounded-sm bg-border/40">
-        <div
-          className={cn("h-full", urgent ? "bg-red-400/90" : "bg-foreground/60")}
-          style={{ width: `${pct}%` }}
-        />
       </div>
     </HoverTooltip>
   );

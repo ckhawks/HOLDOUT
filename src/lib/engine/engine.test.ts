@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeRng, tickRaid } from "./raid";
+import { makeRng } from "./raid";
 import { capitalizeSentences, pickEvent, rollEvent } from "./events";
 import { migrateSave, SCHEMA_VERSION, type SavedGame } from "./save";
 import { pickCommonItemId, pickItemForLocation } from "@/lib/data/items";
@@ -103,57 +103,6 @@ describe("pickEvent precondition filter", () => {
     }
     // Expect ≥90% heavy; loose bound to avoid flakes.
     expect(heavyCount).toBeGreaterThan(900);
-  });
-});
-
-describe("tickRaid postconditions and advances", () => {
-  it("returns postcondition flags when a postcondition'd event fires", () => {
-    // took_damage rolls minor (~70%) or major (~30%) bleed.
-    let saw = false;
-    for (let seed = 1; seed < 200 && !saw; seed++) {
-      const rand = makeRng(seed);
-      const t = tickRaid(rand, undefined, freshRunState());
-      if (t.log.kind === "damage") {
-        const f = t.flagsAdded;
-        expect(f.length).toBe(1);
-        expect(["bleeding_minor", "bleeding_major"]).toContain(f[0]);
-        saw = true;
-      }
-    }
-    expect(saw).toBe(true);
-  });
-
-  it("non-branching event defaults depthAdvance and distanceAdvance to 1", () => {
-    // looted_container, found_rare, took_damage are non-branching. Seed-search
-    // for one rather than relying on a specific seed.
-    let saw = false;
-    for (let seed = 1; seed < 200 && !saw; seed++) {
-      const rand = makeRng(seed);
-      const t = tickRaid(rand, undefined, freshRunState({ depth: 5 }));
-      if (!t.pendingChoice) {
-        expect(t.depthAdvance).toBe(1);
-        expect(t.distanceAdvance).toBe(1);
-        saw = true;
-      }
-    }
-    expect(saw).toBe(true);
-  });
-
-  it("branching event defers advances and emits a pendingChoice", () => {
-    let saw = false;
-    for (let seed = 1; seed < 200 && !saw; seed++) {
-      const rand = makeRng(seed);
-      const t = tickRaid(rand, undefined, freshRunState({ depth: 5 }));
-      if (t.pendingChoice) {
-        expect(t.depthAdvance).toBe(0);
-        expect(t.distanceAdvance).toBe(0);
-        expect(t.alertnessDelta).toBe(0);
-        expect(t.energyDelta).toBe(0);
-        expect(t.pendingChoice.options.length).toBeGreaterThanOrEqual(2);
-        saw = true;
-      }
-    }
-    expect(saw).toBe(true);
   });
 });
 
@@ -276,23 +225,6 @@ describe("rollEvent template substitution (unique-token check)", () => {
         expect(ev.text).not.toMatch(/⟧⟧/);
       }
     }
-  });
-});
-
-describe("doTick flag/distance plumbing (via tickRaid + manual apply)", () => {
-  it("flagsAdded is empty for events without postconditions", () => {
-    const rand = makeRng(5);
-    let saw = false;
-    for (let seed = 1; seed < 50 && !saw; seed++) {
-      const t = tickRaid(makeRng(seed), undefined, freshRunState());
-      if (t.log.kind !== "damage") {
-        // Non-damage events have no postconditions in the current data.
-        expect(t.flagsAdded).toEqual([]);
-        saw = true;
-      }
-    }
-    expect(saw).toBe(true);
-    void rand;
   });
 });
 

@@ -9,6 +9,7 @@ import { StashPanel } from "@/components/panels/StashPanel";
 import { OpsPanel } from "@/components/panels/OpsPanel";
 import { FeedPanel } from "@/components/panels/FeedPanel";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
+import { ManualPanel } from "@/components/panels/ManualPanel";
 import { RaidOutcomeModal } from "@/components/panels/RaidOutcomeModal";
 import { useRaidLoop } from "@/components/terminal/useRaidLoop";
 import { initSfx, playSfx } from "@/lib/sfx";
@@ -91,6 +92,7 @@ export function TerminalShell() {
           {panel === "stash" && <StashPanel />}
           {panel === "ops" && <OpsPanel />}
           {panel === "feed" && <FeedPanel />}
+          {panel === "manual" && <ManualPanel />}
           {panel === "settings" && <SettingsPanel />}
         </main>
       </div>

@@ -8,7 +8,7 @@ import { Bandage, CornerDownRight, Crosshair, Droplet, Loader2, LogOut, Pause, P
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
 import { PackTetris } from "./PackTetris";
-import { BranchModal } from "./BranchModal";
+import { NextActionCard } from "./NextActionCard";
 import { RaidMap } from "./RaidMap";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
@@ -200,30 +200,12 @@ export function FeedPanel() {
           </div>
           );
         })}
-        <div
-          key={`incoming-${raid.runState.depth}`}
-          className="flex items-center gap-3 py-1.5 opacity-70"
-        >
-          <span className="shrink-0 font-mono text-xs text-muted-foreground/50 tabular-nums">
-            --:--:--
-          </span>
-          <span className="inline-flex w-16 shrink-0 items-center gap-0.5 font-mono text-base leading-none text-muted-foreground/70">
-            <span className="tick-pulse-dot">·</span>
-            <span className="tick-pulse-dot" style={{ animationDelay: "0.2s" }}>·</span>
-            <span className="tick-pulse-dot" style={{ animationDelay: "0.4s" }}>·</span>
-          </span>
-          <span className="flex-1">
-            <span className="block h-px w-full overflow-hidden bg-border/40">
-              <span className="tick-progress-bar block h-full bg-foreground/40" />
-            </span>
-          </span>
-        </div>
       </div>
+      <NextActionCard />
       <RaidMap />
       </div>
       <PackTetris />
       </div>
-      <BranchModal />
     </section>
   );
 }

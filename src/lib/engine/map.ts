@@ -1,4 +1,4 @@
-import type { Location, MapTile, RaidMap, RoomType } from "@/lib/types";
+import type { Location, MapTile, RaidMap, RoomType, StashItem } from "@/lib/types";
 import { ROOM_NAMES } from "@/lib/data/events";
 
 // Coordinate convention matches the visual: x grows rightward (depth from
@@ -27,6 +27,28 @@ function pickName(rand: () => number, type: RoomType): string {
   const pool = ROOM_NAMES[type];
   if (!pool || pool.length === 0) return type;
   return pool[Math.floor(rand() * pool.length)];
+}
+
+// Loot potential per room type — number of "containers" the operative can
+// Loot in this room. Each Loot action consumes one (with a chance of an item
+// drop). Storage rooms have the most; gantries / corridors have the least.
+function pickLootPotential(rand: () => number, type: RoomType): number {
+  switch (type) {
+    case "storage":
+      return 2 + Math.floor(rand() * 3); // 2-4
+    case "office":
+      return 1 + Math.floor(rand() * 3); // 1-3
+    case "mechanical":
+      return 1 + Math.floor(rand() * 3); // 1-3
+    case "corridor":
+      return Math.floor(rand() * 2); // 0-1
+    case "gantry":
+      return Math.floor(rand() * 2); // 0-1
+    case "entry":
+    case "locked":
+    default:
+      return 0;
+  }
 }
 
 function pickWeighted<T extends string>(
@@ -68,7 +90,10 @@ export function generateMap(
           type: "entry",
           name: pickName(rand, "entry"),
           blocked: false,
-          looted: false,
+          visited: false,
+          lootRemaining: 0,
+          lootMax: 0,
+          contents: [],
           seen: false,
         });
         continue;
@@ -78,13 +103,17 @@ export function generateMap(
       const adjacentToEntry = x === entry.x + 1 && y === entry.y;
       const blocked = !adjacentToEntry && rand() < BLOCKED_TILE_RATIO;
       const type: RoomType = blocked ? "locked" : pickWeighted(rand, weights);
+      const lootMax = blocked ? 0 : pickLootPotential(rand, type);
       tiles.push({
         x,
         y,
         type,
         name: pickName(rand, type),
         blocked,
-        looted: false,
+        visited: false,
+        lootRemaining: lootMax,
+        lootMax,
+        contents: [],
         seen: false,
       });
     }
@@ -209,19 +238,71 @@ export function stepBackward(
   return best;
 }
 
-// Mark a tile as looted/cleared (visited memory). Returns a new RaidMap if
-// the tile state changed, otherwise the same reference.
-export function markTileLooted(
+// Mark a tile as visited (operative has been here). Drives the map's
+// "trodden" treatment.
+export function markTileVisited(
   map: RaidMap,
   x: number,
   y: number,
 ): RaidMap {
   const idx = y * map.width + x;
   const t = map.tiles[idx];
-  if (!t || t.looted) return map;
+  if (!t || t.visited) return map;
   const tiles = map.tiles.slice();
-  tiles[idx] = { ...t, looted: true };
+  tiles[idx] = { ...t, visited: true };
   return { ...map, tiles };
+}
+
+// Decrement lootRemaining on the tile (one container searched). Returns the
+// same ref if nothing changed.
+export function consumeLootFromTile(
+  map: RaidMap,
+  x: number,
+  y: number,
+): RaidMap {
+  const idx = y * map.width + x;
+  const t = map.tiles[idx];
+  if (!t || t.lootRemaining <= 0) return map;
+  const tiles = map.tiles.slice();
+  tiles[idx] = { ...t, lootRemaining: t.lootRemaining - 1 };
+  return { ...map, tiles };
+}
+
+// Add an item to a tile's contents. Used when loot drops or when the player
+// drops an item from the pack into the current room.
+export function addToTileContents(
+  map: RaidMap,
+  x: number,
+  y: number,
+  item: StashItem,
+): RaidMap {
+  const idx = y * map.width + x;
+  const t = map.tiles[idx];
+  if (!t) return map;
+  const tiles = map.tiles.slice();
+  tiles[idx] = { ...t, contents: [...t.contents, item] };
+  return { ...map, tiles };
+}
+
+// Remove an item by uid from a tile's contents.
+export function removeFromTileContents(
+  map: RaidMap,
+  x: number,
+  y: number,
+  uid: string,
+): { map: RaidMap; item?: StashItem } {
+  const idx = y * map.width + x;
+  const t = map.tiles[idx];
+  if (!t) return { map };
+  const itemIdx = t.contents.findIndex((c) => c.uid === uid);
+  if (itemIdx === -1) return { map };
+  const item = t.contents[itemIdx];
+  const tiles = map.tiles.slice();
+  tiles[idx] = {
+    ...t,
+    contents: [...t.contents.slice(0, itemIdx), ...t.contents.slice(itemIdx + 1)],
+  };
+  return { map: { ...map, tiles }, item };
 }
 
 // Reveal a tile and its 4 orthogonal neighbors. Used to expand fog of war

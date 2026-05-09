@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type {
+  ActionId,
   CurrentRaid,
   Hideout,
   LogEntry,
@@ -14,16 +15,15 @@ import type {
   Upgrades,
 } from "@/lib/types";
 import {
-  PENDING_EXPIRY_MS,
-  prunePending,
-  pushPending,
-  resolveBranch,
+  ACTION_TIMER_MS,
+  entranceLog,
   startRaid,
-  tickRaid,
+  tickAction,
   applyBandage,
   makeLog,
   makeRng,
 } from "@/lib/engine/raid";
+import { autoPickAction } from "@/lib/engine/actions";
 import { ITEMS } from "@/lib/data/items";
 import {
   backpackCapacity,
@@ -39,11 +39,14 @@ import {
   shapeFor,
 } from "@/lib/engine/shapes";
 import {
-  markTileLooted,
+  addToTileContents,
+  consumeLootFromTile,
+  markTileVisited,
+  removeFromTileContents,
   revealFrom,
   stepBackward,
   stepForward,
-  stepLateral,
+  tileAt,
 } from "@/lib/engine/map";
 import {
   loadGame,
@@ -53,9 +56,7 @@ import {
 } from "@/lib/engine/save";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
-export type PanelId = "hideout" | "stash" | "ops" | "feed" | "settings";
-
-export { PENDING_EXPIRY_MS };
+export type PanelId = "hideout" | "stash" | "ops" | "feed" | "manual" | "settings";
 
 export interface RaidOutcome {
   type: "death" | "extracted";
@@ -79,7 +80,7 @@ interface GameState {
   setPanel: (p: PanelId) => void;
   beginRaid: (locationId: string) => void;
   doTick: () => void;
-  resolveBranch: (choiceId: string) => void;
+  overrideAction: (action: ActionId) => void;
   useBandage: () => void;
   togglePause: () => void;
   recall: () => void;
@@ -155,7 +156,7 @@ export const useGame = create<GameState>((set, get) => ({
     const mapRand = makeRng(rngSeed + Date.now());
     set({
       stash: nextStash,
-      currentRaid: startRaid(locationId, packDimensions(upgrades), pendingCapacity(upgrades), mapRand),
+      currentRaid: startRaid(locationId, packDimensions(upgrades), mapRand),
       operative: { ...operative, state: "raiding" },
       activePanel: "feed",
     });
@@ -164,19 +165,54 @@ export const useGame = create<GameState>((set, get) => ({
   doTick: () => {
     const { currentRaid, rngSeed } = get();
     if (!currentRaid || !currentRaid.active) return;
-    if (currentRaid.pendingChoice) return; // tick paused while awaiting decision
+    if (currentRaid.pendingChoice) return;
+    if (currentRaid.pausedAt) return;
+
     const rand = makeRng(rngSeed + currentRaid.log.length);
-    const tile = currentRaid.map.tiles[
-      currentRaid.operativePos.y * currentRaid.map.width + currentRaid.operativePos.x
-    ];
-    const t = tickRaid(
-      rand,
-      currentRaid.locationId,
-      currentRaid.runState,
-      tile?.type,
-      tile?.looted,
-      tile?.name,
-    );
+    const t = tickAction(currentRaid, rand);
+
+    // Apply movement based on action's intent.
+    const isExtracting = currentRaid.runState.flags.includes("extracting");
+    let nextPos = currentRaid.operativePos;
+    let nextMap = currentRaid.map;
+    let nextStep = currentRaid.nextStep;
+    if (t.movement === "forward" && !isExtracting) {
+      nextPos = currentRaid.nextStep
+        ? { ...currentRaid.nextStep }
+        : stepForward(currentRaid.map, currentRaid.operativePos, rand);
+    } else if (t.movement === "backward" && isExtracting) {
+      nextPos = currentRaid.nextStep
+        ? { ...currentRaid.nextStep }
+        : stepBackward(currentRaid.map, currentRaid.operativePos);
+    }
+    let entrance: LogEntry | null = null;
+    if (nextPos !== currentRaid.operativePos) {
+      const arrivedTile = tileAt(nextMap, nextPos.x, nextPos.y);
+      const wasFirstVisit = arrivedTile && !arrivedTile.visited;
+      nextMap = markTileVisited(nextMap, nextPos.x, nextPos.y);
+      nextMap = revealFrom(nextMap, nextPos.x, nextPos.y);
+      nextStep = isExtracting
+        ? stepBackward(nextMap, nextPos)
+        : stepForward(nextMap, nextPos, rand);
+      // Entrance flavor log on first arrival to a room (skip the entry tile
+      // and skip extract steps to reduce log noise).
+      const arrivedTileNow = tileAt(nextMap, nextPos.x, nextPos.y);
+      if (wasFirstVisit && arrivedTileNow && arrivedTileNow.type !== "entry" && !isExtracting) {
+        entrance = entranceLog(arrivedTileNow);
+      }
+    }
+    if (t.consumedLoot) {
+      nextMap = consumeLootFromTile(nextMap, currentRaid.operativePos.x, currentRaid.operativePos.y);
+    }
+    if (t.droppedItem) {
+      nextMap = addToTileContents(
+        nextMap,
+        currentRaid.operativePos.x,
+        currentRaid.operativePos.y,
+        t.droppedItem,
+      );
+    }
+
     let flags: string[] = currentRaid.runState.flags;
     if (t.flagsAdded.length || t.flagsRemoved.length) {
       const set = new Set(flags);
@@ -184,35 +220,20 @@ export const useGame = create<GameState>((set, get) => ({
       for (const f of t.flagsRemoved) set.delete(f);
       flags = Array.from(set);
     }
-    // Advance the operative on the map to match the tick's distance change.
-    // Use the *previously* committed nextStep so the preview the player saw
-    // becomes the actual move. After moving, compute a new nextStep for the
-    // following tick.
-    let nextPos = currentRaid.operativePos;
-    let nextMap = currentRaid.map;
-    let nextStep = currentRaid.nextStep;
-    const isExtracting = currentRaid.runState.flags.includes("extracting");
-    if (t.distanceAdvance > 0 && !isExtracting) {
-      nextPos = currentRaid.nextStep
-        ? { ...currentRaid.nextStep }
-        : stepForward(currentRaid.map, currentRaid.operativePos, rand);
-    } else if (t.distanceAdvance < 0 && isExtracting) {
-      nextPos = currentRaid.nextStep
-        ? { ...currentRaid.nextStep }
-        : stepBackward(currentRaid.map, currentRaid.operativePos);
-    }
-    if (nextPos !== currentRaid.operativePos) {
-      nextMap = markTileLooted(nextMap, nextPos.x, nextPos.y);
-      nextMap = revealFrom(nextMap, nextPos.x, nextPos.y);
-      // Pre-roll the next move now that the operative has settled here.
-      nextStep = isExtracting
-        ? stepBackward(nextMap, nextPos)
-        : stepForward(nextMap, nextPos, rand);
-    }
+
+    const advancedDepth =
+      t.movement === "forward" ? 1 : t.movement === "lateral" ? 0 : 0;
+    const advancedDistance =
+      t.movement === "forward" || t.movement === "lateral"
+        ? 1
+        : t.movement === "backward"
+          ? -1
+          : 0;
+
+    const allLogs = entrance ? [...t.logs, entrance] : t.logs;
     let raid: CurrentRaid = {
       ...currentRaid,
-      log: [...currentRaid.log, t.log],
-      pendingChoice: t.pendingChoice,
+      log: [...currentRaid.log, ...allLogs],
       operativePos: nextPos,
       map: nextMap,
       nextStep,
@@ -222,19 +243,16 @@ export const useGame = create<GameState>((set, get) => ({
         health: Math.max(0, Math.min(100, currentRaid.runState.health + t.healthDelta)),
         energy: Math.max(0, Math.min(100, currentRaid.runState.energy + t.energyDelta)),
         ammo: Math.max(0, currentRaid.runState.ammo + t.ammoDelta),
-        depth: currentRaid.runState.depth + t.depthAdvance,
+        depth: currentRaid.runState.depth + advancedDepth,
         distanceFromExtract: Math.max(
           0,
-          currentRaid.runState.distanceFromExtract + t.distanceAdvance,
+          currentRaid.runState.distanceFromExtract + advancedDistance,
         ),
         flags,
       },
     };
-    if (t.loot) {
-      raid = pushPending(raid, t.loot);
-    }
 
-    // Death check: HP at 0 ends the raid as a loss — pack contents lost.
+    // Death check.
     if (raid.runState.health <= 0) {
       raid = {
         ...raid,
@@ -249,9 +267,9 @@ export const useGame = create<GameState>((set, get) => ({
       return;
     }
 
-    // Extract complete: distance reached 0 while extracting flag is set.
-    const extracting = raid.runState.flags.includes("extracting");
-    if (extracting && raid.runState.distanceFromExtract <= 0) {
+    // Extract complete.
+    const stillExtracting = raid.runState.flags.includes("extracting");
+    if (stillExtracting && raid.runState.distanceFromExtract <= 0) {
       raid = {
         ...raid,
         log: [
@@ -265,68 +283,36 @@ export const useGame = create<GameState>((set, get) => ({
       return;
     }
 
+    // Auto-pick the next action and reset the action timer.
+    const queuedAction = autoPickAction(raid);
+    raid = {
+      ...raid,
+      queuedAction,
+      actionStartedAt: Date.now(),
+    };
     set({ currentRaid: raid });
   },
 
-  resolveBranch: (choiceId) => {
-    const { currentRaid, rngSeed } = get();
-    if (!currentRaid || !currentRaid.pendingChoice) return;
-    const rand = makeRng(rngSeed + currentRaid.log.length + 1);
-    const distBefore = currentRaid.runState.distanceFromExtract;
-    let { raid } = resolveBranch(currentRaid, choiceId, rand);
-    const distDelta = raid.runState.distanceFromExtract - distBefore;
-    if (distDelta > 0) {
-      // Reposition-style branches (depthAdvance: 0, distanceAdvance > 0) move
-      // the operative sideways rather than deeper. Detect that via the chosen
-      // option's effects so we route through stepLateral instead of using the
-      // cached forward nextStep.
-      const choice = currentRaid.pendingChoice?.options.find((o) => o.id === choiceId);
-      const isLateral =
-        !!choice && (choice.effects?.depthAdvance ?? 1) === 0;
-      const nextPos = isLateral
-        ? stepLateral(raid.map, raid.operativePos)
-        : raid.nextStep
-          ? { ...raid.nextStep }
-          : stepForward(raid.map, raid.operativePos, rand);
-      if (nextPos.x !== raid.operativePos.x || nextPos.y !== raid.operativePos.y) {
-        let m = markTileLooted(raid.map, nextPos.x, nextPos.y);
-        m = revealFrom(m, nextPos.x, nextPos.y);
-        const newNext = stepForward(m, nextPos, rand);
-        raid = { ...raid, operativePos: nextPos, map: m, nextStep: newNext };
-      }
-    }
-    if (raid.runState.health <= 0) {
-      raid = {
-        ...raid,
-        log: [...raid.log, makeLog("system", "Vital signs flat. Operative is down.")],
-        active: false,
-      };
-      set({ currentRaid: raid });
-      setTimeout(() => get().endRaid(false), 800);
-      return;
-    }
-    set({ currentRaid: raid });
+  overrideAction: (action) => {
+    const { currentRaid } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    set({ currentRaid: { ...currentRaid, queuedAction: action } });
   },
 
   togglePause: () => {
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
     if (currentRaid.pausedAt) {
-      // Resume: shift wall-clock timestamps forward by the pause duration so
-      // pending items don't expire and branch timers don't auto-fire.
+      // Resume: shift the action timer forward by the pause duration so the
+      // remaining budget is preserved. Room contents don't expire so there's
+      // no longer anything else to shift.
       const pauseDuration = Date.now() - currentRaid.pausedAt;
-      const pending = currentRaid.pending.map((p) => ({
-        ...p,
-        arrivedAt: p.arrivedAt + pauseDuration,
-      }));
-      const pendingChoice = currentRaid.pendingChoice
-        ? {
-            ...currentRaid.pendingChoice,
-            startedAt: currentRaid.pendingChoice.startedAt + pauseDuration,
-          }
-        : null;
       set({
-        currentRaid: { ...currentRaid, pausedAt: null, pending, pendingChoice },
+        currentRaid: {
+          ...currentRaid,
+          pausedAt: null,
+          actionStartedAt: currentRaid.actionStartedAt + pauseDuration,
+        },
       });
     } else {
       set({ currentRaid: { ...currentRaid, pausedAt: Date.now() } });
@@ -362,9 +348,10 @@ export const useGame = create<GameState>((set, get) => ({
         ...currentRaid,
         log: [...currentRaid.log, log],
         runState: { ...currentRaid.runState, flags },
-        // pendingChoice is dropped on recall — branching prompts shouldn't block extract.
         pendingChoice: null,
         nextStep: settledNextStep,
+        queuedAction: "extract_step",
+        actionStartedAt: Date.now(),
       },
       operative: { ...operative, state: "extracting" },
     });
@@ -421,26 +408,33 @@ export const useGame = create<GameState>((set, get) => ({
   placeFromPending: (uid, x, y, rotation) => {
     const { currentRaid } = get();
     if (!currentRaid) return false;
-    const pendingItem = currentRaid.pending.find((p) => p.uid === uid);
-    if (!pendingItem) return false;
+    const tile = tileAt(currentRaid.map, currentRaid.operativePos.x, currentRaid.operativePos.y);
+    const item = tile?.contents.find((c) => c.uid === uid);
+    if (!item) return false;
     const occ = buildOccupancy(currentRaid.pack, currentRaid.packGrid.width, currentRaid.packGrid.height);
-    const cells = shapeFor(pendingItem.itemId, rotation);
+    const cells = shapeFor(item.itemId, rotation);
     if (!canPlace(cells, x, y, currentRaid.packGrid.width, currentRaid.packGrid.height, occ)) {
       return false;
     }
     const placement: PackPlacement = {
-      uid: pendingItem.uid,
-      itemId: pendingItem.itemId,
-      flavor: pendingItem.flavor,
+      uid: item.uid,
+      itemId: item.itemId,
+      flavor: item.flavor,
       x,
       y,
       rotation,
     };
+    const { map: nextMap } = removeFromTileContents(
+      currentRaid.map,
+      currentRaid.operativePos.x,
+      currentRaid.operativePos.y,
+      uid,
+    );
     set({
       currentRaid: {
         ...currentRaid,
+        map: nextMap,
         pack: [...currentRaid.pack, placement],
-        pending: currentRaid.pending.filter((p) => p.uid !== uid),
       },
     });
     return true;
@@ -468,12 +462,13 @@ export const useGame = create<GameState>((set, get) => ({
   trashFromPending: (uid) => {
     const { currentRaid } = get();
     if (!currentRaid) return;
-    set({
-      currentRaid: {
-        ...currentRaid,
-        pending: currentRaid.pending.filter((p) => p.uid !== uid),
-      },
-    });
+    const { map: nextMap } = removeFromTileContents(
+      currentRaid.map,
+      currentRaid.operativePos.x,
+      currentRaid.operativePos.y,
+      uid,
+    );
+    set({ currentRaid: { ...currentRaid, map: nextMap } });
   },
 
   trashFromPack: (uid) => {
@@ -492,22 +487,30 @@ export const useGame = create<GameState>((set, get) => ({
     if (!currentRaid) return;
     const item = currentRaid.pack.find((p) => p.uid === uid);
     if (!item) return;
-    const reborn: PendingItem = {
+    const dropped: StashItem = {
       uid: item.uid,
       itemId: item.itemId,
       flavor: item.flavor,
-      arrivedAt: Date.now(),
     };
-    const without = { ...currentRaid, pack: currentRaid.pack.filter((p) => p.uid !== uid) };
-    set({ currentRaid: pushPending(without, reborn) });
+    const nextMap = addToTileContents(
+      currentRaid.map,
+      currentRaid.operativePos.x,
+      currentRaid.operativePos.y,
+      dropped,
+    );
+    set({
+      currentRaid: {
+        ...currentRaid,
+        pack: currentRaid.pack.filter((p) => p.uid !== uid),
+        map: nextMap,
+      },
+    });
   },
 
   pruneExpiredPending: () => {
-    const { currentRaid } = get();
-    if (!currentRaid || !currentRaid.active) return;
-    const next = prunePending(currentRaid, Date.now());
-    if (next === currentRaid) return;
-    set({ currentRaid: next });
+    // No-op now — items don't expire under the room-contents model. Kept on
+    // the interface so PackTetris's interval doesn't choke; can be removed
+    // once the tetris UI is fully migrated.
   },
 
   sellItem: (uid) => {

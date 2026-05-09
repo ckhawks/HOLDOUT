@@ -1,9 +1,9 @@
 import type {
   CurrentRaid,
   LogEntry,
-  PendingItem,
   PendingChoice,
   RunState,
+  StashItem,
 } from "@/lib/types";
 import { rollEvent } from "@/lib/engine/events";
 import { ITEMS, pickItemForLocation } from "@/lib/data/items";
@@ -17,37 +17,9 @@ export const BRANCH_TIMER_MS = 10000;
 export const BLEED_MINOR_DRAIN = 1;
 export const BLEED_MAJOR_DRAIN = 4;
 
-export function pushPending(raid: CurrentRaid, loot: PendingItem): CurrentRaid {
-  const pending = [...raid.pending, loot];
-  if (pending.length <= raid.pendingCapacity) {
-    return { ...raid, pending };
-  }
-  const dropped = pending.shift()!;
-  const dropName = ITEMS[dropped.itemId]?.name ?? dropped.itemId;
-  return {
-    ...raid,
-    pending,
-    log: [
-      ...raid.log,
-      makeLog("system", `Pending tray full — dropped ⟦${dropName}⟧.`, dropped.itemId),
-    ],
-  };
-}
-
-export function prunePending(raid: CurrentRaid, now: number): CurrentRaid {
-  const survivors: PendingItem[] = [];
-  const expired: PendingItem[] = [];
-  for (const p of raid.pending) {
-    if (now - p.arrivedAt >= PENDING_EXPIRY_MS) expired.push(p);
-    else survivors.push(p);
-  }
-  if (expired.length === 0) return raid;
-  const newLogs = expired.map((p) => {
-    const name = ITEMS[p.itemId]?.name ?? p.itemId;
-    return makeLog("system", `Pending expired — dropped ⟦${name}⟧.`, p.itemId);
-  });
-  return { ...raid, pending: survivors, log: [...raid.log, ...newLogs] };
-}
+// pushPending / prunePending retired in the room-contents pivot. Items now
+// land directly in the operative's current MapTile.contents and persist
+// across visits. See addToTileContents / removeFromTileContents in map.ts.
 
 export function makeRng(seed: number): () => number {
   let s = seed >>> 0 || 1;
@@ -63,14 +35,13 @@ export function makeRng(seed: number): () => number {
 export function startRaid(
   locationId: string,
   packGrid: { width: number; height: number },
-  pendingCapacity: number,
   rand: () => number,
 ): CurrentRaid {
   const baseMap = generateMap(rand, LOCATIONS_BY_ID[locationId]);
-  // Entry tile starts already cleared so the visited memory is consistent.
+  // Entry tile starts visited. It has no loot pool so it's never "looted."
   const entryIdx = baseMap.entry.y * baseMap.width + baseMap.entry.x;
   const tiles = baseMap.tiles.slice();
-  tiles[entryIdx] = { ...tiles[entryIdx], looted: true };
+  tiles[entryIdx] = { ...tiles[entryIdx], visited: true };
   // Reveal entry + its orthogonal neighbors (the operative can see what's
   // immediately around them on insertion).
   const map = revealFrom({ ...baseMap, tiles }, baseMap.entry.x, baseMap.entry.y);
@@ -90,15 +61,17 @@ export function startRaid(
       makeLog("system", `Operative inserted at ${locationId}. Comms green.`),
     ],
     pack: [],
-    pending: [],
     packGrid,
-    pendingCapacity,
     active: true,
     pendingChoice: null,
     map,
     operativePos: { x: map.entry.x, y: map.entry.y },
     nextStep: stepForward(map, { x: map.entry.x, y: map.entry.y }, rand),
     pausedAt: null,
+    // Initial action: push out of the entry. autoPickAction can refine but
+    // entry tile has no loot, so move_forward is the natural start.
+    queuedAction: "move_forward",
+    actionStartedAt: Date.now(),
   };
 }
 
@@ -123,158 +96,166 @@ export function nextTickDelay(rand: () => number): number {
   return TICK_MIN_MS + Math.floor(rand() * (TICK_MAX_MS - TICK_MIN_MS));
 }
 
-export interface TickResult {
-  log: LogEntry;
-  loot?: PendingItem;
+export const ENERGY_BASE_DRAIN = 3;
+
+// tickRaid (legacy random event tick) and resolveBranch retired in the
+// action-driven pivot. The store now drives ticks via tickAction, and
+// branching modals are dormant until phase 2 reintroduces forced-choice
+// interrupts.
+
+// Build a flavor log line for the operative entering a room. Mentions the
+// room name and a hint at how much there is to search.
+export function entranceLog(tile: import("@/lib/types").MapTile): LogEntry {
+  const lootHint = (() => {
+    if (tile.lootMax === 0) return "";
+    if (tile.lootRemaining === 0) return " Already cleared.";
+    if (tile.lootRemaining < tile.lootMax) {
+      return ` Some containers still untouched (${tile.lootRemaining}/${tile.lootMax}).`;
+    }
+    if (tile.lootRemaining >= 3) return " Plenty here to search.";
+    if (tile.lootRemaining === 2) return " A couple of containers worth a look.";
+    return " One thing worth checking.";
+  })();
+  const inRoom = tile.contents.length > 0
+    ? ` ${tile.contents.length} item${tile.contents.length === 1 ? "" : "s"} on the floor.`
+    : "";
+  return makeLog(
+    "flavor",
+    `Stepped into the ${tile.name}.${lootHint}${inRoom}`,
+    undefined,
+  );
+}
+
+// ---- Action-driven tick ----
+
+export const ACTION_TIMER_MS = 6000;
+const INTERRUPT_CHANCE = 0.22;
+
+export interface ActionTickResult {
+  logs: LogEntry[];
+  // Item to add to the current tile's contents (not pending tray).
+  droppedItem?: StashItem;
   alertnessDelta: number;
   healthDelta: number;
   energyDelta: number;
   ammoDelta: number;
-  depthAdvance: number;
-  distanceAdvance: number;
   flagsAdded: string[];
   flagsRemoved: string[];
-  pendingChoice: PendingChoice | null;
+  // How the operative should physically step on the map.
+  movement: "none" | "forward" | "lateral" | "backward";
+  // True if the action consumed one of the tile's loot containers.
+  consumedLoot: boolean;
 }
 
-export const ENERGY_BASE_DRAIN = 3;
-
-export function tickRaid(
-  rand: () => number,
-  locationId?: string,
-  state?: RunState,
-  roomType?: import("@/lib/types").RoomType,
-  roomLooted?: boolean,
-  roomName?: string,
-): TickResult {
-  const ev = rollEvent(rand, locationId, state, roomType, roomLooted, roomName);
-  const flags = state?.flags ?? [];
+// Resolve one tick by carrying out the queued action on the current raid.
+// Pure: returns the result; the store applies it to state.
+export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickResult {
+  const action = raid.queuedAction;
+  const flags = raid.runState.flags;
   const bleed = bleedDrain(flags);
 
-  // Branching event: emit a prompt log + pendingChoice. No stat deltas yet —
-  // those are applied at resolve time. Tick advance is also deferred so depth
-  // doesn't move until the player decides.
-  if (ev.branches && ev.branches.length > 0) {
-    const def = ev.branches.find((b) => b.isDefault) ?? ev.branches[0];
-    return {
-      log: makeLog("choice", ev.text, ev.itemId),
-      alertnessDelta: 0,
-      healthDelta: -bleed,
-      energyDelta: 0,
-      ammoDelta: 0,
-      depthAdvance: 0,
-      distanceAdvance: 0,
-      flagsAdded: [],
-      flagsRemoved: [],
-      pendingChoice: {
-        eventId: ev.kind,
-        prompt: ev.text,
-        options: ev.branches,
-        defaultId: def.id,
-        startedAt: Date.now(),
-        timerMs: ev.branchTimerMs ?? BRANCH_TIMER_MS,
-      },
-    };
+  let healthDelta = -bleed;
+  let alertnessDelta = 0;
+  let energyDelta = -ENERGY_BASE_DRAIN;
+  const ammoDelta = 0;
+  const flagsAdded: string[] = [];
+  const flagsRemoved: string[] = [];
+  let movement: ActionTickResult["movement"] = "none";
+  let droppedItem: StashItem | undefined;
+  let consumedLoot = false;
+  const logs: LogEntry[] = [];
+
+  // Current tile reference for the Loot action.
+  const currentTile =
+    raid.map.tiles[raid.operativePos.y * raid.map.width + raid.operativePos.x];
+
+  switch (action) {
+    case "move_forward": {
+      movement = "forward";
+      // Entrance flavor logged in the store after movement (it knows the
+      // destination tile). Skip the flat "Pushing forward" line.
+      break;
+    }
+    case "loot": {
+      if (!currentTile || currentTile.lootRemaining <= 0) {
+        logs.push(makeLog("flavor", "Nothing left worth searching here.", undefined));
+        break;
+      }
+      // Each container has a ~70% chance of yielding an item.
+      const yields = rand() < 0.7;
+      consumedLoot = true;
+      energyDelta -= 1;
+      if (yields) {
+        const loc = LOCATIONS_BY_ID[raid.locationId];
+        const isRare = rand() < 0.08;
+        const itemId = loc
+          ? pickItemForLocation(rand, loc, isRare, raid.runState.depth)
+          : undefined;
+        if (itemId) {
+          const item = ITEMS[itemId];
+          droppedItem = {
+            uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            itemId,
+          };
+          logs.push(
+            makeLog(
+              "loot",
+              `Found ⟦${item?.name ?? itemId}⟧ — left it on the floor.`,
+              itemId,
+            ),
+          );
+        } else {
+          logs.push(makeLog("flavor", "Searched a container. Empty.", undefined));
+        }
+      } else {
+        logs.push(makeLog("flavor", "Searched a container. Empty.", undefined));
+      }
+      break;
+    }
+    case "stay": {
+      alertnessDelta = -3;
+      energyDelta = -2;
+      logs.push(makeLog("flavor", "Holding position. Listening.", undefined));
+      break;
+    }
+    case "extract_step": {
+      movement = "backward";
+      logs.push(makeLog("flavor", "Backtracking toward extract.", undefined));
+      break;
+    }
   }
 
-  const fx = ev.passiveEffects ?? {};
-  const alertnessDelta = fx.alertnessDelta ?? 0;
-  const healthDelta = (fx.healthDelta ?? 0) - bleed;
-  const energyDelta = -ENERGY_BASE_DRAIN + (fx.energyDelta ?? 0);
-  const ammoDelta = fx.ammoDelta ?? 0;
-
-  let loot: PendingItem | undefined;
-  if (ev.itemId) {
-    loot = {
-      uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      itemId: ev.itemId,
-      arrivedAt: Date.now(),
-    };
+  // Interrupt layer: small chance per tick of a hazard. Only took_damage and
+  // a benign heard_voices flavor for phase 1 — branching events (patrols,
+  // locked doors) come back as actions in a later phase.
+  if (rand() < INTERRUPT_CHANCE && action !== "extract_step") {
+    if (rand() < 0.45) {
+      // took_damage
+      healthDelta -= 8;
+      energyDelta -= 2;
+      const r = rand();
+      if (r < 0.6) flagsAdded.push("bleeding_minor");
+      else if (r < 0.85) flagsAdded.push("bleeding_major");
+      logs.push(makeLog("damage", "Took fire. Plate held — mostly.", undefined));
+    } else {
+      // heard_voices flavor
+      alertnessDelta += 3;
+      logs.push(makeLog("flavor", "Voices through the wall. Muffled.", undefined));
+    }
   }
 
   return {
-    log: makeLog(ev.logKind, ev.text, ev.itemId),
-    loot,
+    logs,
+    droppedItem,
     alertnessDelta,
     healthDelta,
     energyDelta,
     ammoDelta,
-    depthAdvance: ev.depthAdvance,
-    distanceAdvance: ev.distanceAdvance,
-    flagsAdded: ev.postconditions ?? [],
-    flagsRemoved: ev.removeFlags ?? [],
-    pendingChoice: null,
+    flagsAdded,
+    flagsRemoved,
+    movement,
+    consumedLoot,
   };
-}
-
-export interface ResolveResult {
-  raid: CurrentRaid;
-  loot?: PendingItem;
-}
-
-export function resolveBranch(
-  raid: CurrentRaid,
-  choiceId: string,
-  rand: () => number,
-): ResolveResult {
-  if (!raid.pendingChoice) return { raid };
-  const choice =
-    raid.pendingChoice.options.find((o) => o.id === choiceId) ??
-    raid.pendingChoice.options.find((o) => o.id === raid.pendingChoice!.defaultId) ??
-    raid.pendingChoice.options[0];
-  const fx = choice.effects ?? {};
-
-  const rs = raid.runState;
-  const nextFlags = applyFlags(rs.flags, fx.flagsAdded, fx.flagsRemoved);
-
-  const nextRunState: RunState = {
-    ...rs,
-    alertness: clamp(rs.alertness + (fx.alertnessDelta ?? 0)),
-    health: clamp(rs.health + (fx.healthDelta ?? 0)),
-    energy: clamp(rs.energy + (fx.energyDelta ?? 0)),
-    ammo: Math.max(0, rs.ammo + (fx.ammoDelta ?? 0)),
-    depth: rs.depth + (fx.depthAdvance ?? 1),
-    distanceFromExtract: Math.max(0, rs.distanceFromExtract + (fx.distanceAdvance ?? 1)),
-    flags: nextFlags,
-  };
-
-  let loot: PendingItem | undefined;
-  if (fx.rollLoot) {
-    const loc = LOCATIONS_BY_ID[raid.locationId];
-    const isRare = fx.rollLoot === "rare";
-    const itemId = loc
-      ? pickItemForLocation(rand, loc, isRare, nextRunState.depth)
-      : undefined;
-    if (itemId) {
-      loot = {
-        uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        itemId,
-        arrivedAt: Date.now(),
-      };
-    }
-  }
-
-  const choiceLog = makeLog("choice_result", choice.label, undefined);
-  let next: CurrentRaid = {
-    ...raid,
-    runState: nextRunState,
-    pendingChoice: null,
-    log: [...raid.log, choiceLog],
-  };
-  if (loot) {
-    next = pushPending(next, loot);
-    const item = ITEMS[loot.itemId];
-    if (item) {
-      next = {
-        ...next,
-        log: [
-          ...next.log,
-          makeLog("loot", `Found ⟦${item.name}⟧.`, loot.itemId),
-        ],
-      };
-    }
-  }
-  return { raid: next, loot };
 }
 
 export function applyBandage(raid: CurrentRaid): CurrentRaid {

@@ -85,15 +85,15 @@ describe("save round-trip", () => {
       },
       log: [],
       pack: [],
-      pending: [],
       packGrid: { width: 4, height: 4 },
-      pendingCapacity: 4,
       active: true,
       pendingChoice: null,
-      map: { width: 1, height: 1, entry: { x: 0, y: 0 }, tiles: [{ x: 0, y: 0, type: "entry", name: "entry", blocked: false, looted: false, seen: true }] },
+      map: { width: 1, height: 1, entry: { x: 0, y: 0 }, tiles: [{ x: 0, y: 0, type: "entry", name: "entry", blocked: false, visited: true, lootRemaining: 0, lootMax: 0, contents: [], seen: true }] },
       operativePos: { x: 0, y: 0 },
       nextStep: null,
       pausedAt: null,
+      queuedAction: "move_forward",
+      actionStartedAt: 0,
     };
     saveGame(s);
     const loaded = loadGame();

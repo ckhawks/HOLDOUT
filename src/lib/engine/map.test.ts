@@ -4,10 +4,10 @@ import {
   BLOCKED_TILE_RATIO,
   MAP_HEIGHT,
   MAP_WIDTH,
+  consumeLootFromTile,
   distanceToEntry,
   generateMap,
   isWalkable,
-  markTileLooted,
   revealFrom,
   stepBackward,
   stepForward,
@@ -208,18 +208,22 @@ describe("revealFrom", () => {
   });
 });
 
-describe("markTileLooted", () => {
-  it("flags the named tile and returns a new map ref", () => {
+describe("consumeLootFromTile", () => {
+  it("decrements lootRemaining and returns a new ref", () => {
     const m = generateMap(makeRng(1));
-    const next = markTileLooted(m, 1, 1);
+    // Find a tile with loot to consume
+    const target = m.tiles.find((t) => t.lootRemaining > 0);
+    if (!target) return;
+    const before = target.lootRemaining;
+    const next = consumeLootFromTile(m, target.x, target.y);
     expect(next).not.toBe(m);
-    expect(next.tiles[1 * m.width + 1].looted).toBe(true);
+    expect(next.tiles[target.y * m.width + target.x].lootRemaining).toBe(before - 1);
   });
 
-  it("returns the same map ref when the tile is already looted", () => {
+  it("returns the same map ref when lootRemaining is 0", () => {
     const m = generateMap(makeRng(1));
-    const once = markTileLooted(m, 1, 1);
-    const twice = markTileLooted(once, 1, 1);
-    expect(twice).toBe(once);
+    const target = m.tiles.find((t) => t.lootRemaining === 0)!;
+    const next = consumeLootFromTile(m, target.x, target.y);
+    expect(next).toBe(m);
   });
 });

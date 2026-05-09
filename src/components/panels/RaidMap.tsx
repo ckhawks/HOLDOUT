@@ -32,23 +32,29 @@ interface HoverState {
   cursor: { x: number; y: number };
 }
 
+function isFullyLooted(tile: MapTile): boolean {
+  // A tile is "fully looted" only if it had loot to begin with and there's
+  // none remaining. Tiles with no loot pool (entry, locked, low-yield rooms
+  // with rolled lootMax=0) are never "well-searched" — they're just empty.
+  return tile.lootMax > 0 && tile.lootRemaining === 0;
+}
+
 function tileStatusLabel(h: HoverState, isPreview: boolean): string {
   const { tile, isOperative } = h;
   if (isOperative) return "operative here";
   if (isPreview) {
     if (!tile.seen) return "next move · unknown room";
     if (tile.blocked) return "next move · sealed";
-    return tile.looted ? "next move · well-searched" : "next move · unsearched";
+    if (isFullyLooted(tile)) return "next move · well-searched";
+    if (tile.visited) return "next move · trodden";
+    return "next move · unsearched";
   }
   if (!tile.seen) return "out of sight";
-  // Seen but not visited — visible but not searched yet.
-  if (!tile.looted) {
-    if (tile.blocked) return "sealed";
-    if (tile.type === "entry") return "extract point";
-    return "unsearched";
-  }
+  if (tile.blocked) return "sealed";
   if (tile.type === "entry") return "extract point";
-  return "well-searched";
+  if (isFullyLooted(tile)) return "well-searched";
+  if (tile.visited) return "trodden but unsearched";
+  return "unsearched";
 }
 
 function titleCase(s: string): string {
@@ -262,7 +268,7 @@ function Tile({
   }
 
   // Seen but not visited: outline only, dim center.
-  if (!tile.looted) {
+  if (!tile.visited) {
     return (
       <div
         {...baseProps}
@@ -276,11 +282,23 @@ function Tile({
     );
   }
 
-  // Visited.
+  // Visited but not yet looted — trodden room with loot still possibly there.
+  if (!isFullyLooted(tile)) {
+    return (
+      <div
+        {...baseProps}
+        className={cn("relative size-7 bg-card", ringClass)}
+      >
+        {previewOverlay}
+      </div>
+    );
+  }
+
+  // Visited and looted — fully cleared.
   return (
     <div
       {...baseProps}
-      className={cn("relative size-7 bg-card/60", ringClass)}
+      className={cn("relative size-7 bg-card/50", ringClass)}
     >
       {previewOverlay}
     </div>

@@ -199,10 +199,18 @@ export interface MapTile {
   // event templates so the log and the map agree on what room you're in.
   name: string;
   blocked: boolean;
-  // Operative has been on this tile. Suppresses repeat loot rolls.
-  looted: boolean;
-  // Operative has visited this tile OR been on an orthogonal neighbor.
-  // Drives map visibility (fog of war).
+  // Operative has been on this tile. Drives map visited treatment.
+  visited: boolean;
+  // Number of "lootable containers" still in this room. Each Loot action
+  // consumes one and rolls for an item drop. 0 = fully searched.
+  lootRemaining: number;
+  // Initial lootRemaining at generation, used for "2/3 searched" displays.
+  lootMax: number;
+  // Items currently sitting in this room — dropped by loot actions or by
+  // the player. Persist across operative leaving and returning.
+  contents: StashItem[];
+  // Operative has been on this tile OR an orthogonal neighbor — drives fog
+  // of war reveal.
   seen: boolean;
 }
 
@@ -222,9 +230,7 @@ export interface CurrentRaid {
   runState: RunState;
   log: LogEntry[];
   pack: PackPlacement[];
-  pending: PendingItem[];
   packGrid: { width: number; height: number };
-  pendingCapacity: number;
   active: boolean;
   pendingChoice: PendingChoice | null;
   map: RaidMap;
@@ -237,7 +243,19 @@ export interface CurrentRaid {
   // store shifts pending.arrivedAt and pendingChoice.startedAt forward so the
   // pause time doesn't expire items or auto-resolve branches.
   pausedAt: number | null;
+  // The action the operative will perform on the next tick. Auto-picked by
+  // the engine; player can override before the timer fires.
+  queuedAction: ActionId;
+  // Wall-clock when the current action timer started — drives the countdown
+  // bar on the action card. Shifts forward on resume after pause.
+  actionStartedAt: number;
 }
+
+export type ActionId =
+  | "move_forward"
+  | "loot"
+  | "stay"
+  | "extract_step";
 
 export interface Unlocks {
   workbench: boolean;

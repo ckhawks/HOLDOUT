@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export interface PersistedState {
   cash: number;
@@ -145,6 +145,13 @@ export function migrateSave(saved: SavedGame): SavedGame {
   // it (and potentially break BFS / position consistency), drop the in-
   // progress raid. Stash, cash, hideout state survive untouched.
   if (saved.schemaVersion < 12) {
+    s.currentRaid = null;
+  }
+  // v13: tile gains visited; CurrentRaid gains queuedAction + actionStartedAt
+  // (action-driven tick replaces random event tick). Drop in-progress raids
+  // since their tile.looted means "visited" under the old semantics; safer to
+  // restart than to interpret.
+  if (saved.schemaVersion < 13) {
     s.currentRaid = null;
   }
   return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };
