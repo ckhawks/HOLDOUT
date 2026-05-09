@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import { Backpack, Coins, Crosshair, Droplet, Pill, Soup } from "lucide-react";
 import { useGame } from "@/store/game";
 import { ITEMS } from "@/lib/data/items";
@@ -8,13 +9,16 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TIER_COLOR } from "@/lib/itemDisplay";
 import { ItemTooltip, Tooltip } from "@/components/ui/Tooltip";
-import type { ItemCategory, ShopOffer } from "@/lib/types";
+import { playSfx } from "@/lib/sfx";
+import type { ItemCategory, ItemTier, ShopOffer } from "@/lib/types";
 
-const CATEGORY_ORDER: ItemCategory[] = ["bag", "chems", "consumables", "military"];
+type PurchaseToast = { id: number; name: string; tier: ItemTier; x: number; y: number };
+
+const CATEGORY_ORDER: ItemCategory[] = ["bag", "medical", "consumables", "military"];
 
 const CATEGORY_META: Record<string, { label: string; Icon: typeof Backpack }> = {
   bag: { label: "Bags", Icon: Backpack },
-  chems: { label: "Medical", Icon: Pill },
+  medical: { label: "Medical", Icon: Pill },
   consumables: { label: "Rations", Icon: Soup },
   military: { label: "Munitions", Icon: Crosshair },
 };
@@ -26,6 +30,20 @@ export function ShopPanel() {
   const stashCap = useGame((s) => s.hideout.modules.stash.capacity ?? 0);
   const buyOffer = useGame((s) => s.buyOffer);
   const stashFull = stashLen >= stashCap;
+  const [toasts, setToasts] = useState<PurchaseToast[]>([]);
+
+  const handleBuy = useCallback(
+    (offer: ShopOffer, x: number, y: number) => {
+      const item = ITEMS[offer.itemId];
+      if (!item) return;
+      buyOffer(offer.offerId);
+      playSfx("inventory");
+      const id = Date.now() + Math.random();
+      setToasts((prev) => [...prev, { id, name: item.name, tier: item.tier, x, y }]);
+      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 1100);
+    },
+    [buyOffer],
+  );
 
   const grouped: Record<string, ShopOffer[]> = {};
   for (const o of offers) {
@@ -69,7 +87,7 @@ export function ShopPanel() {
                         offer={offer}
                         cash={cash}
                         stashFull={stashFull}
-                        onBuy={() => buyOffer(offer.offerId)}
+                        onBuy={(x, y) => handleBuy(offer, x, y)}
                       />
                     ))}
                   </div>
@@ -79,6 +97,18 @@ export function ShopPanel() {
           </div>
         )}
       </div>
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={cn(
+            "purchase-toast-float pointer-events-none fixed z-[70] -translate-x-1/2 whitespace-nowrap rounded-sm border border-emerald-500/40 bg-popover/95 px-2 py-1 font-mono text-[11px] uppercase tracking-widest shadow-md backdrop-blur",
+            TIER_COLOR[t.tier],
+          )}
+          style={{ left: t.x, top: t.y }}
+        >
+          + {t.name}
+        </div>
+      ))}
     </section>
   );
 }
@@ -92,7 +122,7 @@ function OfferCard({
   offer: ShopOffer;
   cash: number;
   stashFull: boolean;
-  onBuy: () => void;
+  onBuy: (x: number, y: number) => void;
 }) {
   const item = ITEMS[offer.itemId];
   if (!item) return null;
@@ -124,7 +154,10 @@ function OfferCard({
           variant="outline"
           size="sm"
           disabled={disabled}
-          onClick={onBuy}
+          onClick={(e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            onBuy(r.left + r.width / 2, r.top);
+          }}
           className="rounded-sm"
         >
           Buy

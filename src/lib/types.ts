@@ -3,7 +3,7 @@ export type ItemTier = "common" | "uncommon" | "rare" | "experimental";
 export type ItemCategory =
   | "mechanical"
   | "electronics"
-  | "chems"
+  | "medical"
   | "consumables"
   | "valuables"
   | "intel"
@@ -225,6 +225,10 @@ export interface Location {
   // Optional bias for which room types appear on the location's map.
   // Falls back to a generic mix if not set.
   roomTypeWeights?: Partial<Record<RoomType, number>>;
+  // Optional per-location override for the per-tile blocker probability.
+  // Falls back to BLOCKED_TILE_RATIO if not set. Higher = denser walls /
+  // more cramped layouts.
+  blockedTileRatio?: number;
   unlock?: LocationUnlock;
 }
 

@@ -9,7 +9,6 @@ Source brainstorms: 2026-05-08 design chat (original) → 2026-05-09 spatial piv
 ## Where we are now
 
 The raid is action-driven: each tick the operative resolves a **queued action** the player can override before a 6-second timer. Some interactions stay real-time / anytime (bandage, pack management, pause). Patrols and locked containers fire **forced-choice modals** that pause the queue while the player decides.
-
 **Vocabulary** (so map talk and code talk match):
 
 - forward = right = `x + 1`
@@ -35,8 +34,7 @@ Context, only shown when eligible (under a divider in the action card):
 **Forced-choice modals** still fire for these (BranchModal):
 
 - **Patrol encounter** — Engage / Hide / Reposition. Triggered by either a pre-gen `threat: true` tile in the operative's path, or a **heat-driven ambush** (chance per move tick = `heat / 400`).
-
-**Stat row** (always visible during a raid): Health (Heart), Energy (Zap), Heat (Flame), Ammo (Crosshair), Distance (Footprints). Icons match the chip vocabulary. Each value flashes green/red on change with a floating `+N` / `-N` indicator (heat is direction-inverted).
+  **Stat row** (always visible during a raid): Health (Heart), Energy (Zap), Heat (Flame), Ammo (Crosshair), Distance (Footprints). Icons match the chip vocabulary. Each value flashes green/red on change with a floating `+N` / `-N` indicator (heat is direction-inverted).
 
 **Heat is real now** — drives ambush patrols. Higher heat = more enemies showing up unannounced. Stay is the cool-down lever (−8/tick).
 
@@ -46,24 +44,27 @@ Context, only shown when eligible (under a divider in the action card):
 
 Open ideas / wishlist (still relevant):
 
-- remove randomly got shot when entered room, replace with just pure environmental things (later todo: make it so like an agility skill could reduce % of this happening)
-- button to skip action timer (force proceed)
-- debug button to reset shop stock
-- add ctrl click to move items to inventory quickly
-- increase the rate of rare items in locked crates
-- make it so bags can have split inventory sections, like tarkov rigs/bags (i.e. a 2x3 area and a 3x3 area)
-- later: make blasting to get rare loot take some sort of explosives item. maybe we shouldnt say guarantee rare loot
-- add item archetype icons to stash and tooltip
-- add locked doors (edges on map); action in action list to try to keypad/lockpick etc
-- add more items in inventory = more heat gain per turn (because you're louder moving around); maybe this could be based on weight (items get weight separate from cells size?)
-- add pulsing notification bubble on feed sidebar button when raid is active
-- need item that can restore HP
-- need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
-- show animation when purchased something from the shop so you know you bought it
+- DONE: button to skip action timer (force proceed)
+- DONE?: add ctrl click to move items to inventory quickly
+- DONE: add item archetype icons to stash and tooltip
+- DONE: add pulsing notification bubble on feed sidebar button when raid is active
+- DONE: show animation when purchased something from the shop so you know you bought it
 - DONE: concept of multiple bags/inventories to put items into
 - DONE: starting pockets, find a bag in raid to upgrade
 - DONE?: kit / loadout module: choose what from your stash to bring in
 - DONE?: if you die you lose your kit
+- remove randomly got shot when entered room, replace with just pure environmental things (later todo: make it so like an agility skill could reduce % of this happening)
+- debug button to reset shop stock
+- make it so bags can have split inventory sections, like tarkov rigs/bags (i.e. a 2x3 area and a 3x3 area)
+- increase the rate of rare items in locked crates
+- later: make blasting to get rare loot take some sort of explosives item. maybe we shouldnt say guarantee rare loot
+- add locked doors (edges on map); action in action list to try to keypad/lockpick etc
+- add more items in inventory = more heat gain per turn (very slight, just to counter end-game-y stuff) (because you're louder moving around); maybe this could be based on weight (items get weight separate from cells size?)
+- ability to pin/lock items in stash
+- ability to sort stash (group by kind/category, sort by value, sort by date obtained)
+- need item that can restore HP (over time?)
+- need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
+- sometimes make the extract point not the starting point (midway in level somewhere)
 - backpack packing like Tarkov for dropped bags (hard)
 - small shop: buy backpack, decent low/mid weapon, ammo
 - food consumed during raid to keep energy up
@@ -105,8 +106,8 @@ Open ideas / wishlist (still relevant):
 
 - 5 locations: Warehouse, Subway, Drone Graveyard, Datacenter, Biolab. Difficulty pills, lock callouts, consumable-keycard and permanent-coords unlocks.
 - Per-tile **fixed room names** chosen at map gen — log and map tooltip narrate the same room ("shift office", "boiler room", "rusted stairwell"...).
-- Room types layered on top of locations: storage, office, mechanical, gantry, corridor, locked, entry. Room-event bias multiplies base weights.
 - Per-tile **container vocabulary**: regular containers (locker, footlocker, drawer, junction box, ...) are picked at map gen. Loot logs use container-specific verb pools ("Cracked open a locker", "Tipped open a tool chest", "Rummaged through a duffel").
+- Room types layered on top of locations: storage, office, mechanical, gantry, corridor, locked, entry. Room-event bias multiplies base weights.
 
 ### Phase D — Spatial map ✅
 

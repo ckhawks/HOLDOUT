@@ -5,6 +5,7 @@ import type { Backpack } from "lucide-react";
 import { ITEMS } from "@/lib/data/items";
 import { shapeBounds, shapeFor } from "@/lib/engine/shapes";
 import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
+import { categoryIconFor } from "@/lib/itemIcon";
 import { cn } from "@/lib/utils";
 import type { BagState, PocketsState, Rotation } from "@/lib/types";
 import type { KitSlot } from "@/store/game";
@@ -139,6 +140,7 @@ function ItemTiles({
   const tooltipRef = useRef<HTMLDivElement>(null);
   const tier = ITEMS[itemId]?.tier ?? "common";
   const sellValue = ITEMS[itemId]?.sellValue ?? 0;
+  const Icon = categoryIconFor(itemId);
 
   useLayoutEffect(() => {
     const el = tooltipRef.current;
@@ -162,29 +164,42 @@ function ItemTiles({
   return (
     <>
       <div className="pointer-events-none relative" style={{ width: w * KIT_CELL, height: h * KIT_CELL }}>
-        {cells.map(([dx, dy], i) => (
-          <div
-            key={`${dx}-${dy}-${i}`}
-            className={cn(
-              "pointer-events-auto absolute cursor-grab border transition-[filter] active:cursor-grabbing",
-              bg,
-              cursor && "brightness-125",
-            )}
-            style={{
-              left: dx * KIT_CELL,
-              top: dy * KIT_CELL,
-              width: KIT_CELL,
-              height: KIT_CELL,
-            }}
-            onPointerEnter={update}
-            onPointerMove={update}
-            onPointerLeave={clear}
-            onPointerDown={(e) => {
-              clear();
-              onPointerDown(e, dx, dy);
-            }}
-          />
-        ))}
+        {cells.map(([dx, dy], i) => {
+          const iconSize = Math.min(w, h) * KIT_CELL * 0.9;
+          const iconLeft = (w * KIT_CELL - iconSize) / 2 - dx * KIT_CELL;
+          const iconTop = (h * KIT_CELL - iconSize) / 2 - dy * KIT_CELL;
+          return (
+            <div
+              key={`${dx}-${dy}-${i}`}
+              className={cn(
+                "pointer-events-auto absolute cursor-grab overflow-hidden border transition-[filter] active:cursor-grabbing",
+                bg,
+                cursor && "brightness-125",
+              )}
+              style={{
+                left: dx * KIT_CELL,
+                top: dy * KIT_CELL,
+                width: KIT_CELL,
+                height: KIT_CELL,
+              }}
+              onPointerEnter={update}
+              onPointerMove={update}
+              onPointerLeave={clear}
+              onPointerDown={(e) => {
+                clear();
+                onPointerDown(e, dx, dy);
+              }}
+            >
+              {Icon && (
+                <Icon
+                  className={cn("pointer-events-none absolute opacity-15", fg)}
+                  style={{ left: iconLeft, top: iconTop, width: iconSize, height: iconSize }}
+                  strokeWidth={1.5}
+                />
+              )}
+            </div>
+          );
+        })}
         <div
           className={cn(
             "pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[9px] font-semibold uppercase tracking-widest",
@@ -262,6 +277,7 @@ export function KitDragGhost({
   const item = ITEMS[itemId];
   const bg = tileBgFor(itemId);
   const fg = tierColorFor(itemId);
+  const Icon = categoryIconFor(itemId);
   const { w, h } = shapeBounds(cells);
   const left = mouseX - (grabDx * KIT_CELL + KIT_CELL / 2);
   const top = mouseY - (grabDy * KIT_CELL + KIT_CELL / 2);
@@ -270,18 +286,31 @@ export function KitDragGhost({
       className="pointer-events-none fixed z-50 opacity-80"
       style={{ left, top, width: w * KIT_CELL, height: h * KIT_CELL }}
     >
-      {cells.map(([dx, dy], i) => (
-        <div
-          key={i}
-          className={cn("absolute border-2", bg)}
-          style={{
-            left: dx * KIT_CELL,
-            top: dy * KIT_CELL,
-            width: KIT_CELL,
-            height: KIT_CELL,
-          }}
-        />
-      ))}
+      {cells.map(([dx, dy], i) => {
+        const iconSize = Math.min(w, h) * KIT_CELL * 0.9;
+        const iconLeft = (w * KIT_CELL - iconSize) / 2 - dx * KIT_CELL;
+        const iconTop = (h * KIT_CELL - iconSize) / 2 - dy * KIT_CELL;
+        return (
+          <div
+            key={i}
+            className={cn("absolute overflow-hidden border-2", bg)}
+            style={{
+              left: dx * KIT_CELL,
+              top: dy * KIT_CELL,
+              width: KIT_CELL,
+              height: KIT_CELL,
+            }}
+          >
+            {Icon && (
+              <Icon
+                className={cn("pointer-events-none absolute opacity-20", fg)}
+                style={{ left: iconLeft, top: iconTop, width: iconSize, height: iconSize }}
+                strokeWidth={1.5}
+              />
+            )}
+          </div>
+        );
+      })}
       <div
         className={cn(
           "pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[9px] font-semibold uppercase tracking-widest drop-shadow",

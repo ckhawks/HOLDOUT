@@ -19,6 +19,7 @@ import {
 } from "@/lib/engine/shapes";
 import { cn } from "@/lib/utils";
 import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
+import { categoryIconFor } from "@/lib/itemIcon";
 
 const CELL = KIT_CELL;
 
@@ -437,6 +438,7 @@ function FloorTile({
 }) {
   const bg = tileBgFor(itemId);
   const fg = tierColorFor(itemId);
+  const Icon = categoryIconFor(itemId);
   const cells = shapeFor(itemId, 0);
   const { w, h } = shapeBounds(cells);
   const px = CELL - 2;
@@ -450,13 +452,26 @@ function FloorTile({
         onPointerDown={onPointerDown}
       >
       <div className="relative" style={{ width: w * px, height: h * px }}>
-        {cells.map(([dx, dy], i) => (
-          <div
-            key={i}
-            className={cn("absolute border", bg)}
-            style={{ left: dx * px, top: dy * px, width: px, height: px }}
-          />
-        ))}
+        {cells.map(([dx, dy], i) => {
+          const iconSize = Math.min(w, h) * px * 0.9;
+          const iconLeft = (w * px - iconSize) / 2 - dx * px;
+          const iconTop = (h * px - iconSize) / 2 - dy * px;
+          return (
+            <div
+              key={i}
+              className={cn("absolute overflow-hidden border", bg)}
+              style={{ left: dx * px, top: dy * px, width: px, height: px }}
+            >
+              {Icon && (
+                <Icon
+                  className={cn("pointer-events-none absolute opacity-15", fg)}
+                  style={{ left: iconLeft, top: iconTop, width: iconSize, height: iconSize }}
+                  strokeWidth={1.5}
+                />
+              )}
+            </div>
+          );
+        })}
         <div
           className={cn(
             "pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[9px] font-semibold uppercase tracking-widest",

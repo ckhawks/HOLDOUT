@@ -33,7 +33,7 @@ export const LOCATIONS: Location[] = [
     tier: 2,
     difficulty: "mid",
     categoryWeights: {
-      chems: 4,
+      medical: 4,
       consumables: 4,
       mechanical: 3,
       intel: 2,
@@ -48,6 +48,9 @@ export const LOCATIONS: Location[] = [
       locked: 2,
       office: 1,
     },
+    // Cramped tunnels — collapsed sections, flooded passages, blocked-off
+    // platforms. ~2× the default blocker density.
+    blockedTileRatio: 0.24,
   },
   {
     id: "drone_graveyard",
@@ -108,7 +111,7 @@ export const LOCATIONS: Location[] = [
     tier: 3,
     difficulty: "high",
     categoryWeights: {
-      chems: 5,
+      medical: 5,
       experimental: 4,
       electronics: 3,
       intel: 2,

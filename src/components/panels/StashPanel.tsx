@@ -6,6 +6,7 @@ import { ITEMS } from "@/lib/data/items";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
 import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
+import { categoryIconFor } from "@/lib/itemIcon";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Backpack, Coins, PackageOpen, Shirt } from "lucide-react";
 import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
@@ -363,6 +364,7 @@ export function StashPanel() {
                     ? `Ctrl+click to move into kit`
                     : "";
                 const beingDragged = drag?.kind === "stash" && drag.uid === si.uid;
+                const Icon = categoryIconFor(si.itemId);
                 return (
                   <ItemTooltip key={si.uid} itemId={si.itemId} hint={ctrlHint || undefined}>
                     <div
@@ -393,8 +395,9 @@ export function StashPanel() {
                         beingDragged && "opacity-30",
                       )}
                     >
-                      <span className={cn("min-w-0 truncate text-sm font-semibold", TIER_COLOR[item.tier])}>
-                        {item.name}
+                      <span className={cn("flex min-w-0 items-center gap-1.5 text-sm font-semibold", TIER_COLOR[item.tier])}>
+                        {Icon && <Icon className="size-3.5 shrink-0 opacity-80" />}
+                        <span className="truncate">{item.name}</span>
                       </span>
                       <div className="flex shrink-0 items-center gap-1">
                         <span className="font-mono text-xs text-muted-foreground tabular-nums">

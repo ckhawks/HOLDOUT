@@ -30,18 +30,18 @@ export const ITEMS: Record<string, Item> = {
   signal_jammer:    { id: "signal_jammer",    name: "Signal Jammer",     tier: "uncommon",     category: "electronics", sellValue: 70,  weight: 1, shape: S.horiz2 },
   holo_display:     { id: "holo_display",     name: "Holo Display",      tier: "rare",         category: "electronics", sellValue: 155, weight: 1, shape: S.i3 },
 
-  // chems
-  bandage_pack:     { id: "bandage_pack",     name: "Bandage Pack",      tier: "common",       category: "chems",       sellValue: 6,   weight: 1, shape: S.one },
-  antiseptic_vial:  { id: "antiseptic_vial",  name: "Antiseptic Vial",   tier: "common",       category: "chems",       sellValue: 9,   weight: 1, shape: S.one },
-  med_syrette:      { id: "med_syrette",      name: "Med Syrette",       tier: "uncommon",     category: "chems",       sellValue: 35,  weight: 1, shape: S.one },
-  combat_stim:      { id: "combat_stim",      name: "Combat Stim",       tier: "uncommon",     category: "chems",       sellValue: 50,  weight: 1, shape: S.vert2 },
-  nano_clot:        { id: "nano_clot",        name: "Nano-Clot Syringe", tier: "rare",         category: "chems",       sellValue: 130, weight: 1, shape: S.one },
+  // medical
+  bandage_pack:     { id: "bandage_pack",     name: "Bandage Pack",      tier: "common",       category: "medical",       sellValue: 6,   weight: 1, shape: S.one },
+  antiseptic_vial:  { id: "antiseptic_vial",  name: "Antiseptic Vial",   tier: "common",       category: "medical",       sellValue: 9,   weight: 1, shape: S.one },
+  med_syrette:      { id: "med_syrette",      name: "Med Syrette",       tier: "uncommon",     category: "medical",       sellValue: 35,  weight: 1, shape: S.one },
+  combat_stim:      { id: "combat_stim",      name: "Combat Stim",       tier: "uncommon",     category: "medical",       sellValue: 50,  weight: 1, shape: S.vert2 },
+  nano_clot:        { id: "nano_clot",        name: "Nano-Clot Syringe", tier: "rare",         category: "medical",       sellValue: 130, weight: 1, shape: S.one },
 
   // consumables
   ration_pack:      { id: "ration_pack",      name: "Ration Pack",       tier: "common",       category: "consumables", sellValue: 10,  weight: 1, shape: S.horiz2 },
   water_bulb:       { id: "water_bulb",       name: "Water Bulb",        tier: "common",       category: "consumables", sellValue: 5,   weight: 1, shape: S.one },
   coffee_can:       { id: "coffee_can",       name: "Coffee Can",        tier: "common",       category: "consumables", sellValue: 12,  weight: 1, shape: S.vert2 },
-  fuel_cell:        { id: "fuel_cell",        name: "Fuel Cell",         tier: "uncommon",     category: "consumables", sellValue: 38,  weight: 2, shape: S.vert2 },
+  fuel_cell:        { id: "fuel_cell",        name: "Fuel Cell",         tier: "uncommon",     category: "electronics", sellValue: 38,  weight: 2, shape: S.vert2 },
 
   // valuables
   silver_chain:     { id: "silver_chain",     name: "Silver Chain",      tier: "common",       category: "valuables",   sellValue: 22,  weight: 1, shape: S.one },

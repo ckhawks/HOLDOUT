@@ -70,6 +70,31 @@ describe("generateMap", () => {
     expect(ratio).toBeLessThan(BLOCKED_TILE_RATIO * 1.7);
   });
 
+  it("guarantees the rightmost column is reachable from entry on every seed (corridor carve)", () => {
+    for (let seed = 1; seed < 300; seed++) {
+      const m = generateMap(makeRng(seed));
+      let anyReachable = false;
+      for (let y = 0; y < m.height; y++) {
+        if (distanceToEntry(m, m.width - 1, y) !== null) {
+          anyReachable = true;
+          break;
+        }
+      }
+      expect(anyReachable, `seed ${seed} has no reachable rightmost-column tile`).toBe(true);
+    }
+  });
+
+  it("never leaves an isolated non-blocked pocket (connectivity pass)", () => {
+    for (let seed = 1; seed < 300; seed++) {
+      const m = generateMap(makeRng(seed));
+      for (const t of m.tiles) {
+        if (t.blocked) continue;
+        const d = distanceToEntry(m, t.x, t.y);
+        expect(d, `seed ${seed} tile ${t.x},${t.y} unreachable`).not.toBeNull();
+      }
+    }
+  });
+
   it("respects location roomTypeWeights — Datacenter favors office", () => {
     const dc = LOCATIONS_BY_ID["datacenter"];
     expect(dc.roomTypeWeights?.office).toBeGreaterThan(0);

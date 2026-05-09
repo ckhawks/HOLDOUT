@@ -143,6 +143,68 @@ function pickWeighted<T extends string>(
   return entries[entries.length - 1][0];
 }
 
+// Chance the guaranteed forward-corridor drifts a lane between adjacent
+// columns. ~35% gives a corridor that wiggles enough to feel organic but
+// still always lands at the rightmost column.
+const CORRIDOR_DRIFT_CHANCE = 0.35;
+
+// Carve a random-walk lane from entry to the rightmost column. These tiles
+// are immune to the per-tile blocker roll, so there is always at least one
+// reachable path from entry to the deepest column. Returned as a set of
+// `${x},${y}` keys for cheap membership checks.
+function carveCorridor(
+  rand: () => number,
+  entryX: number,
+  entryY: number,
+  width: number,
+  height: number,
+): Set<string> {
+  const key = (x: number, y: number) => `${x},${y}`;
+  const out = new Set<string>();
+  let cy = entryY;
+  out.add(key(entryX, cy));
+  for (let cx = entryX + 1; cx < width; cx++) {
+    if (rand() < CORRIDOR_DRIFT_CHANCE) {
+      const drift = rand() < 0.5 ? -1 : 1;
+      const ny = cy + drift;
+      if (ny >= 0 && ny < height) cy = ny;
+    }
+    out.add(key(cx, cy));
+  }
+  return out;
+}
+
+// BFS from entry through non-blocked tiles, returning the set of reachable
+// `${x},${y}` keys. Any non-blocked tile not in this set is in an isolated
+// pocket and gets converted to a blocker so the rendered map matches reality.
+function reachableFromEntry(
+  tiles: MapTile[],
+  width: number,
+  height: number,
+  entryX: number,
+  entryY: number,
+): Set<string> {
+  const key = (x: number, y: number) => `${x},${y}`;
+  const reached = new Set<string>();
+  const queue: Array<{ x: number; y: number }> = [{ x: entryX, y: entryY }];
+  reached.add(key(entryX, entryY));
+  while (queue.length > 0) {
+    const { x, y } = queue.shift()!;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const k = key(nx, ny);
+      if (reached.has(k)) continue;
+      const t = tiles[ny * width + nx];
+      if (t.blocked) continue;
+      reached.add(k);
+      queue.push({ x: nx, y: ny });
+    }
+  }
+  return reached;
+}
+
 export function generateMap(
   rand: () => number,
   location?: Location,
@@ -153,6 +215,12 @@ export function generateMap(
   const entry = { x: 0, y: Math.floor(rand() * height) };
   const weights: Partial<Record<RoomType, number>> =
     location?.roomTypeWeights ?? DEFAULT_ROOM_WEIGHTS;
+
+  // Guaranteed corridor from entry to the rightmost column. Tiles on the
+  // corridor are immune to the per-tile blocker roll — gen never produces a
+  // map where forward progress is impossible.
+  const corridor = carveCorridor(rand, entry.x, entry.y, width, height);
+  const onCorridor = (x: number, y: number) => corridor.has(`${x},${y}`);
 
   const tiles: MapTile[] = [];
   for (let y = 0; y < height; y++) {
@@ -176,9 +244,13 @@ export function generateMap(
         continue;
       }
       // Tile directly forward from entry should never be blocked — guarantees
-      // the operative can step out of the entry cell.
+      // the operative can step out of the entry cell. Corridor tiles are also
+      // protected from the blocker roll for guaranteed entry-to-deepest-column
+      // connectivity.
       const adjacentToEntry = x === entry.x + 1 && y === entry.y;
-      const blocked = !adjacentToEntry && rand() < BLOCKED_TILE_RATIO;
+      const protectedTile = adjacentToEntry || onCorridor(x, y);
+      const blockRatio = location?.blockedTileRatio ?? BLOCKED_TILE_RATIO;
+      const blocked = !protectedTile && rand() < blockRatio;
       const type: RoomType = blocked ? "locked" : pickWeighted(rand, weights);
       const lootMax = blocked ? 0 : pickLootPotential(rand, type);
       // Only sprinkle threats past the breathing-room columns and never on
@@ -203,6 +275,23 @@ export function generateMap(
       });
     }
   }
+
+  // Connectivity pass: any non-blocked tile not reachable from entry is in an
+  // isolated pocket. Block it so the rendered map matches reality (no `???`
+  // tiles dangling behind walls the operative can never breach).
+  const reached = reachableFromEntry(tiles, width, height, entry.x, entry.y);
+  for (const t of tiles) {
+    if (t.type === "entry") continue;
+    if (t.blocked) continue;
+    if (reached.has(`${t.x},${t.y}`)) continue;
+    t.blocked = true;
+    t.lootRemaining = 0;
+    t.lootMax = 0;
+    t.containers = [];
+    t.lockedContainers = [];
+    t.threat = false;
+  }
+
   return { width, height, tiles, entry };
 }
 
