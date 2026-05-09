@@ -2,13 +2,14 @@ import type {
   CurrentRaid,
   Hideout,
   Operative,
+  ShopState,
   StashItem,
   Unlocks,
   Upgrades,
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 23;
 
 export interface PersistedState {
   cash: number;
@@ -18,6 +19,7 @@ export interface PersistedState {
   unlocks: Unlocks;
   upgrades: Upgrades;
   currentRaid: CurrentRaid | null;
+  shop: ShopState;
 }
 
 export interface SavedGame {
@@ -236,6 +238,58 @@ export function migrateSave(saved: SavedGame): SavedGame {
         delete mods.backpack;
       }
     }
+  }
+  // v20: pockets default shape is now 6×1 (was 4×4). Drop in-progress raids
+  // and reset operative pockets to bare 6×1 — items in pockets/bag are lost.
+  // No real players yet so this is a clean break, not a careful migration.
+  if (saved.schemaVersion < 20) {
+    s.currentRaid = null;
+    if (s.operative?.equipment) {
+      s.operative = {
+        ...s.operative,
+        equipment: {
+          pockets: { grid: { width: 6, height: 1 }, items: [] },
+          bag: null,
+          weapon: null,
+          armor: null,
+          helmet: null,
+        },
+      };
+    }
+  }
+  // v21: PersistedState gains `shop`. Backfill an empty shop; the store
+  // regenerates offers on hydrate when offers is empty.
+  if (saved.schemaVersion < 21) {
+    if (!(s as unknown as { shop?: unknown }).shop) {
+      (s as unknown as { shop: ShopState }).shop = { offers: [], lastRefreshAt: 0 };
+    }
+  }
+  // v22: pockets grid was 1×6 (vertical) in the first cut of v20 — should
+  // have been 6×1 (horizontal). Reset operative pockets to 6×1, dump items.
+  if (saved.schemaVersion < 22) {
+    s.currentRaid = null;
+    if (s.operative?.equipment) {
+      s.operative = {
+        ...s.operative,
+        equipment: {
+          ...s.operative.equipment,
+          pockets: { grid: { width: 6, height: 1 }, items: [] },
+        },
+      };
+    }
+  }
+  // v23: shop layout adjusted (2 bags instead of 1, guaranteed bandages).
+  // Empty existing offers so hydrate regenerates with the new shape.
+  if (saved.schemaVersion < 23) {
+    if ((s as unknown as { shop?: ShopState }).shop) {
+      (s as unknown as { shop: ShopState }).shop = { offers: [], lastRefreshAt: 0 };
+    }
+  }
+  // Defensive: shop must exist on the loaded state. A save can land here
+  // with the right schemaVersion but a missing field if HMR + auto-save
+  // raced during a sprint that introduced the field.
+  if (!(s as unknown as { shop?: unknown }).shop) {
+    (s as unknown as { shop: ShopState }).shop = { offers: [], lastRefreshAt: 0 };
   }
   // Defensive shape check, version-independent: a save can end up with the
   // new schema version but old container data if HMR + auto-save raced

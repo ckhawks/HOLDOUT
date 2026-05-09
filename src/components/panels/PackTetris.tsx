@@ -49,6 +49,32 @@ export function PackTetris() {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [hover, setHover] = useState<HoverState>(null);
 
+  // Ctrl/Cmd+click fast-move: floor → first-fit kit slot. Picks pockets first
+  // (like room-contents pickup naturally lands in the closer pouch), then bag.
+  const ctrlPickup = (uid: string, itemId: string) => {
+    if (!raid) return;
+    const tryGrid = (grid: PocketsState | BagState | null, slot: KitSlot): boolean => {
+      if (!grid) return false;
+      for (let r = 0; r < 4; r++) {
+        const cells = shapeFor(itemId, r as Rotation);
+        const occ = buildOccupancy(grid.items, grid.grid.width, grid.grid.height);
+        for (let y = 0; y < grid.grid.height; y++) {
+          for (let x = 0; x < grid.grid.width; x++) {
+            if (canPlace(cells, x, y, grid.grid.width, grid.grid.height, occ)) {
+              if (pickupFromFloor(uid, slot, x, y, r as Rotation)) {
+                playSfx("inventory");
+                return true;
+              }
+            }
+          }
+        }
+      }
+      return false;
+    };
+    if (tryGrid(raid.equipment.pockets, "pockets")) return;
+    tryGrid(raid.equipment.bag, "bag");
+  };
+
   const currentTile = raid
     ? raid.map.tiles[raid.operativePos.y * raid.map.width + raid.operativePos.x]
     : undefined;
@@ -227,6 +253,12 @@ export function PackTetris() {
                     hidden={beingDragged}
                     onPointerDown={(e) => {
                       e.preventDefault();
+                      // Ctrl/Cmd+click is the fast move-to-kit shortcut.
+                      // Skips drag state and runs the first-fit pickup.
+                      if (e.ctrlKey || e.metaKey) {
+                        ctrlPickup(p.uid, p.itemId);
+                        return;
+                      }
                       setDrag({
                         source: "floor",
                         uid: p.uid,
@@ -278,6 +310,10 @@ export function PackTetris() {
                 mouseY,
               })
             }
+            onCtrlClick={(uid) => {
+              dropToFloor(uid);
+              playSfx("inventory");
+            }}
           />
           {bag ? (
             <KitGrid
@@ -300,6 +336,10 @@ export function PackTetris() {
                   mouseY,
                 })
               }
+              onCtrlClick={(uid) => {
+                dropToFloor(uid);
+                playSfx("inventory");
+              }}
             />
           ) : (
             <div className="rounded-sm border border-dashed border-border/40 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">
@@ -327,6 +367,7 @@ function KitGrid({
   drag,
   hover,
   onPick,
+  onCtrlClick,
 }: {
   slot: KitSlot;
   label: string;
@@ -344,6 +385,7 @@ function KitGrid({
     mouseX: number,
     mouseY: number,
   ) => void;
+  onCtrlClick: (uid: string) => void;
 }) {
   const w = grid.grid.width;
   const h = grid.grid.height;
@@ -391,6 +433,11 @@ function KitGrid({
                 itemId={p.itemId}
                 onPointerDown={(e, dx, dy) => {
                   e.preventDefault();
+                  // Ctrl/Cmd+click is the fast drop-to-floor shortcut.
+                  if (e.ctrlKey || e.metaKey) {
+                    onCtrlClick(p.uid);
+                    return;
+                  }
                   onPick(p.uid, p.itemId, p.rotation, dx, dy, e.clientX, e.clientY);
                 }}
                 label={item?.name ?? p.itemId}

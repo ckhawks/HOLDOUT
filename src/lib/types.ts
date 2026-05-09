@@ -333,6 +333,22 @@ export interface Unlocks {
   biolab: boolean;
 }
 
+export interface ShopOffer {
+  // Stable id for React keys; regenerated on each refresh so a refresh
+  // visibly resets the row identity.
+  offerId: string;
+  itemId: string;
+  price: number;
+  stock: number;
+}
+
+export interface ShopState {
+  offers: ShopOffer[];
+  // Wall-clock timestamp of last refresh — informational only, used by the
+  // panel header. Refresh itself is event-driven (raid end), not time-based.
+  lastRefreshAt: number;
+}
+
 export interface Upgrades {
   // Pockets size upgrade — adds rows to the operative's built-in pockets
   // grid. Replaces the previous "backpack +N slots" upgrade since pack is

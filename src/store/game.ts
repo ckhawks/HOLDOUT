@@ -11,6 +11,7 @@ import type {
   Operative,
   PackPlacement,
   Rotation,
+  ShopState,
   StashItem,
   Unlocks,
   Upgrades,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/engine/raid";
 import { autoPickAction } from "@/lib/engine/actions";
 import { ITEMS } from "@/lib/data/items";
+import { refreshShop } from "@/lib/engine/shop";
 import {
   pocketsDimensions,
   pocketsUpgradeCost,
@@ -58,7 +60,7 @@ import {
 } from "@/lib/engine/save";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
-export type PanelId = "hideout" | "stash" | "ops" | "feed" | "manual" | "settings";
+export type PanelId = "hideout" | "stash" | "ops" | "feed" | "shop" | "manual" | "settings";
 
 export interface RaidOutcome {
   type: "death" | "extracted";
@@ -74,6 +76,7 @@ interface GameState {
   unlocks: Unlocks;
   upgrades: Upgrades;
   currentRaid: CurrentRaid | null;
+  shop: ShopState;
   activePanel: PanelId;
   rngSeed: number;
   hydrated: boolean;
@@ -104,6 +107,7 @@ interface GameState {
   emptyKitToStash: () => void;
   sellItem: (uid: string) => void;
   sellAllJunk: () => void;
+  buyOffer: (offerId: string) => boolean;
   buyPocketsUpgrade: () => void;
   buyStashUpgrade: () => void;
   resetGame: () => void;
@@ -155,6 +159,7 @@ export const useGame = create<GameState>((set, get) => ({
   unlocks: { workbench: false, medbay: false, biolab: false },
   upgrades: initialUpgrades,
   currentRaid: null,
+  shop: { offers: [], lastRefreshAt: 0 },
   activePanel: "ops",
   rngSeed: Math.floor(Math.random() * 0xffffffff),
   hydrated: false,
@@ -586,10 +591,14 @@ export const useGame = create<GameState>((set, get) => ({
         },
       };
     }
+    // Marketplace restocks every time the operative comes home.
+    const { rngSeed } = get();
+    const shop = refreshShop(makeRng(rngSeed + Date.now()));
     set({
       currentRaid: null,
       unlocks: nextUnlocks,
       operative: nextOperative,
+      shop,
       // Only death forces a modal — extracts go straight back to the terminal.
       raidOutcome: extracted
         ? null
@@ -803,6 +812,31 @@ export const useGame = create<GameState>((set, get) => ({
     set({ stash: keep, cash: cash + earned });
   },
 
+  buyOffer: (offerId) => {
+    const { shop, cash, stash, hideout } = get();
+    const idx = shop.offers.findIndex((o) => o.offerId === offerId);
+    if (idx === -1) return false;
+    const offer = shop.offers[idx];
+    if (offer.stock <= 0) return false;
+    if (cash < offer.price) return false;
+    const cap = hideout.modules.stash.capacity ?? Infinity;
+    if (stash.length >= cap) return false;
+    const newItem: StashItem = {
+      uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      itemId: offer.itemId,
+    };
+    const nextStock = offer.stock - 1;
+    const nextOffers = nextStock <= 0
+      ? [...shop.offers.slice(0, idx), ...shop.offers.slice(idx + 1)]
+      : shop.offers.map((o) => (o.offerId === offerId ? { ...o, stock: nextStock } : o));
+    set({
+      cash: cash - offer.price,
+      stash: [...stash, newItem],
+      shop: { ...shop, offers: nextOffers },
+    });
+    return true;
+  },
+
   buyPocketsUpgrade: () => {
     const { cash, upgrades, hideout, operative, currentRaid } = get();
     if (currentRaid) return; // can't upgrade mid-raid
@@ -860,6 +894,7 @@ export const useGame = create<GameState>((set, get) => ({
       unlocks: { workbench: false, medbay: false, biolab: false },
       upgrades: initialUpgrades,
       currentRaid: null,
+      shop: refreshShop(makeRng(Math.floor(Math.random() * 0xffffffff))),
       activePanel: "ops",
       rngSeed: Math.floor(Math.random() * 0xffffffff),
       raidOutcome: null,
@@ -870,6 +905,13 @@ export const useGame = create<GameState>((set, get) => ({
     if (get().hydrated) return;
     const loaded = loadGame();
     if (loaded) {
+      // First-load shop population: if the migrated save has no offers (or
+      // the field is somehow absent), seed some so the panel isn't empty.
+      const seed = Math.floor(Math.random() * 0xffffffff);
+      const loadedShop = loaded.shop ?? { offers: [], lastRefreshAt: 0 };
+      const shop = loadedShop.offers.length === 0
+        ? refreshShop(makeRng(seed))
+        : loadedShop;
       set({
         cash: loaded.cash,
         stash: loaded.stash,
@@ -878,13 +920,16 @@ export const useGame = create<GameState>((set, get) => ({
         unlocks: loaded.unlocks,
         upgrades: loaded.upgrades,
         currentRaid: loaded.currentRaid,
+        shop,
         // If a raid is in progress, return the player to the comms feed
         // (HMR / page reload otherwise drops them on the Ops panel).
         activePanel: loaded.currentRaid ? "feed" : get().activePanel,
         hydrated: true,
       });
     } else {
-      set({ hydrated: true });
+      // Fresh game — populate shop immediately so player has something to buy.
+      const seed = Math.floor(Math.random() * 0xffffffff);
+      set({ hydrated: true, shop: refreshShop(makeRng(seed)) });
     }
   },
 }));
@@ -1009,7 +1054,8 @@ if (typeof window !== "undefined") {
       state.hideout === prev.hideout &&
       state.unlocks === prev.unlocks &&
       state.upgrades === prev.upgrades &&
-      state.currentRaid === prev.currentRaid
+      state.currentRaid === prev.currentRaid &&
+      state.shop === prev.shop
     ) {
       return;
     }
@@ -1021,6 +1067,7 @@ if (typeof window !== "undefined") {
       unlocks: state.unlocks,
       upgrades: state.upgrades,
       currentRaid: state.currentRaid,
+      shop: state.shop,
     });
   });
 }

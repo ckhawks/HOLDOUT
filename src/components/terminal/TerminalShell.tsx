@@ -8,6 +8,7 @@ import { HideoutPanel } from "@/components/panels/HideoutPanel";
 import { StashPanel } from "@/components/panels/StashPanel";
 import { OpsPanel } from "@/components/panels/OpsPanel";
 import { FeedPanel } from "@/components/panels/FeedPanel";
+import { ShopPanel } from "@/components/panels/ShopPanel";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { ManualPanel } from "@/components/panels/ManualPanel";
 import { RaidOutcomeModal } from "@/components/panels/RaidOutcomeModal";
@@ -125,6 +126,7 @@ export function TerminalShell() {
           {panel === "stash" && <StashPanel />}
           {panel === "ops" && <OpsPanel />}
           {panel === "feed" && <FeedPanel />}
+          {panel === "shop" && <ShopPanel />}
           {panel === "manual" && <ManualPanel />}
           {panel === "settings" && <SettingsPanel />}
         </main>

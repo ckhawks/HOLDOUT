@@ -1,14 +1,17 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import { useGame } from "@/store/game";
 import { ITEMS } from "@/lib/data/items";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
-import { TIER_COLOR } from "@/lib/itemDisplay";
+import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { Button } from "@/components/ui/button";
-import { Backpack, Coins, PackageOpen, Shirt, Trash2 } from "lucide-react";
-import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
-import type { BagState, Equipment, PackPlacement, PocketsState, Rotation, StashItem } from "@/lib/types";
+import { Backpack, Coins, PackageOpen, Shirt } from "lucide-react";
+import { buildOccupancy, canPlace, shapeBounds, shapeFor } from "@/lib/engine/shapes";
+import type { BagState, Equipment, PocketsState, Rotation, StashItem } from "@/lib/types";
+
+const CELL = 28;
 
 type KitTarget = { slot: "pockets" | "bag"; x: number; y: number; rotation: Rotation };
 
@@ -42,7 +45,6 @@ export function StashPanel() {
   const sellAllJunk = useGame((s) => s.sellAllJunk);
   const kitFromStash = useGame((s) => s.kitFromStash);
   const stashFromKit = useGame((s) => s.stashFromKit);
-  const trashFromKit = useGame((s) => s.trashFromKit);
   const equipBag = useGame((s) => s.equipBag);
   const unequipBag = useGame((s) => s.unequipBag);
   const emptyKit = useGame((s) => s.emptyKitToStash);
@@ -76,48 +78,46 @@ export function StashPanel() {
       <div className="flex min-h-0 flex-1">
         {/* Kit sidebar — only meaningful when idle */}
         {!inRaid && (
-          <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border/60 bg-card/20 px-4 py-4">
-            <KitSection
+          <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-r border-border/60 bg-card/20 px-4 py-4">
+            <KitGridDisplay
               title="Pockets"
               Icon={Shirt}
-              items={equipment.pockets.items}
-              gridLabel={`${equipment.pockets.grid.width}×${equipment.pockets.grid.height}`}
-              onSendToStash={(uid) => stashFromKit(uid)}
-              onTrash={(uid) => trashFromKit(uid)}
+              grid={equipment.pockets}
+              onClickItem={(uid) => stashFromKit(uid)}
+              clickHint="Click → stash"
               stashFull={stashFull}
             />
             {equipment.bag ? (
-              <KitSection
-                title={`Bag · ${ITEMS[equipment.bag.slot.itemId]?.name ?? "Bag"}`}
-                Icon={Backpack}
-                items={equipment.bag.items}
-                gridLabel={`${equipment.bag.grid.width}×${equipment.bag.grid.height}`}
-                onSendToStash={(uid) => stashFromKit(uid)}
-                onTrash={(uid) => trashFromKit(uid)}
-                stashFull={stashFull}
-                footer={
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => unequipBag()}
-                    disabled={equipment.bag!.items.length > 0 || stashFull}
-                    className="rounded-sm"
-                    title={
-                      equipment.bag!.items.length > 0
-                        ? "Empty the bag first"
-                        : stashFull
-                          ? "Stash full"
-                          : ""
-                    }
-                  >
-                    Unequip bag
-                  </Button>
-                }
-              />
+              <>
+                <KitGridDisplay
+                  title={`Bag · ${ITEMS[equipment.bag.slot.itemId]?.name ?? "Bag"}`}
+                  Icon={Backpack}
+                  grid={equipment.bag}
+                  onClickItem={(uid) => stashFromKit(uid)}
+                  clickHint="Click → stash"
+                  stashFull={stashFull}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => unequipBag()}
+                  disabled={equipment.bag.items.length > 0 || stashFull}
+                  className="rounded-sm"
+                  title={
+                    equipment.bag.items.length > 0
+                      ? "Empty the bag first"
+                      : stashFull
+                        ? "Stash full"
+                        : ""
+                  }
+                >
+                  Unequip bag
+                </Button>
+              </>
             ) : (
               <div className="rounded-sm border border-dashed border-border/40 p-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">
                 <Backpack className="mr-2 inline size-3" />
-                no bag equipped · drag/equip from stash
+                no bag equipped · equip from stash
               </div>
             )}
             <Button
@@ -156,11 +156,34 @@ export function StashPanel() {
                 const fit = !inRaid && !equippableBag ? findFit(equipment, si) : null;
                 const canEquip =
                   !inRaid && equippableBag && !equipment.bag;
+                const ctrlClickAction = canEquip
+                  ? () => equipBag(si.uid)
+                  : fit
+                    ? () => kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
+                    : null;
+                const ctrlHint = canEquip
+                  ? "Ctrl+click to equip"
+                  : fit
+                    ? `Ctrl+click → ${fit.slot}`
+                    : "";
                 return (
                   <div
                     key={si.uid}
-                    title={`${item.tier}${sellable ? ` · sells for ¤${item.sellValue}` : " · cannot be sold"}`}
-                    className="group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2"
+                    title={`${item.tier}${sellable ? ` · sells for ¤${item.sellValue}` : " · cannot be sold"}${ctrlHint ? ` · ${ctrlHint}` : ""}`}
+                    onClick={(e) => {
+                      // Ctrl/Cmd+click is the fast move-to-kit (or equip) shortcut.
+                      // Stops the click from bubbling up and triggering button SFX
+                      // on the wrapper.
+                      if ((e.ctrlKey || e.metaKey) && ctrlClickAction) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        ctrlClickAction();
+                      }
+                    }}
+                    className={cn(
+                      "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2",
+                      ctrlClickAction && "hover:border-emerald-500/40",
+                    )}
                   >
                     <span className={cn("min-w-0 truncate text-sm font-semibold", TIER_COLOR[item.tier])}>
                       {item.name}
@@ -208,25 +231,23 @@ export function StashPanel() {
   );
 }
 
-function KitSection({
+function KitGridDisplay({
   title,
   Icon,
-  items,
-  gridLabel,
-  onSendToStash,
-  onTrash,
+  grid,
+  onClickItem,
+  clickHint,
   stashFull,
-  footer,
 }: {
   title: string;
   Icon: typeof Backpack;
-  items: PackPlacement[];
-  gridLabel: string;
-  onSendToStash: (uid: string) => void;
-  onTrash: (uid: string) => void;
+  grid: PocketsState | BagState;
+  onClickItem: (uid: string) => void;
+  clickHint: string;
   stashFull: boolean;
-  footer?: React.ReactNode;
 }) {
+  const w = grid.grid.width;
+  const h = grid.grid.height;
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -235,53 +256,150 @@ function KitSection({
           {title}
         </span>
         <span className="tabular-nums">
-          {items.length} · {gridLabel}
+          {grid.items.length}/{w * h}
         </span>
       </div>
-      <div className="flex flex-col gap-1 rounded-sm border border-border/60 bg-background/40 p-2">
-        {items.length === 0 ? (
-          <span className="py-1 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">
-            empty
-          </span>
-        ) : (
-          items.map((p) => {
-            const item = ITEMS[p.itemId];
-            return (
-              <div
-                key={p.uid}
-                className="flex items-center justify-between gap-2 rounded-sm bg-card/40 px-2 py-1"
-              >
-                <span
-                  className={cn(
-                    "min-w-0 truncate text-xs",
-                    item ? TIER_COLOR[item.tier] : "text-foreground",
-                  )}
-                >
-                  {item?.name ?? p.itemId}
-                </span>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    onClick={() => onSendToStash(p.uid)}
-                    disabled={stashFull}
-                    className="cursor-pointer rounded-sm border border-transparent px-1.5 py-0.5 text-[10px] text-muted-foreground transition hover:border-border hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                    title={stashFull ? "Stash full" : "Send to stash"}
-                  >
-                    → stash
-                  </button>
-                  <button
-                    onClick={() => onTrash(p.uid)}
-                    className="cursor-pointer rounded-sm border border-transparent px-1 py-0.5 text-muted-foreground transition hover:border-red-500/40 hover:text-red-300"
-                    title="Discard"
-                  >
-                    <Trash2 className="size-3" />
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
+      <div
+        className="relative select-none border border-border/80 bg-background/40"
+        style={{ width: w * CELL, height: h * CELL }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage:
+              `linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),` +
+              `linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px)`,
+            backgroundSize: `${CELL}px ${CELL}px`,
+          }}
+        />
+        {grid.items.map((p) => {
+          const cells = shapeFor(p.itemId, p.rotation);
+          const item = ITEMS[p.itemId];
+          return (
+            <div
+              key={p.uid}
+              className="absolute"
+              style={{ left: p.x * CELL, top: p.y * CELL }}
+            >
+              <ClickableTiles
+                cells={cells}
+                itemId={p.itemId}
+                label={item?.name ?? p.itemId}
+                onClick={() => onClickItem(p.uid)}
+                disabled={stashFull}
+                clickHint={clickHint}
+              />
+            </div>
+          );
+        })}
       </div>
-      {footer ? <div className="mt-1">{footer}</div> : null}
+      <div className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground/60">
+        {clickHint}
+        {stashFull ? " · stash full" : ""}
+      </div>
     </div>
   );
+}
+
+function ClickableTiles({
+  cells,
+  itemId,
+  label,
+  onClick,
+  disabled,
+  clickHint,
+}: {
+  cells: ReturnType<typeof shapeFor>;
+  itemId: string;
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+  clickHint: string;
+}) {
+  const bg = tileBgFor(itemId);
+  const fg = tierColorFor(itemId);
+  const { w, h } = shapeBounds(cells);
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const tier = ITEMS[itemId]?.tier ?? "common";
+  const sellValue = ITEMS[itemId]?.sellValue ?? 0;
+
+  useLayoutEffect(() => {
+    const el = tooltipRef.current;
+    if (!cursor || !el) return;
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    const offset = 14;
+    let left = cursor.x + offset;
+    let top = cursor.y + offset;
+    if (left + r.width > window.innerWidth - margin) left = cursor.x - r.width - offset;
+    if (top + r.height > window.innerHeight - margin) top = cursor.y - r.height - offset;
+    if (left < margin) left = margin;
+    if (top < margin) top = margin;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+  }, [cursor]);
+
+  const update = (e: React.PointerEvent) => setCursor({ x: e.clientX, y: e.clientY });
+  const clear = () => setCursor(null);
+
+  return (
+    <>
+      <div className="pointer-events-none relative" style={{ width: w * CELL, height: h * CELL }}>
+        {cells.map(([dx, dy], i) => (
+          <div
+            key={`${dx}-${dy}-${i}`}
+            className={cn(
+              "pointer-events-auto absolute border transition-[filter]",
+              bg,
+              cursor && !disabled && "brightness-125",
+              disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+            )}
+            style={{
+              left: dx * CELL,
+              top: dy * CELL,
+              width: CELL,
+              height: CELL,
+            }}
+            onPointerEnter={update}
+            onPointerMove={update}
+            onPointerLeave={clear}
+            onClick={(e) => {
+              e.preventDefault();
+              clear();
+              if (!disabled) onClick();
+            }}
+          />
+        ))}
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-[9px] font-semibold uppercase tracking-widest",
+            fg,
+          )}
+        >
+          {abbreviate(label)}
+        </div>
+      </div>
+      {cursor && (
+        <div
+          ref={tooltipRef}
+          className="pointer-events-none fixed z-[60] whitespace-nowrap rounded-sm border border-border/80 bg-popover/95 px-2 py-1 font-mono text-[10px] uppercase tracking-widest shadow-md backdrop-blur"
+          style={{ left: cursor.x + 14, top: cursor.y + 14 }}
+        >
+          <div className={cn("font-semibold", fg)}>{label}</div>
+          <div className="text-muted-foreground">
+            {tier}
+            {sellValue > 0 && ` · ¤${sellValue}`}
+          </div>
+          <div className="mt-0.5 text-muted-foreground/70">{clickHint}</div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function abbreviate(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return parts.slice(0, 3).map((p) => p[0]).join("").toUpperCase();
+  return name.slice(0, 3).toUpperCase();
 }

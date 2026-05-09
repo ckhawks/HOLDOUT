@@ -164,6 +164,31 @@ describe("stepForward", () => {
     expect(next).toEqual({ x: 1, y: 3 });
   });
 
+  it("does not drift into a lane whose own forward is blocked (avoids 2-tile bounce)", () => {
+    // Force-construct a map where forward from (2,1) is open at (3,1),
+    // but the up-lane drift target (2,0) has a blocked forward (3,0). If
+    // drift fires and picks (2,0) anyway, the next tick's fallback pulls
+    // the operative back to (2,1) — classic oscillation. The fix: drift
+    // only fires when the drift-lane's forward is also walkable.
+    const m = generateMap(makeRng(1));
+    const tiles = m.tiles.slice();
+    const set = (x: number, y: number, blocked: boolean) => {
+      const idx = y * m.width + x;
+      tiles[idx] = { ...tiles[idx], blocked, type: blocked ? "locked" : tiles[idx].type };
+    };
+    set(2, 1, false); // operative
+    set(3, 1, false); // forward — open
+    set(2, 0, false); // up-lane — itself open
+    set(3, 0, true); // up-lane's forward — blocked (the trap)
+    set(2, 2, true); // down-lane blocked entirely (force the drift to consider only up)
+    const cm = { ...m, tiles };
+    // Run many seeds — across all of them, drift to (2,0) must NEVER happen.
+    for (let seed = 1; seed < 60; seed++) {
+      const next = stepForward(cm, { x: 2, y: 1 }, makeRng(seed));
+      expect(next).not.toEqual({ x: 2, y: 0 });
+    }
+  });
+
   it("monotonically pushes right or stays put — never moves left (back toward entry)", () => {
     for (let seed = 1; seed < 50; seed++) {
       const m = generateMap(makeRng(seed));

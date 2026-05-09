@@ -46,6 +46,7 @@ function freshState(): PersistedState {
     unlocks: { workbench: false, medbay: false, biolab: false },
     upgrades: { pocketsLevel: 1, stashLevel: 2 },
     currentRaid: null,
+    shop: { offers: [], lastRefreshAt: 0 },
   };
 }
 

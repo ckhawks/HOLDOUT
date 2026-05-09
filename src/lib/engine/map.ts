@@ -266,7 +266,16 @@ export function stepForward(
   if (fwdOk && rand() < 0.25) {
     const dir = rand() < 0.5 ? -1 : 1;
     const lane = { x: pos.x, y: pos.y + dir };
-    if (isWalkable(map, lane.x, lane.y)) return lane;
+    // Only drift into a lane whose own forward is walkable. Otherwise the
+    // next tick's fallback ("forward is blocked → step into a lane with an
+    // open forward") will pull the operative right back, producing a 2-tile
+    // oscillation between the original lane and the dead-end drift lane.
+    if (
+      isWalkable(map, lane.x, lane.y) &&
+      isWalkable(map, lane.x + 1, lane.y)
+    ) {
+      return lane;
+    }
   }
   if (fwdOk) return fwd;
   // Forward is blocked. Prefer the lane whose own forward (x+1) is also
