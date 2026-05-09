@@ -1,33 +1,40 @@
 # POST_SAD task breakdown — HOLDOUT next sprints
 
-The "raid has weight" sprint became three sprints stacked: the original event-engine + content sprint, a spatial-map layer, and an action-system pivot. Most of what was originally scoped here has shipped; the doc now tracks **what just happened** and **what's next** under the new model.
+Originally a single "raid has weight" sprint. Has since become four stacked passes: the original event-engine + content sprint, a spatial-map layer, an action-system pivot, and a heat/threat-economy pass. Most of the original scope has shipped; this doc tracks **what just happened** and **what's next**.
 
-Source brainstorms: 2026-05-08 design chat (original) + 2026-05-09 spatial pivot + 2026-05-10 action-system pivot.
+Source brainstorms: 2026-05-08 design chat (original) → 2026-05-09 spatial pivot, action-system pivot, heat economy.
 
 ---
 
-## Where we are now (action-driven model)
+## Where we are now
 
-The raid is no longer driven by random event rolls. Each tick the operative resolves a **queued action** — the player sees what's about to happen and can override it before the action timer fires. Some things stay real-time / anytime (bandage, pack management, pause).
+The raid is action-driven: each tick the operative resolves a **queued action** the player can override before a 6-second timer. Some interactions stay real-time / anytime (bandage, pack management, pause). Patrols and locked containers fire **forced-choice modals** that pause the queue while the player decides.
 
 **Vocabulary** (so map talk and code talk match):
 - forward = right = `x + 1`
 - backward = left = `x − 1` (toward entry / extract)
 - up / down = lane shift (`y − 1` / `y + 1`)
-- "rooms away" = manhattan distance from operative to entry on the map
+- "rooms away" = manhattan path-length from operative to entry on the map
 
-**Active actions (v1):**
-- `move_forward` — push deeper. Auto-picker default.
-- `loot` — search the current room. Marks tile looted; suppresses repeat finds.
-- `stay` — hold position. Reduces alertness, less energy drain.
+**Active actions (v2):**
+
+Primary, always shown in the action menu (one set at a time):
+- `move_forward` — push deeper. Auto-picker default while raiding.
+- `loot` — search the current room. Pops one container off the queue, ~70% chance of an item drop into the room.
+- `stay` — hold position. -8 heat, -2 energy. Cools off the world.
 - `extract_step` — auto-locked while extracting. BFS step toward entry.
+- `fight` — auto-locked while `combat_engaged`. Resolves a round of combat (~55% target_down + loot, ~30% firefight, ~15% target_fled).
+- `flee` — break-contact attempt while combat_engaged. 60% success, 40% takes a parting shot.
 
-**Interrupts (random):** ~22% chance per tick of `took_damage` (with possible bleed) or a `heard_voices` flavor line. Suppressed during extract.
+Context, only shown when eligible (under a divider in the action card):
+- `breach_locked` — when the current tile has a locked container. Direct action: -2 ammo, +14 heat, blasts one locked container, rolls 30% empty / 50% common / 20% rare.
 
-**Disabled / dormant for now:**
-- Branching event modals (Hide/Engage/Reposition, Pick/Blast/Skip) — collapsed into the action menu in v1; full branch UI returns in **Sprint G** as forced-choice interrupts.
-- Combat resolution events (`target_down` / `firefight_continues` / `target_fled`) still defined but never fire because nothing sets `combat_engaged` in v1. Returns in **Sprint H**.
-- Extract event variety (`extract_skirmish` / `extract_corner_loot`) replaced by flat `extract_step` movement. Variety re-introduced via action outcomes when needed.
+**Forced-choice modals** still fire for these (BranchModal):
+- **Patrol encounter** — Engage / Hide / Reposition. Triggered by either a pre-gen `threat: true` tile in the operative's path, or a **heat-driven ambush** (chance per move tick = `heat / 400`).
+
+**Stat row** (always visible during a raid): Health (Heart), Energy (Zap), Heat (Flame), Ammo (Crosshair), Distance (Footprints). Icons match the chip vocabulary. Each value flashes green/red on change with a floating `+N` / `-N` indicator (heat is direction-inverted).
+
+**Heat is real now** — drives ambush patrols. Higher heat = more enemies showing up unannounced. Stay is the cool-down lever (−8/tick).
 
 ---
 
@@ -51,13 +58,8 @@ Open ideas / wishlist (still relevant):
 - hideout: foundry — melt metals down, forge items. Construct foundry first.
 - realistic ammo: magazines, swap mags, reload from pack ammo
 - opponent quality preview ("the big scary guy" vs "the little shrimp")
-- lockpicks as a consumable pack item — slow/quiet alternative to Blast for
-  cracking locked containers. Each pick has a chance to break, success
-  depends on container quality.
-- key items: actual keys / keycards / ID badges that unlock specific locked
-  containers (the keyType field on LockedContainer is already wired). Keys
-  could spawn in regular containers; ID badges could come from defeated
-  patrols.
+<!-- lockpicks + key items moved into Sprint M planning below -->
+
 
 ---
 
@@ -67,84 +69,101 @@ Open ideas / wishlist (still relevant):
 
 ### Phase A — Engine spine ✅
 - `RunState` extended with `flags: string[]` and `distanceFromExtract: number`.
-- `RaidEventDef` gains `preconditions`, `postconditions` (string[] or function), `removeFlags`, `exclusive`, `passiveEffects`, `rollLoot`. Per-event-id switch in `tickRaid` was retired in favor of data-driven event defs.
-- `pickEvent` filters by precondition with fallback to full pool; exclusive events shadow the regular pool when any are eligible.
-- Loot tier biased by depth (`rollTier` + `pickCommonItemId`, lift capped at 0.35).
-- Vitest installed (pinned to v3 because v4's rolldown native binding fails under pnpm/Windows). 128 tests across 10 files at last count.
-- Save schema versioning + migrations from day 1.
+- Data-driven event defs: `preconditions`, `postconditions` (string[] or function), `removeFlags`, `exclusive`, `passiveEffects`, `rollLoot`, `branches`. The legacy random-event `tickRaid` is retired.
+- `pickEvent` filters by precondition with fallback; exclusive events shadow the regular pool.
+- Loot tier biased by depth (`rollTier` lift capped at 0.35).
+- Vitest 3 (pinned because v4's rolldown native binding fails under pnpm/Windows). 6 test files covering engine spine, shapes, upgrades, save round-trip, pending pruning, and rollEvent template substitution.
+- Save schema versioning + migrations from day 1, with a defensive shape check that catches HMR + auto-save races.
 
-### Phase B — Branching events ✅ (then retired in the action pivot)
-- Reusable branch modal with `BranchOption[]`, 10s default-to-safe timer (was 8s).
-- Converted `spotted_patrol` → Hide / Engage / Reposition; `locked_door` → Pick / Blast / Skip; `heard_voices` reverted to flavor for frequency reasons.
+### Phase B — Branching events ✅ (now restored as forced-choice modals)
+- Reusable `BranchModal` with `BranchOption[]`, 10s default-to-safe timer.
 - Bleed system: minor (-1/tick) + major (-4/tick), stacking, randomized on `took_damage` (~40% no bleed / 42% minor / 18% major). Bandage clears both.
-- Combat sub-mode events: `target_down`, `firefight_continues`, `target_fled` — exclusive while `combat_engaged`. Engagement → multi-tick combat → eliminated/fled with a clear log line.
-- Extract sub-mode: Recall sets `extracting` flag; `extract_clear`/`extract_skirmish`/`extract_corner_loot` exclusive while set; `extract_corner_loot` gated to `distance > 3` so the last 3 events of extract are guaranteed clear/skirmish.
-- HP at 0 ends the raid as death; pack contents lost; operative returns with `injuryDebuff`.
-- Death modal (red border, Skull icon, Acknowledge button) — successful extracts still flow straight to stash.
+- HP at 0 ends the raid as death — pack contents lost, operative returns with `injuryDebuff`.
+- Death modal with red border, Skull icon, Acknowledge button. Successful extracts flow straight to stash without an extra click.
 
 ### Phase C — Locations + room flavor ✅
 - 5 locations: Warehouse, Subway, Drone Graveyard, Datacenter, Biolab. Difficulty pills, lock callouts, consumable-keycard and permanent-coords unlocks.
-- Per-tile fixed room names chosen at map gen — log and map tooltip narrate the same room.
-- Room types layered on top of locations: storage, office, mechanical, gantry, corridor, locked, entry. Room-event bias multiplies base weights (storage 1.8× loot, gantry 1.8× patrol, mechanical 1.6× damage, office 1.6× locked-door).
+- Per-tile **fixed room names** chosen at map gen — log and map tooltip narrate the same room ("shift office", "boiler room", "rusted stairwell"...).
+- Room types layered on top of locations: storage, office, mechanical, gantry, corridor, locked, entry. Room-event bias multiplies base weights.
+- Per-tile **container vocabulary**: regular containers (locker, footlocker, drawer, junction box, ...) are picked at map gen. Loot logs use container-specific verb pools ("Cracked open a locker", "Tipped open a tool chest", "Rummaged through a duffel").
 
-### Spatial layer ✅ (the big add since the original POST_SAD)
-- 12-wide × 5-tall grid strip per raid. Entry at leftmost column at a random lane; deepest at rightmost.
-- `MapTile` carries `type`, `name`, `blocked`, `visited`, `looted`, `seen`. Visited and looted are now distinct — visited = operative was here, looted = Loot action performed.
-- Fog of war: `seen` set on entry + 4 orthogonal neighbors per move. Unseen tiles render as dashed dim cells with `???` tooltip; seen-but-blocked render with a Lock icon.
-- Pathfinding helpers: `stepForward` (right; ~25% lane-drift), `stepBackward` (BFS greedy), `stepLateral` (lane shift away from entry's lane), `distanceToEntry` (BFS), `revealFrom`, `markTileVisited`, `markTileLooted`.
-- Pre-rolled `nextStep` cached on `CurrentRaid` so the preview indicator matches the actual move (drift included).
-- Map render: identity coords (no transposition). Operative as pulsing emerald dot. Hover tooltip follows the cursor (room name + status: unsearched / trodden but unsearched / well-searched / sealed / out of sight / extract point / operative here). Hovered tile gets a ring-2 highlight.
-- Next-tile preview: dim amber fill on the next tile + a directional arrow (lucide ArrowRight/Left/Up/Down) straddling the edge between operative and next tile.
+### Phase D — Spatial map ✅
+- 12-wide × 5-tall horizontal strip per raid. Entry at leftmost column at a random lane; deepest at rightmost.
+- `MapTile`: `type, name, blocked, visited, lootRemaining, lootMax, containers, lockedContainers, contents, seen, threat`.
+- Fog of war: `seen` set on entry + 4 orthogonal neighbors per move. Unseen tiles render as dashed dim cells with `???` tooltip.
+- Pathfinding: `stepForward` (right-biased; ~25% lane drift), `stepBackward` (returns `path[1]` from BFS), `stepLateral` (lane shift away from entry), `pathToEntry` (BFS with parents, used for extract path overlay), `distanceToEntry`. `distanceFromExtract` is *derived* from path length each tick.
+- Pre-rolled `nextStep` cached on `CurrentRaid` so the preview indicator matches the actual move.
+- Map render: identity coords. Operative as pulsing emerald dot. Cursor-following hover tooltip (room name + status). Hovered tile gets a `ring-2` highlight.
+- Next-tile preview: dim amber fill + edge-straddling lucide arrow (Right/Left/Up/Down) computed from `previewPos − operativePos`.
+- **Threat tiles**: ~10% of non-entry, non-blocked tiles past column 2 spawn with a hostile pre-gen. Red AlertTriangle marker on `seen` threat tiles.
+- **Extract path overlay**: dashed emerald `polyline` SVG drawn through tile centers from operative to entry while extracting. Single source of truth — `stepBackward` returns `path[1]` so the cached `nextStep` and the rendered path always agree.
+- **Blocked tiles** render with a `Slash` icon (no entry / impassable) instead of a Lock (which previously implied "openable").
+- **Room contents** persist on tiles. Loot drops land on the floor of the operative's current room. Items in non-current rooms stay there. Dropping from pack drops to the floor (no longer trashed).
 
-### Phase E — Tetris ✅, bandage ✅, reload ⏳
-- Loot tetris: pending tray with FIFO + 15s expiry, drag/drop with snap, R / right-click rotate, drop-on-pending to unplace, trash zone, irregular polyomino hitbox, cursor-following tooltip.
-- Bandage: visible bleed badge in stat row + Bandage button when a bleed flag is set; consumes one `bandage_pack` from the pack.
-- Reload: not shipped. Depends on Phase D gear / mag system.
+### Phase E — Action-driven raid loop ✅
+- Each tick resolves a `queuedAction`. `tickAction(raid, rand): ActionTickResult` is the single entry point.
+- `autoPickAction` chooses a default per state: combat → fight; extracting → extract_step; current room has loot → loot; otherwise move_forward; fallback stay.
+- `overrideAction(id)` lets the player swap mid-timer.
+- `useRaidLoop` reschedules off `actionStartedAt + ACTION_TIMER_MS - now`, surviving pause and component remount.
+- ~22% interrupt chance per tick (took_damage with possible bleed; heard_voices flavor). Suppressed during combat and extract.
 
-### Phase F — Tick + content tuning ⏳
-- Event tick down to 3–8s ✅ (replaced with 6s action timer in the pivot).
-- 32 items across 8 categories ✅.
-- Per-location vocab now real because room names are fixed per tile ✅ (replaced the random `{location}` vocab pool).
-- Balance pass + playtest: not yet.
+### Phase F — Combat sub-mode ✅
+- `combat_engaged` flag. `fight` / `flee` actions become eligible when set; primary action menu replaces with the pair.
+- `fight` outcome rolls per round: ~55% target_down (drops loot into current tile, clears flag, +4 heat), ~30% firefight (-7 HP, -2 ammo, +5 heat, ~25% bleed, flag stays), ~15% target_fled (clears flag, +8 heat).
+- `flee`: 60% break-contact (clears flag, +6 heat), 40% takes a parting shot (-5 HP, -1 ammo, ~20% bleed).
+- Engage commits the move into the threat tile and clears the threat there.
+
+### Phase G — Locked containers ✅
+- Locked containers are a separate pool from regular containers (`MapTile.lockedContainers: { name, keyType }[]`), placed on ~18% of non-blocked tiles.
+- Distinct names: wall safe, padlocked footlocker, executive lockbox, ID-locked drawer, secured junction box, armored panel.
+- `breach_locked` is a direct action (no modal): -2 ammo, +14 heat, pops one locked container, rolls 30% empty / 50% common / 20% rare. Loot tier independent of method.
+- `keyType` field set per container ("key" / "keycard" / "id_badge") — wired but unused; future key-item system reads it.
+
+### Phase H — Heat economy ✅
+- `RunState.alertness` renamed to `heat` (+ migration). Stat icon: Flame.
+- **Real consumer**: every `move_forward` and `extract_step` rolls a `heat / 400` chance to fire a patrol modal IN ADDITION to the pre-gen threat check. heat 100 → 25% per move tick.
+- Different log lines distinguish pre-gen vs heat-ambush ("Hostiles in the next room. Holding." vs "Footsteps closing in — they heard me.").
+- Stay's heat reduction is -8 (was -3 before consumers existed). One Stay cancels a Fight tick + change.
+
+### Action card UI ✅
+- Sidebar column between comms log and pack tetris. Width `w-56`.
+- Vertical action list: primary set at top, horizontal divider, context actions (currently `breach_locked`) when eligible.
+- Active row: subtle emerald-tinted bg + leading ChevronRight. No more amber flood.
+- Each row carries effect chips (icon + value, no border) and an optional `Nx` count badge in the top-right (loot remaining, locked count).
+- Chip kinds with icons: hp/Heart, energy/Zap, heat/Flame, ammo/Crosshair, loot/Package, distance/Footprints, depth/Footprints, misc/ChevronRight.
+- Pause: small icon-only button next to the countdown timer.
+- Recall control: link-style "Recall to extract" while raiding; full boxed "Moving to extract" with spinning Loader2 while extracting; on hover, group-hover swap to "Cancel extract" with red bg.
+- Action timer bar: foreground/80 (white) while running; pulses amber (`animate-pulse` + `bg-amber-300/80`) while paused. The pulse replaces the old "Paused — comms hold" banner.
+
+### Stats row ✅
+- 5 columns: Health, Energy, Heat, Ammo, Distance. All with matching lucide icons.
+- Each value flashes (300ms color transition) on change — emerald for "good direction", red for "bad direction." Heat is direction-inverted.
+- Floating `+N` / `-N` delta indicator pops out the top-right of each stat and drifts upward over 800ms (CSS keyframe `stat-delta-float`).
 
 ### Quality-of-life shipped
 - Pause: button + spacebar (capture-phase document listener that beats focused buttons). Resume shifts wall-clock timestamps so pending items don't expire and the action timer keeps its remaining budget.
-- Right-click context menu suppressed (custom menu coming later).
-- Text selection disabled at root, opted back in on the comms log.
-- Pre-roll RNG in startRaid (each raid's map seeded uniquely).
-- Death modal + Acknowledge button.
-- Schema bumps v6 → v13 with migrations through every step.
+- Right-click context menu suppressed.
+- Text selection disabled at root, opted back in on the comms log so players can copy log lines.
+- Death modal with Acknowledge button.
+- Hot-reload preserves Feed panel when a saved raid is in progress.
+- Comms feed subtitle always shows the location name.
+- Save schema at v18 (verified against `save.ts`), with migrations through every intermediate step. Defensive shape-check at the bottom of `migrateSave` resets `operative.state` to `idle` if any drop path nulled `currentRaid`, so the UI doesn't get stuck "deployed" with no raid.
 
 ---
 
-## What's next (action-driven sprints)
-
-### Sprint G — Forced-choice interrupts
-Restore the branch-modal pressure for events the operative *can't* just queue around.
-
-- [ ] Patrol encounters become spatial: when a patrol event fires (random interrupt OR triggered by entering a `gantry` / high-alertness tile), the queued action is overridden by a forced choice modal. Options: **Engage** (sets `combat_engaged`, switches to combat sub-mode), **Hide** (queues `stay`, lowers alertness sharply), **Reposition** (one-shot lateral move via `stepLateral`).
-- [ ] Locked rooms become **tile features**, not events. Locked tiles adjacent to the operative offer a `lockpick` action (slow, quiet, common loot) and `demolish` action (loud, ammo cost, rare loot). When neither is queued, the operative just routes around.
-- [ ] BranchModal already lives in the codebase; rewire it for forced-choice interrupts. 10s timer with default-to-safe.
-
-### Sprint H — Combat sub-mode actions
-The combat resolution events still exist; bring them back behind a sub-mode action menu.
-
-- [ ] When `combat_engaged` is set, the action menu swaps: only `fight`, `flee`, and `bandage` (anytime) are eligible.
-- [ ] `fight` resolves via the existing combat event pool — `target_down` (loot + clear flag), `firefight_continues` (HP/ammo cost, possible minor bleed, flag stays), `target_fled` (no loot + clear flag).
-- [ ] `flee` attempts break-contact: success clears `combat_engaged` and adds alertness; failure layers another `firefight_continues`.
-- [ ] Operative HUD reflects sub-mode (red border on stat row?).
+## What's next
 
 ### Sprint I — Operator preferences
 Make "scrounge / push / lay low" real instead of theatre.
 
 - [ ] Operator panel with three preference sliders (or pick-one). Lives in Hideout + a quick-toggle in Feed.
 - [ ] `autoPickAction` reads preferences:
-  - **Scrounge**: heavily favors `loot` when current tile is unlooted, even if that means re-searching tiles that *might* still have something.
-  - **Push**: heavily favors `move_forward`; only loots when a fresh tile is found en route.
-  - **Lay low**: more frequent `stay` (recovers alertness); cautious about `move_forward` when alertness is high.
-- [ ] Save preference per-operative when the kit/loadout system lands.
+  - **Scrounge**: heavily favors `loot` when current tile has loot.
+  - **Push**: skips loot more often, gets to deep tiles faster.
+  - **Lay low**: more frequent `stay` (cools heat), cautious about `move_forward` when heat is high.
+- [ ] Save preference per-operative (hooks into Sprint J kit/loadout).
 
-### Sprint J — Gear / kit (was Phase D)
+### Sprint J — Gear / kit
 - [ ] Gear slots on operative: `weapon`, `armor`, `pack`, `medPouch`. Each is an item with stats.
 - [ ] Pack stats (`gridWidth`, `gridHeight`) replace the flat-slot upgrade.
 - [ ] MedPouch with `bandageSlots` / `stimSlots` — fast-access consumables outside the pack grid.
@@ -155,7 +174,7 @@ Make "scrounge / push / lay low" real instead of theatre.
 ### Sprint K — Energy as hunger/thirst
 - [ ] At 0 energy, HP starts draining (-2/tick).
 - [ ] `useConsumable(uid)` action: ration / water / coffee / fuel cell restores energy from pack inventory.
-- [ ] UI: when energy is low, glowing warning + suggestion to consume.
+- [ ] UI: when energy is low, glowing warning + "use consumable" prompt.
 - [ ] Consumables already exist in `items.ts` under category `consumables` — just need wiring.
 
 ### Sprint L — Reload + ammo realism
@@ -164,39 +183,46 @@ Make "scrounge / push / lay low" real instead of theatre.
 - [ ] Combat outcomes consume rounds from loaded mag; empty mag during combat = forced auto-reload that costs an action tick.
 - [ ] Weapon `reloadComplexity` controls rounds-per-drag-tick.
 
+### Sprint M — Lockpicks + key items
+- [ ] Lockpicks as a consumable pack item — slow/quiet alternative to Blast. Each pick has a chance to break.
+- [ ] Key/keycard/ID-badge items: matching `keyType` on a `LockedContainer` lets you open it cleanly (no ammo cost, no heat).
+- [ ] Key items spawn in regular containers; ID badges drop from defeated patrols.
+
 ### Smaller follow-ups (any order)
-- [ ] First-run intro modal (Phase 6 leftover).
+- [ ] First-run intro modal.
 - [ ] Tick-rate / action-timer debug slider in Settings.
 - [ ] Run-summary on successful extract: "extracted N items / cash earned" — quick non-modal banner.
 - [ ] More item variety pass — target ≥40 items, currently 32.
 - [ ] More room-type narrative variety: room-type-specific event templates (instead of just bias multipliers).
+- [ ] More context-eligible actions for the action card's bottom section (lockpick-on-locked, use-key-on-locked, examine-corpse, etc.).
 
 ---
 
 ## Risk callouts (current)
 
-- **Action layer feels thin without interrupts.** Phase 1 of the pivot strips out branching events, so the only sources of pressure are bleed, low energy, and the random `took_damage` interrupt. Sprint G needs to land relatively soon — patrol forced-choice modals + tile-feature lockpick/demolish — or raids will feel mechanical.
-- **Auto-picker is too predictable.** With three actions and simple rules, players will stop reading the next-action card after a few raids. Sprint I (preferences) helps, but the real fix is more *kinds* of actions so the auto-pick has more meaningful tradeoffs.
-- **Combat sub-mode is dormant code.** All the resolution events (`target_down` etc.) still exist but never fire because `combat_engaged` is unreachable in v1. If we delay Sprint H too long, that code drifts out of sync with the rest.
-- **Dead vocabulary debt.** `vocab.ts` had a fallback location pool that's mostly unused now. Worth deleting or compacting once we're confident nothing falls back to it.
+- **Auto-picker is too predictable.** With seven actions but only three ever in the primary slot, players will stop reading the next-action card after a few raids. Sprint I (preferences) helps, but the real fix is more *kinds* of actions — sub-mode variety, environmental interactions, opportunistic tile features.
+- **Heat is the only real consumer of player choices right now.** Energy still drains but doesn't punish at 0. Ammo is consumed but never gates. Sprint K and L close those gaps.
+- **Combat outcome distribution is fixed.** `fight` always rolls the same 55/30/15 — opponent quality (the user's wishlist item) would make this dynamic.
+- **No long-term meta progression beyond cash.** Once stash and pack are upgraded a few times, there's nothing to chase. Sprint J + workbench crafting need to land before mid-game has shape.
 
 ---
 
 ## Pinned UI/feel decisions (still hold)
 
 - Mixed typography: sans for prose; mono for terminal chrome (header, panel titles, stat labels, kind tags, timestamps, ¤ values, location IDs).
-- Items in the feed log: `⟦…⟧` markers replaced at render with tier color + `font-semibold`. Templates **must not** pre-wrap `{item}` in `⟦…⟧` (a guard test catches this).
+- Items in the feed log: `⟦…⟧` markers replaced at render with tier color + `font-semibold`. Templates **must not** pre-wrap `{item}` in `⟦…⟧` (regression test catches this).
 - Tier colors live in `src/lib/itemDisplay.ts` (`TIER_COLOR` map). Reuse, don't redeclare.
-- Buttons: sentence case, sans, lucide icon on the right of the label.
+- Buttons: sentence case, sans, lucide icon on the right of the label. Default `cursor-pointer`.
 - Log feed: opacity fade -5%/row from end, floor 0.25, smoothed via `transition-opacity`.
 - Background: dot pattern (`grid-paper`).
-- Pack grid: incoming column on left (`w-40`, `min-h-96`), trash zone pinned under it, pack grid on right.
 - Sidebar width: `w-20` for "Hideout" / "Settings" labels at `text-[10px]`.
 - Health + Energy split (no merging back to "stamina").
-- `cursor-pointer` on Button base + sidebar buttons + select; `disabled:cursor-not-allowed` on disabled Buttons.
 - Tooltip pattern: cursor-following, +14px down-right offset, edge-clamped via `useLayoutEffect`. Used by both pack tooltips and map tooltip.
-- Map: 12-wide × 5-tall horizontal strip, identity coords (`gridColumn = x+1`, `gridRow = y+1`). Operative = pulsing emerald dot. Next-tile preview = dim amber fill + edge-straddling lucide arrow.
-- Combat resolution log entries (kind: `combat_resolved`) render as a distinct boxed callout (Crosshair icon, amber left border, soft amber bg) so engagement closure is unmissable. Choice-result entries (kind: `choice_result`) render compact and indented with `CornerDownRight` icon.
+- Map: 12-wide × 5-tall horizontal strip, identity coords (`gridColumn = x+1`, `gridRow = y+1`). Operative = pulsing emerald dot. Next-tile preview = dim amber fill + edge-straddling lucide arrow. Threat tiles = red border + AlertTriangle. Blocked tiles = Slash icon.
+- Stats row: 5-column grid of icon-prefixed stats. Animated value flash (color + drift) on change; Heat marked `inverted` so high = bad.
+- Action card: sidebar column. Active row gets a leading ChevronRight + subtle bg tint (no curved-edge accent, no amber flood). Chips are tiny icon + value with no border. Top-right `Nx` badge for actions with per-room counts.
+- Combat resolution log entries (kind: `combat_resolved`) render as a distinct boxed callout (Crosshair icon, amber left border, soft amber bg). Choice-result entries (kind: `choice_result`) render compact and indented with `CornerDownRight` icon.
+- Heat icon = Flame everywhere it appears.
 
 ---
 

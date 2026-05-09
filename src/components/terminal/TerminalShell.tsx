@@ -13,6 +13,7 @@ import { ManualPanel } from "@/components/panels/ManualPanel";
 import { RaidOutcomeModal } from "@/components/panels/RaidOutcomeModal";
 import { useRaidLoop } from "@/components/terminal/useRaidLoop";
 import { initSfx, playSfx } from "@/lib/sfx";
+import { dumpRaid } from "@/lib/engine/debug";
 
 export function TerminalShell() {
   const panel = useGame((s) => s.activePanel);
@@ -23,6 +24,38 @@ export function TerminalShell() {
   useEffect(() => {
     hydrate();
     initSfx();
+    // Console-callable debug helpers. Type `__h.dump()` (or
+    // `window.__h.dump()`) in devtools to see the raid map + state.
+    if (typeof window !== "undefined") {
+      const h = {
+        dump: () => {
+          const raid = useGame.getState().currentRaid;
+          if (!raid) {
+            // eslint-disable-next-line no-console
+            console.log("no active raid");
+            return;
+          }
+          // eslint-disable-next-line no-console
+          console.log(dumpRaid(raid));
+        },
+        tail: (n = 20) => {
+          const raid = useGame.getState().currentRaid;
+          if (!raid) return;
+          for (const e of raid.log.slice(-n)) {
+            // eslint-disable-next-line no-console
+            console.log(`[${e.kind}] ${e.text}`);
+          }
+        },
+        state: () => useGame.getState(),
+      };
+      (window as unknown as { __h: typeof h; holdout: typeof h }).__h = h;
+      // Also expose as `holdout` in case `__h` shadows in devtools.
+      (window as unknown as { __h: typeof h; holdout: typeof h }).holdout = h;
+      // eslint-disable-next-line no-console
+      console.log(
+        "[holdout] debug helpers ready: __h.dump(), __h.tail(), __h.state()",
+      );
+    }
     const onClick = (e: MouseEvent) => {
       const t = e.target as HTMLElement | null;
       if (!t) return;

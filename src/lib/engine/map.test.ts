@@ -137,6 +137,33 @@ describe("stepForward", () => {
     }
   });
 
+  it("when forward is blocked on multiple lanes, prefers the lane whose forward is open (no oscillation)", () => {
+    const m = generateMap(makeRng(1));
+    // Hand-craft a tile cluster: operative at (1,2). Right tile (2,2)
+    // blocked, (2,1) blocked, (2,3) walkable. Up=(1,1) and down=(1,3) both
+    // walkable. Without forward-aware lane selection, we'd bounce between
+    // (1,1) and (1,2) since neither lane's forward is open in lockstep.
+    const tiles = m.tiles.slice();
+    const block = (x: number, y: number) => {
+      const idx = y * m.width + x;
+      tiles[idx] = { ...tiles[idx], blocked: true, type: "locked" };
+    };
+    const unblock = (x: number, y: number) => {
+      const idx = y * m.width + x;
+      tiles[idx] = { ...tiles[idx], blocked: false };
+    };
+    block(2, 1);
+    block(2, 2);
+    unblock(2, 3);
+    unblock(1, 1);
+    unblock(1, 2);
+    unblock(1, 3);
+    const cm = { ...m, tiles };
+    const next = stepForward(cm, { x: 1, y: 2 }, makeRng(7));
+    // Should pick (1, 3) — the lane whose forward (2, 3) is open.
+    expect(next).toEqual({ x: 1, y: 3 });
+  });
+
   it("monotonically pushes right or stays put — never moves left (back toward entry)", () => {
     for (let seed = 1; seed < 50; seed++) {
       const m = generateMap(makeRng(seed));

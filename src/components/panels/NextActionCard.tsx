@@ -51,6 +51,11 @@ export function NextActionCard() {
 
   useEffect(() => {
     if (!raid?.active || paused) return;
+    // Sync `now` immediately on (re)start so the bar doesn't snap from a
+    // stale value when unpausing. setInterval's first tick is 100ms out,
+    // and during that window elapsed would be computed off a pre-pause
+    // now against a post-pause actionStartedAt.
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(id);
   }, [raid?.active, paused]);
@@ -93,7 +98,7 @@ export function NextActionCard() {
       </div>
       <div className="mt-1 h-1 bg-border/40">
         <div
-          className="h-full bg-foreground/80"
+          className={cn("h-full bg-foreground/80", paused && "animate-pulse bg-amber-300/80")}
           style={{ width: `${pct * 100}%`, transition: "width 100ms linear" }}
         />
       </div>

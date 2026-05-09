@@ -269,14 +269,23 @@ export function stepForward(
     if (isWalkable(map, lane.x, lane.y)) return lane;
   }
   if (fwdOk) return fwd;
-  // Forward is blocked: try a lane shift, prefer the side closer to map mid-lane.
+  // Forward is blocked. Prefer the lane whose own forward (x+1) is also
+  // walkable — otherwise the operative bounces between two adjacent lanes
+  // when both have a wall to their right.
+  const lanes = [
+    { x: pos.x, y: pos.y - 1 },
+    { x: pos.x, y: pos.y + 1 },
+  ].filter((c) => isWalkable(map, c.x, c.y));
+  if (lanes.length === 0) return pos;
+  // Sort: lanes with an open forward come first; tie-break toward map mid-lane.
   const mid = Math.floor(map.height / 2);
-  const order = pos.y < mid ? [1, -1] : [-1, 1];
-  for (const dir of order) {
-    const lane = { x: pos.x, y: pos.y + dir };
-    if (isWalkable(map, lane.x, lane.y)) return lane;
-  }
-  return pos;
+  lanes.sort((a, b) => {
+    const aFwd = isWalkable(map, a.x + 1, a.y) ? 1 : 0;
+    const bFwd = isWalkable(map, b.x + 1, b.y) ? 1 : 0;
+    if (aFwd !== bFwd) return bFwd - aFwd;
+    return Math.abs(a.y - mid) - Math.abs(b.y - mid);
+  });
+  return lanes[0];
 }
 
 // Pick an up/down lane shift for branches like Reposition where the

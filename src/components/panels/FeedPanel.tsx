@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGame } from "@/store/game";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
@@ -50,7 +50,6 @@ export function FeedPanel() {
   const hasMajor = rs.flags.includes("bleeding_major");
   const hasBandage = raid.pack.some((p) => p.itemId === "bandage_pack");
   const extracting = rs.flags.includes("extracting");
-  const paused = !!raid.pausedAt;
 
   const locationName = LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId;
 
@@ -64,15 +63,10 @@ export function FeedPanel() {
             : `${locationName} · depth ${rs.depth}`
         }
       />
-      {paused ? (
-        <div className="flex items-center justify-center border-b border-amber-400/40 bg-amber-500/10 px-6 py-1.5 font-mono text-[11px] uppercase tracking-widest text-amber-300">
-          Paused — comms hold
-        </div>
-      ) : null}
       <div className="grid grid-cols-5 gap-3 border-b border-border/60 px-6 py-3 font-mono text-[11px] uppercase tracking-widest">
         <Stat icon={Heart} label="Health" value={rs.health} tone={rs.health < 40 ? "warn" : "ok"} />
         <Stat icon={Zap} label="Energy" value={rs.energy} tone={rs.energy < 30 ? "warn" : "ok"} />
-        <Stat icon={Flame} label="Heat" value={rs.heat} tone={rs.heat > 60 ? "warn" : "ok"} />
+        <Stat icon={Flame} label="Heat" value={rs.heat} tone={rs.heat > 60 ? "warn" : "ok"} inverted />
         <Stat icon={Crosshair} label="Ammo" value={rs.ammo} tone={rs.ammo < 10 ? "warn" : "ok"} />
         <Stat icon={Footprints} label="Distance" value={rs.distanceFromExtract} />
       </div>
@@ -205,19 +199,67 @@ function Stat({
   label,
   value,
   tone,
+  // True if higher = bad for this stat (heat). Inverts the up/down color
+  // mapping: heat going up flashes red; everything else uses up=green.
+  inverted = false,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
   label: string;
   value: number | string;
   tone?: "ok" | "warn";
+  inverted?: boolean;
 }) {
+  const prevRef = useRef(value);
+  const [flash, setFlash] = useState<"good" | "bad" | null>(null);
+  const [delta, setDelta] = useState<number | null>(null);
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = value;
+    if (prev === value) return;
+    if (typeof prev !== "number" || typeof value !== "number") return;
+    const diff = value - prev;
+    // "good" = the direction the player wants this stat to move. For HP /
+    // Energy / Ammo / Distance, that's up; for Heat (inverted), down.
+    const isGood = inverted ? diff < 0 : diff > 0;
+    setFlash(isGood ? "good" : "bad");
+    setDelta(diff);
+    const t = setTimeout(() => {
+      setFlash(null);
+      setDelta(null);
+    }, 800);
+    return () => clearTimeout(t);
+  }, [value, inverted]);
+
   return (
-    <div className="flex flex-col">
+    <div className="relative flex flex-col">
       <span className="flex items-center gap-1 text-muted-foreground">
         {Icon ? <Icon className="size-3" /> : null}
         {label}
       </span>
-      <span className={cn("text-foreground", tone === "warn" && "text-amber-400")}>{value}</span>
+      <span
+        className={cn(
+          "transition-colors duration-300",
+          // Flash color wins during the 800ms animation window. Falls back
+          // to the warn (amber) or default tone after.
+          flash === "good" && "text-emerald-300",
+          flash === "bad" && "text-red-400",
+          !flash && tone === "warn" && "text-amber-400",
+          !flash && tone !== "warn" && "text-foreground",
+        )}
+      >
+        {value}
+      </span>
+      {delta !== null && delta !== 0 ? (
+        <span
+          className={cn(
+            "stat-delta-float pointer-events-none absolute -right-1 top-0 font-mono text-[10px] tabular-nums",
+            flash === "good" ? "text-emerald-300" : "text-red-400",
+          )}
+        >
+          {delta > 0 ? `+${delta}` : delta}
+        </span>
+      ) : null}
     </div>
   );
 }
