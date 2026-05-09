@@ -41,9 +41,35 @@ export function TerminalShell() {
       e.preventDefault();
     };
     window.addEventListener("contextmenu", onContextMenu);
+    // Spacebar toggles pause when a raid is in progress. Capture phase on
+    // document so the handler runs before any focused button's space-as-click,
+    // and runs regardless of focus (body, panel div, etc.).
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space" && e.key !== " ") return;
+      const target = e.target as HTMLElement | null;
+      // Bail only for actual text-entry contexts.
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const raid = useGame.getState().currentRaid;
+      if (!raid || !raid.active) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // Drop focus so a button doesn't intercept the next press.
+      const active = document.activeElement as HTMLElement | null;
+      if (active && typeof active.blur === "function") active.blur();
+      useGame.getState().togglePause();
+    };
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
       window.removeEventListener("click", onClick);
       window.removeEventListener("contextmenu", onContextMenu);
+      document.removeEventListener("keydown", onKeyDown, true);
     };
   }, [hydrate]);
 

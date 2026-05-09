@@ -269,7 +269,7 @@ export function resolveBranch(
         ...next,
         log: [
           ...next.log,
-          makeLog("loot", `Picked up ⟦${item.name}⟧.`, loot.itemId),
+          makeLog("loot", `Found ⟦${item.name}⟧.`, loot.itemId),
         ],
       };
     }

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useGame } from "@/store/game";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
-import { Bandage, CornerDownRight, Crosshair, Droplet, LogOut, Pause, Play } from "lucide-react";
+import { Bandage, CornerDownRight, Crosshair, Droplet, Loader2, LogOut, Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
 import { PackTetris } from "./PackTetris";
@@ -69,6 +69,7 @@ export function FeedPanel() {
               disabled={extracting}
               className="rounded-sm"
             >
+              {extracting ? <Loader2 className="size-4 animate-spin" /> : null}
               {extracting ? "Extracting…" : "Recall"}
               <LogOut className="size-4" />
             </Button>

@@ -1,10 +1,20 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { Lock } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Lock } from "lucide-react";
 import { useGame } from "@/store/game";
 import type { MapTile, RoomType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+type MoveDir = "right" | "left" | "up" | "down" | null;
+
+function dirFrom(dx: number, dy: number): MoveDir {
+  if (dx > 0) return "right";
+  if (dx < 0) return "left";
+  if (dy > 0) return "down";
+  if (dy < 0) return "up";
+  return null;
+}
 
 const ROOM_LABEL: Record<RoomType, string> = {
   entry: "Entry",
@@ -79,6 +89,9 @@ export function RaidMap() {
   if (!raid) return null;
   const { map, operativePos } = raid;
   const previewPos = raid.nextStep;
+  const previewDir: MoveDir = previewPos
+    ? dirFrom(previewPos.x - operativePos.x, previewPos.y - operativePos.y)
+    : null;
 
   // Data is already oriented horizontally: x = depth (0 = entry on the left,
   // map.width-1 = deepest on the right), y = lane (0 = top row). Render is
@@ -109,6 +122,7 @@ export function RaidMap() {
                   isOperative={isOperative}
                   isHovered={!!isHovered}
                   isPreview={isPreview}
+                  previewDir={isPreview ? previewDir : null}
                   style={{ gridColumn: x + 1, gridRow: y + 1 }}
                   onPointerEnter={(e) =>
                     setHover({
@@ -158,6 +172,7 @@ function Tile({
   isOperative,
   isHovered,
   isPreview,
+  previewDir,
   style,
   onPointerEnter,
   onPointerMove,
@@ -166,14 +181,19 @@ function Tile({
   isOperative: boolean;
   isHovered: boolean;
   isPreview: boolean;
+  previewDir: MoveDir;
   style: React.CSSProperties;
   onPointerEnter: (e: React.PointerEvent) => void;
   onPointerMove: (e: React.PointerEvent) => void;
 }) {
-  const ringClass = cn(
-    isHovered && "ring-2 ring-foreground/70",
-    !isHovered && isPreview && "ring-2 ring-amber-400/80",
-  );
+  const ringClass = cn(isHovered && "ring-2 ring-foreground/70");
+  // Gradient direction tells the player where the operative is heading: the
+  // saturated end of the gradient sits on the side facing the operative, and
+  // fades toward the opposite edge.
+  const previewOverlay =
+    isPreview && previewDir ? (
+      <PreviewOverlay dir={previewDir} />
+    ) : null;
   const baseProps = {
     style,
     onPointerEnter,
@@ -186,10 +206,12 @@ function Tile({
       <div
         {...baseProps}
         className={cn(
-          "size-7 border border-dashed border-border/20 bg-background/40",
+          "relative size-7 border border-dashed border-border/20 bg-background/40",
           ringClass,
         )}
-      />
+      >
+        {previewOverlay}
+      </div>
     );
   }
 
@@ -198,7 +220,7 @@ function Tile({
       <div
         {...baseProps}
         className={cn(
-          "flex size-7 items-center justify-center bg-card",
+          "relative flex size-7 items-center justify-center bg-card",
           ringClass,
         )}
       >
@@ -214,11 +236,12 @@ function Tile({
       <div
         {...baseProps}
         className={cn(
-          "flex size-7 items-center justify-center bg-background/70",
+          "relative flex size-7 items-center justify-center bg-background/70",
           ringClass,
         )}
       >
         <Lock className="size-3 text-muted-foreground/70" />
+        {previewOverlay}
       </div>
     );
   }
@@ -228,11 +251,12 @@ function Tile({
       <div
         {...baseProps}
         className={cn(
-          "flex size-7 items-center justify-center bg-card",
+          "relative flex size-7 items-center justify-center bg-card",
           ringClass,
         )}
       >
         <span className="size-2 rounded-full bg-emerald-400/40" />
+        {previewOverlay}
       </div>
     );
   }
@@ -243,10 +267,12 @@ function Tile({
       <div
         {...baseProps}
         className={cn(
-          "size-7 border border-border/60 bg-card/20",
+          "relative size-7 border border-border/60 bg-card/20",
           ringClass,
         )}
-      />
+      >
+        {previewOverlay}
+      </div>
     );
   }
 
@@ -254,7 +280,37 @@ function Tile({
   return (
     <div
       {...baseProps}
-      className={cn("size-7 bg-card/60", ringClass)}
-    />
+      className={cn("relative size-7 bg-card/60", ringClass)}
+    >
+      {previewOverlay}
+    </div>
+  );
+}
+
+function PreviewOverlay({ dir }: { dir: NonNullable<MoveDir> }) {
+  // A flat dim amber fill on the next tile so it stands apart, plus an arrow
+  // straddling the edge between the operative tile and the next tile.
+  const arrowPosition: Record<NonNullable<MoveDir>, React.CSSProperties> = {
+    right: { left: 0, top: "50%", transform: "translate(-50%, -50%)" },
+    left: { right: 0, top: "50%", transform: "translate(50%, -50%)" },
+    up: { bottom: 0, left: "50%", transform: "translate(-50%, 50%)" },
+    down: { top: 0, left: "50%", transform: "translate(-50%, -50%)" },
+  };
+  const ArrowIcon =
+    dir === "right"
+      ? ArrowRight
+      : dir === "left"
+        ? ArrowLeft
+        : dir === "up"
+          ? ArrowUp
+          : ArrowDown;
+  return (
+    <>
+      <span className="pointer-events-none absolute inset-0 bg-amber-400/15" />
+      <ArrowIcon
+        className="pointer-events-none absolute z-10 size-3.5 text-amber-100 drop-shadow-[0_0_2px_rgba(0,0,0,0.7)]"
+        style={arrowPosition[dir]}
+      />
+    </>
   );
 }
