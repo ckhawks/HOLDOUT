@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronRight, LogOut, Pause, Play } from "lucide-react";
 import { useGame } from "@/store/game";
 import { ACTION_TIMER_MS } from "@/lib/engine/raid";
 import { ACTIONS } from "@/lib/engine/actions";
@@ -10,6 +11,9 @@ import type { ActionId } from "@/lib/types";
 export function NextActionCard() {
   const raid = useGame((s) => s.currentRaid);
   const overrideAction = useGame((s) => s.overrideAction);
+  const togglePause = useGame((s) => s.togglePause);
+  const recall = useGame((s) => s.recall);
+  const cancelRecall = useGame((s) => s.cancelRecall);
   const paused = !!raid?.pausedAt;
   const [now, setNow] = useState(() => Date.now());
 
@@ -32,22 +36,37 @@ export function NextActionCard() {
   const order: ActionId[] = inCombat
     ? ["fight", "flee"]
     : isExtracting
-      ? ["extract_step", "stay"]
+      ? ["extract_step", "loot", "stay"]
       : ["move_forward", "loot", "stay"];
 
   return (
-    <div className="border-t border-border/60 bg-card/30 px-6 py-3">
-      <div className="flex items-baseline justify-between">
+    <aside className="flex w-56 shrink-0 flex-col border-l border-border/60 bg-card/30 px-3 py-3">
+      <div className="flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
           Next action
         </span>
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-          {seconds}s
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            {seconds}s
+          </span>
+          <button
+            type="button"
+            onClick={togglePause}
+            title={paused ? "Resume" : "Pause"}
+            className={cn(
+              "flex size-5 cursor-pointer items-center justify-center rounded-sm transition-colors",
+              paused
+                ? "text-emerald-300 hover:bg-emerald-500/20"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            {paused ? <Play className="size-3" /> : <Pause className="size-3" />}
+          </button>
+        </div>
       </div>
       <div className="mt-1 h-1 bg-border/40">
         <div
-          className="h-full bg-amber-400/60"
+          className="h-full bg-foreground/80"
           style={{ width: `${pct * 100}%`, transition: "width 100ms linear" }}
         />
       </div>
@@ -63,30 +82,46 @@ export function NextActionCard() {
               disabled={!eligible || isQueued}
               onClick={() => overrideAction(id)}
               className={cn(
-                "flex w-full items-center justify-between rounded-sm border px-2.5 py-1.5 text-left transition-colors",
+                "flex w-full items-start gap-2 rounded-sm border px-2.5 py-1.5 text-left transition-colors",
                 isQueued &&
-                  "border-amber-400/70 bg-amber-500/15 text-amber-100",
+                  "border-border/60 bg-emerald-400/10 text-foreground",
                 !isQueued &&
                   eligible &&
-                  "cursor-pointer border-border/60 bg-background/40 text-foreground hover:border-foreground/40 hover:bg-muted",
+                  "cursor-pointer border-border/60 bg-background/30 text-foreground/80 hover:border-foreground/40 hover:bg-muted",
                 !isQueued &&
                   !eligible &&
                   "cursor-not-allowed border-border/30 bg-background/20 text-muted-foreground/40",
               )}
             >
-              <span className="font-medium">{a.label}</span>
-              <span
+              <ChevronRight
                 className={cn(
-                  "text-[11px] font-normal opacity-80",
-                  isQueued ? "text-amber-200" : "text-muted-foreground",
+                  "mt-0.5 size-3 shrink-0",
+                  isQueued ? "text-emerald-400" : "text-transparent",
                 )}
-              >
-                {a.description}
-              </span>
+              />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[12px] font-medium leading-tight">{a.label}</span>
+                <span className="text-[10px] font-normal leading-tight text-muted-foreground opacity-70">
+                  {a.description}
+                </span>
+              </div>
             </button>
           );
         })}
       </div>
-    </div>
+      <button
+        type="button"
+        onClick={isExtracting ? cancelRecall : recall}
+        className={cn(
+          "mt-3 flex cursor-pointer items-center justify-center gap-2 border-t border-border/60 pt-3 font-mono text-[10px] uppercase tracking-widest transition-colors",
+          isExtracting
+            ? "text-emerald-300 hover:text-emerald-200"
+            : "text-red-400/80 hover:text-red-300",
+        )}
+      >
+        <LogOut className="size-3" />
+        {isExtracting ? "Cancel recall" : "Recall to extract"}
+      </button>
+    </aside>
   );
 }

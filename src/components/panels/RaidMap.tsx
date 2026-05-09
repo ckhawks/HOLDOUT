@@ -1,10 +1,18 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Lock } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Lock } from "lucide-react";
 import { useGame } from "@/store/game";
-import type { MapTile, RoomType } from "@/lib/types";
+import { pathToEntry } from "@/lib/engine/map";
+import type { MapTile, RaidMap as RaidMapType, RoomType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+// Tile and gap dimensions match the grid CSS: size-7 = 28px, gap-px = 1px,
+// outer p-px = 1px. Center of cell (x, y) sits at (x*29 + 15, y*29 + 15).
+const TILE_PX = 28;
+const GAP_PX = 1;
+const PAD_PX = 1;
+const STRIDE = TILE_PX + GAP_PX;
 
 type MoveDir = "right" | "left" | "up" | "down" | null;
 
@@ -45,6 +53,7 @@ function tileStatusLabel(h: HoverState, isPreview: boolean): string {
   if (isPreview) {
     if (!tile.seen) return "next move · unknown room";
     if (tile.blocked) return "next move · sealed";
+    if (tile.threat) return "next move · hostile present";
     if (isFullyLooted(tile)) return "next move · well-searched";
     if (tile.visited) return "next move · trodden";
     return "next move · unsearched";
@@ -52,9 +61,10 @@ function tileStatusLabel(h: HoverState, isPreview: boolean): string {
   if (!tile.seen) return "out of sight";
   if (tile.blocked) return "sealed";
   if (tile.type === "entry") return "extract point";
-  if (isFullyLooted(tile)) return "well-searched";
-  if (tile.visited) return "trodden but unsearched";
-  return "unsearched";
+  const threatPrefix = tile.threat ? "hostile · " : "";
+  if (isFullyLooted(tile)) return `${threatPrefix}well-searched`;
+  if (tile.visited) return `${threatPrefix}trodden but unsearched`;
+  return `${threatPrefix}unsearched`;
 }
 
 function titleCase(s: string): string {
@@ -95,6 +105,8 @@ export function RaidMap() {
   if (!raid) return null;
   const { map, operativePos } = raid;
   const previewPos = raid.nextStep;
+  const isExtracting = raid.runState.flags.includes("extracting");
+  const path = isExtracting ? pathToEntry(map, operativePos.x, operativePos.y) : [];
   const previewDir: MoveDir = previewPos
     ? dirFrom(previewPos.x - operativePos.x, previewPos.y - operativePos.y)
     : null;
@@ -109,9 +121,10 @@ export function RaidMap() {
       </div>
       <div className="flex flex-1 items-center justify-center px-4 py-3">
         <div
-          className="grid gap-px rounded-sm border border-border/60 bg-border/40 p-px"
+          className="relative grid gap-px rounded-sm border border-border/60 bg-border/40 p-px"
           onMouseLeave={() => setHover(null)}
         >
+          {path.length > 1 ? <PathOverlay map={map} path={path} /> : null}
           {Array.from({ length: map.height }, (_, y) =>
             Array.from({ length: map.width }, (_, x) => {
               const tile = map.tiles[y * map.width + x];
@@ -200,6 +213,12 @@ function Tile({
     isPreview && previewDir ? (
       <PreviewOverlay dir={previewDir} />
     ) : null;
+  const threatOverlay =
+    tile.seen && tile.threat ? (
+      <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <AlertTriangle className="size-3.5 text-red-400 drop-shadow-[0_0_3px_rgba(0,0,0,0.7)]" />
+      </span>
+    ) : null;
   const baseProps = {
     style,
     onPointerEnter,
@@ -274,9 +293,11 @@ function Tile({
         {...baseProps}
         className={cn(
           "relative size-7 border border-border/60 bg-card/20",
+          tile.threat && "border-red-500/70 bg-red-500/15",
           ringClass,
         )}
       >
+        {threatOverlay}
         {previewOverlay}
       </div>
     );
@@ -287,8 +308,13 @@ function Tile({
     return (
       <div
         {...baseProps}
-        className={cn("relative size-7 bg-card", ringClass)}
+        className={cn(
+          "relative size-7 bg-card",
+          tile.threat && "border border-red-500/70 bg-red-500/20",
+          ringClass,
+        )}
       >
+        {threatOverlay}
         {previewOverlay}
       </div>
     );
@@ -298,10 +324,52 @@ function Tile({
   return (
     <div
       {...baseProps}
-      className={cn("relative size-7 bg-card/50", ringClass)}
+      className={cn(
+        "relative size-7 bg-card/50",
+        tile.threat && "border border-red-500/70 bg-red-500/15",
+        ringClass,
+      )}
     >
+      {threatOverlay}
       {previewOverlay}
     </div>
+  );
+}
+
+function PathOverlay({
+  map,
+  path,
+}: {
+  map: RaidMapType;
+  path: Array<{ x: number; y: number }>;
+}) {
+  const widthPx = map.width * STRIDE - GAP_PX + PAD_PX * 2;
+  const heightPx = map.height * STRIDE - GAP_PX + PAD_PX * 2;
+  const points = path
+    .map(
+      (p) =>
+        `${p.x * STRIDE + PAD_PX + TILE_PX / 2},${
+          p.y * STRIDE + PAD_PX + TILE_PX / 2
+        }`,
+    )
+    .join(" ");
+  return (
+    <svg
+      className="pointer-events-none absolute left-0 top-0 z-20"
+      width={widthPx}
+      height={heightPx}
+      viewBox={`0 0 ${widthPx} ${heightPx}`}
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke="rgba(74,222,128,0.65)"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeDasharray="4 3"
+      />
+    </svg>
   );
 }
 

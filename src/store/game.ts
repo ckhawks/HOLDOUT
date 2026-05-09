@@ -40,8 +40,10 @@ import {
 } from "@/lib/engine/shapes";
 import {
   addToTileContents,
+  clearTileThreat,
   consumeLootFromTile,
   markTileVisited,
+  pathToEntry,
   removeFromTileContents,
   revealFrom,
   stepBackward,
@@ -86,6 +88,7 @@ interface GameState {
   useBandage: () => void;
   togglePause: () => void;
   recall: () => void;
+  cancelRecall: () => void;
   endRaid: (extracted: boolean) => void;
   dismissRaidOutcome: () => void;
   placeFromPending: (uid: string, x: number, y: number, rotation: Rotation) => boolean;
@@ -210,15 +213,28 @@ export const useGame = create<GameState>((set, get) => ({
       nextStep = isExtracting
         ? stepBackward(nextMap, nextPos)
         : stepForward(nextMap, nextPos, rand);
-      // Entrance flavor log on first arrival to a room (skip the entry tile
-      // and skip extract steps to reduce log noise).
+      // Entrance flavor: always log first visits during raid; during extract,
+      // only log re-entries that have something interesting (unsearched loot
+      // or items on the floor) to avoid spam.
       const arrivedTileNow = tileAt(nextMap, nextPos.x, nextPos.y);
-      if (wasFirstVisit && arrivedTileNow && arrivedTileNow.type !== "entry" && !isExtracting) {
-        entrance = entranceLog(arrivedTileNow);
+      if (arrivedTileNow && arrivedTileNow.type !== "entry") {
+        const hasInterest =
+          arrivedTileNow.lootRemaining > 0 ||
+          arrivedTileNow.contents.length > 0;
+        if (!isExtracting && wasFirstVisit) {
+          entrance = entranceLog(arrivedTileNow);
+        } else if (isExtracting && hasInterest) {
+          entrance = entranceLog(arrivedTileNow);
+        }
       }
     }
     if (t.consumedLoot) {
-      nextMap = consumeLootFromTile(nextMap, currentRaid.operativePos.x, currentRaid.operativePos.y);
+      const { map: afterConsume } = consumeLootFromTile(
+        nextMap,
+        currentRaid.operativePos.x,
+        currentRaid.operativePos.y,
+      );
+      nextMap = afterConsume;
     }
     if (t.droppedItem) {
       nextMap = addToTileContents(
@@ -237,14 +253,12 @@ export const useGame = create<GameState>((set, get) => ({
       flags = Array.from(set);
     }
 
-    const advancedDepth =
-      t.movement === "forward" ? 1 : t.movement === "lateral" ? 0 : 0;
-    const advancedDistance =
-      t.movement === "forward" || t.movement === "lateral"
-        ? 1
-        : t.movement === "backward"
-          ? -1
-          : 0;
+    const advancedDepth = t.movement === "forward" ? 1 : 0;
+
+    // distanceFromExtract is derived from the actual path back to entry, not
+    // a separate counter that can drift from the operative's real position.
+    const path = pathToEntry(nextMap, nextPos.x, nextPos.y);
+    const distanceFromExtract = Math.max(0, path.length - 1);
 
     const allLogs = entrance ? [...t.logs, entrance] : t.logs;
     let raid: CurrentRaid = {
@@ -260,10 +274,7 @@ export const useGame = create<GameState>((set, get) => ({
         energy: Math.max(0, Math.min(100, currentRaid.runState.energy + t.energyDelta)),
         ammo: Math.max(0, currentRaid.runState.ammo + t.ammoDelta),
         depth: currentRaid.runState.depth + advancedDepth,
-        distanceFromExtract: Math.max(
-          0,
-          currentRaid.runState.distanceFromExtract + advancedDistance,
-        ),
+        distanceFromExtract,
         flags,
       },
     };
@@ -283,9 +294,12 @@ export const useGame = create<GameState>((set, get) => ({
       return;
     }
 
-    // Extract complete.
+    // Extract complete: operative actually standing on the entry tile.
     const stillExtracting = raid.runState.flags.includes("extracting");
-    if (stillExtracting && raid.runState.distanceFromExtract <= 0) {
+    const atEntry =
+      raid.operativePos.x === raid.map.entry.x &&
+      raid.operativePos.y === raid.map.entry.y;
+    if (stillExtracting && atEntry) {
       raid = {
         ...raid,
         log: [
@@ -333,13 +347,33 @@ export const useGame = create<GameState>((set, get) => ({
     for (const f of fx.flagsRemoved ?? []) flagSet.delete(f);
     const flags = Array.from(flagSet);
 
-    // Optional spatial movement based on advance values.
+    // Spatial movement based on the choice and the situation.
     let nextMap = currentRaid.map;
     let nextPos = currentRaid.operativePos;
     let nextStep = currentRaid.nextStep;
     let depthChange = fx.depthAdvance ?? 0;
     let distanceChange = fx.distanceAdvance ?? 0;
-    if (distanceChange > 0 && depthChange === 0) {
+    const movingForwardForCombat = !!fx.flagsAdded?.includes("combat_engaged");
+    if (movingForwardForCombat) {
+      // Engage-into-patrol: commit the move into the threat tile, clear the
+      // threat (operative is now in the room with the target). distance
+      // advances by 1 to match the move.
+      const fwd = currentRaid.nextStep
+        ? { ...currentRaid.nextStep }
+        : stepForward(nextMap, currentRaid.operativePos, makeRng(Date.now()));
+      if (
+        fwd.x !== currentRaid.operativePos.x ||
+        fwd.y !== currentRaid.operativePos.y
+      ) {
+        nextPos = fwd;
+        nextMap = markTileVisited(nextMap, fwd.x, fwd.y);
+        nextMap = clearTileThreat(nextMap, fwd.x, fwd.y);
+        nextMap = revealFrom(nextMap, fwd.x, fwd.y);
+        nextStep = stepForward(nextMap, fwd, makeRng(Date.now()));
+        depthChange = 1;
+        distanceChange = 1;
+      }
+    } else if (distanceChange > 0 && depthChange === 0) {
       // Reposition-style: lateral lane shift away from entry's lane.
       const lateral = stepLateral(nextMap, currentRaid.operativePos);
       if (
@@ -351,25 +385,7 @@ export const useGame = create<GameState>((set, get) => ({
         nextMap = revealFrom(nextMap, lateral.x, lateral.y);
         nextStep = stepForward(nextMap, lateral, makeRng(Date.now()));
       } else {
-        // Couldn't slip — distance change null.
         distanceChange = 0;
-      }
-    } else if (distanceChange > 0) {
-      // Forward push from a branch — rare for now, but supported.
-      const fwd = currentRaid.nextStep
-        ? { ...currentRaid.nextStep }
-        : stepForward(nextMap, currentRaid.operativePos, makeRng(Date.now()));
-      if (
-        fwd.x !== currentRaid.operativePos.x ||
-        fwd.y !== currentRaid.operativePos.y
-      ) {
-        nextPos = fwd;
-        nextMap = markTileVisited(nextMap, fwd.x, fwd.y);
-        nextMap = revealFrom(nextMap, fwd.x, fwd.y);
-        nextStep = stepForward(nextMap, fwd, makeRng(Date.now()));
-      } else {
-        distanceChange = 0;
-        depthChange = 0;
       }
     }
 
@@ -390,7 +406,10 @@ export const useGame = create<GameState>((set, get) => ({
         energy: Math.max(0, Math.min(100, rs.energy + (fx.energyDelta ?? 0))),
         ammo: Math.max(0, rs.ammo + (fx.ammoDelta ?? 0)),
         depth: rs.depth + depthChange,
-        distanceFromExtract: Math.max(0, rs.distanceFromExtract + distanceChange),
+        distanceFromExtract: Math.max(
+          0,
+          pathToEntry(nextMap, nextPos.x, nextPos.y).length - 1,
+        ),
         flags,
       },
     };
@@ -430,6 +449,27 @@ export const useGame = create<GameState>((set, get) => ({
     const next = applyBandage(currentRaid);
     if (next === currentRaid) return;
     set({ currentRaid: next });
+  },
+
+  cancelRecall: () => {
+    const { currentRaid, operative } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    if (!currentRaid.runState.flags.includes("extracting")) return;
+    const flags = currentRaid.runState.flags.filter((f) => f !== "extracting");
+    const log = makeLog("system", "Recall canceled. Resuming raid.");
+    // Re-pick a non-extract next step from current pos (forward).
+    const nextStep = stepForward(currentRaid.map, currentRaid.operativePos, makeRng(Date.now()));
+    set({
+      currentRaid: {
+        ...currentRaid,
+        log: [...currentRaid.log, log],
+        runState: { ...currentRaid.runState, flags },
+        nextStep,
+        queuedAction: "move_forward",
+        actionStartedAt: Date.now(),
+      },
+      operative: { ...operative, state: "raiding" },
+    });
   },
 
   recall: () => {
@@ -709,6 +749,9 @@ export const useGame = create<GameState>((set, get) => ({
         unlocks: loaded.unlocks,
         upgrades: loaded.upgrades,
         currentRaid: loaded.currentRaid,
+        // If a raid is in progress, return the player to the comms feed
+        // (HMR / page reload otherwise drops them on the Ops panel).
+        activePanel: loaded.currentRaid ? "feed" : get().activePanel,
         hydrated: true,
       });
     } else {

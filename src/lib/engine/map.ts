@@ -12,6 +12,10 @@ import { ROOM_NAMES } from "@/lib/data/events";
 export const MAP_WIDTH = 12; // depth (number of columns)
 export const MAP_HEIGHT = 5; // lanes (number of rows)
 export const BLOCKED_TILE_RATIO = 0.12;
+export const THREAT_TILE_RATIO = 0.1;
+// Don't seed threats in the first MIN_THREAT_DEPTH columns — gives the player
+// breathing room to spot hostiles before they're forced into one.
+const MIN_THREAT_DEPTH = 2;
 
 const DEFAULT_ROOM_WEIGHTS: Record<RoomType, number> = {
   corridor: 5,
@@ -49,6 +53,32 @@ function pickLootPotential(rand: () => number, type: RoomType): number {
     default:
       return 0;
   }
+}
+
+// Per-room-type container pool. Picked at map gen time and stored on the
+// tile so entrance flavor and Loot logs reference the same nouns.
+const CONTAINER_POOL: Record<RoomType, string[]> = {
+  storage: ["crate", "footlocker", "locker", "shelf", "duffel"],
+  office: ["desk", "filing cabinet", "drawer", "monitor cluster"],
+  mechanical: ["tool chest", "junction box", "spare parts bin", "panel"],
+  corridor: ["duffel", "crate", "shelf"],
+  gantry: ["supply crate", "tool chest"],
+  entry: [],
+  locked: [],
+};
+
+function pickContainers(
+  rand: () => number,
+  type: RoomType,
+  count: number,
+): string[] {
+  const pool = CONTAINER_POOL[type];
+  if (!pool || pool.length === 0 || count <= 0) return [];
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    out.push(pool[Math.floor(rand() * pool.length)]);
+  }
+  return out;
 }
 
 function pickWeighted<T extends string>(
@@ -93,8 +123,10 @@ export function generateMap(
           visited: false,
           lootRemaining: 0,
           lootMax: 0,
+          containers: [],
           contents: [],
           seen: false,
+          threat: false,
         });
         continue;
       }
@@ -104,6 +136,11 @@ export function generateMap(
       const blocked = !adjacentToEntry && rand() < BLOCKED_TILE_RATIO;
       const type: RoomType = blocked ? "locked" : pickWeighted(rand, weights);
       const lootMax = blocked ? 0 : pickLootPotential(rand, type);
+      // Only sprinkle threats past the breathing-room columns and never on
+      // blocked tiles or the always-walkable forward-of-entry tile.
+      const threatEligible =
+        !blocked && !adjacentToEntry && x >= MIN_THREAT_DEPTH;
+      const threat = threatEligible && rand() < THREAT_TILE_RATIO;
       tiles.push({
         x,
         y,
@@ -113,8 +150,10 @@ export function generateMap(
         visited: false,
         lootRemaining: lootMax,
         lootMax,
+        containers: pickContainers(rand, type, lootMax),
         contents: [],
         seen: false,
+        threat,
       });
     }
   }
@@ -211,31 +250,65 @@ export function stepLateral(
   return pos;
 }
 
-// Pick the next tile when extracting. Steps to the orthogonal neighbor with
-// the smallest distanceToEntry — straightforward greedy on a BFS field.
+// BFS path from (x, y) to entry, walking only non-blocked tiles. Returns
+// the ordered list of tiles starting at the source and ending at entry, or
+// an empty array if unreachable. Used to draw the extract path overlay.
+export function pathToEntry(
+  map: RaidMap,
+  x: number,
+  y: number,
+): Array<{ x: number; y: number }> {
+  if (!isWalkable(map, x, y)) return [];
+  const key = (px: number, py: number) => `${px},${py}`;
+  const start = key(x, y);
+  const goal = key(map.entry.x, map.entry.y);
+  if (start === goal) return [{ x, y }];
+  const parents = new Map<string, string>();
+  const seen = new Set<string>([start]);
+  const queue: Array<{ x: number; y: number }> = [{ x, y }];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const moves = [
+      { x: cur.x + 1, y: cur.y },
+      { x: cur.x - 1, y: cur.y },
+      { x: cur.x, y: cur.y + 1 },
+      { x: cur.x, y: cur.y - 1 },
+    ];
+    for (const next of moves) {
+      const k = key(next.x, next.y);
+      if (seen.has(k)) continue;
+      if (!isWalkable(map, next.x, next.y)) continue;
+      seen.add(k);
+      parents.set(k, key(cur.x, cur.y));
+      if (k === goal) {
+        // Reconstruct path from goal back to source.
+        const path: Array<{ x: number; y: number }> = [next];
+        let cursor = key(cur.x, cur.y);
+        while (cursor !== start) {
+          const [px, py] = cursor.split(",").map(Number);
+          path.push({ x: px, y: py });
+          cursor = parents.get(cursor)!;
+        }
+        path.push({ x, y });
+        return path.reverse();
+      }
+      queue.push(next);
+    }
+  }
+  return [];
+}
+
+// Pick the next tile when extracting. Single source of truth for backward
+// navigation: returns path[1] from pathToEntry so the operative's actual
+// next step always matches the path-line overlay drawn on the map.
 export function stepBackward(
   map: RaidMap,
   pos: { x: number; y: number },
 ): { x: number; y: number } {
-  const here = distanceToEntry(map, pos.x, pos.y) ?? Infinity;
-  if (here === 0) return pos;
-  let best = pos;
-  let bestDist = here;
-  const moves = [
-    [pos.x, pos.y + 1],
-    [pos.x, pos.y - 1],
-    [pos.x + 1, pos.y],
-    [pos.x - 1, pos.y],
-  ];
-  for (const [nx, ny] of moves) {
-    if (!isWalkable(map, nx, ny)) continue;
-    const d = distanceToEntry(map, nx, ny);
-    if (d !== null && d < bestDist) {
-      best = { x: nx, y: ny };
-      bestDist = d;
-    }
-  }
-  return best;
+  if (pos.x === map.entry.x && pos.y === map.entry.y) return pos;
+  const path = pathToEntry(map, pos.x, pos.y);
+  if (path.length < 2) return pos;
+  return path[1];
 }
 
 // Mark a tile as visited (operative has been here). Drives the map's
@@ -253,19 +326,25 @@ export function markTileVisited(
   return { ...map, tiles };
 }
 
-// Decrement lootRemaining on the tile (one container searched). Returns the
-// same ref if nothing changed.
+// Decrement lootRemaining and pop the next container off the queue. Returns
+// the new map plus the container name that was searched (or undefined if
+// the room had nothing left).
 export function consumeLootFromTile(
   map: RaidMap,
   x: number,
   y: number,
-): RaidMap {
+): { map: RaidMap; container?: string } {
   const idx = y * map.width + x;
   const t = map.tiles[idx];
-  if (!t || t.lootRemaining <= 0) return map;
+  if (!t || t.lootRemaining <= 0) return { map };
+  const [head, ...rest] = t.containers;
   const tiles = map.tiles.slice();
-  tiles[idx] = { ...t, lootRemaining: t.lootRemaining - 1 };
-  return { ...map, tiles };
+  tiles[idx] = {
+    ...t,
+    lootRemaining: t.lootRemaining - 1,
+    containers: rest,
+  };
+  return { map: { ...map, tiles }, container: head };
 }
 
 // Add an item to a tile's contents. Used when loot drops or when the player
@@ -303,6 +382,20 @@ export function removeFromTileContents(
     contents: [...t.contents.slice(0, itemIdx), ...t.contents.slice(itemIdx + 1)],
   };
   return { map: { ...map, tiles }, item };
+}
+
+// Clear the threat flag from a tile (target neutralized or fled).
+export function clearTileThreat(
+  map: RaidMap,
+  x: number,
+  y: number,
+): RaidMap {
+  const idx = y * map.width + x;
+  const t = map.tiles[idx];
+  if (!t || !t.threat) return map;
+  const tiles = map.tiles.slice();
+  tiles[idx] = { ...t, threat: false };
+  return { ...map, tiles };
 }
 
 // Reveal a tile and its 4 orthogonal neighbors. Used to expand fog of war

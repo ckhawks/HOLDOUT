@@ -103,22 +103,30 @@ export const ENERGY_BASE_DRAIN = 3;
 // branching modals are dormant until phase 2 reintroduces forced-choice
 // interrupts.
 
-// Build a flavor log line for the operative entering a room. Mentions the
-// room name and a hint at how much there is to search.
+// Build a flavor log line for the operative entering a room. Names the
+// specific containers and any loose items on the floor so subsequent Loot
+// logs and pickup actions match.
 export function entranceLog(tile: import("@/lib/types").MapTile): LogEntry {
   const lootHint = (() => {
     if (tile.lootMax === 0) return "";
     if (tile.lootRemaining === 0) return " Already cleared.";
-    if (tile.lootRemaining < tile.lootMax) {
-      return ` Some containers still untouched (${tile.lootRemaining}/${tile.lootMax}).`;
-    }
-    if (tile.lootRemaining >= 3) return " Plenty here to search.";
-    if (tile.lootRemaining === 2) return " A couple of containers worth a look.";
-    return " One thing worth checking.";
+    if (tile.containers.length === 0) return "";
+    return ` ${enumerateContainers(tile.containers)} here.`;
   })();
-  const inRoom = tile.contents.length > 0
-    ? ` ${tile.contents.length} item${tile.contents.length === 1 ? "" : "s"} on the floor.`
-    : "";
+  const inRoom = (() => {
+    if (tile.contents.length === 0) return "";
+    if (tile.contents.length === 1) {
+      const it = tile.contents[0];
+      const name = ITEMS[it.itemId]?.name ?? it.itemId;
+      return ` ⟦${name}⟧ on the floor.`;
+    }
+    if (tile.contents.length === 2) {
+      const a = ITEMS[tile.contents[0].itemId]?.name ?? tile.contents[0].itemId;
+      const b = ITEMS[tile.contents[1].itemId]?.name ?? tile.contents[1].itemId;
+      return ` ⟦${a}⟧ and ⟦${b}⟧ on the floor.`;
+    }
+    return ` ${tile.contents.length} items on the floor.`;
+  })();
   return makeLog(
     "flavor",
     `Stepped into the ${tile.name}.${lootHint}${inRoom}`,
@@ -126,11 +134,75 @@ export function entranceLog(tile: import("@/lib/types").MapTile): LogEntry {
   );
 }
 
+// Group same-noun containers into "two crates and a footlocker" form.
+function enumerateContainers(containers: ReadonlyArray<string>): string {
+  const counts = new Map<string, number>();
+  for (const c of containers) counts.set(c, (counts.get(c) ?? 0) + 1);
+  const parts = Array.from(counts.entries()).map(([noun, n]) => pluralize(noun, n));
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return capitalize(parts[0]);
+  if (parts.length === 2) return capitalize(`${parts[0]} and ${parts[1]}`);
+  const head = parts.slice(0, -1).join(", ");
+  return capitalize(`${head}, and ${parts[parts.length - 1]}`);
+}
+
+function pluralize(noun: string, n: number): string {
+  if (n === 1) return /^[aeiou]/i.test(noun) ? `an ${noun}` : `a ${noun}`;
+  // Simple pluralization that works for our pool.
+  const word =
+    NUMBER_WORDS[n] ?? `${n}`;
+  // crude pluralization: add -s, except for "shelf" → "shelves" and
+  // "filing cabinet" / "tool chest" / "junction box" / "spare parts bin"
+  // / "monitor cluster" / "supply crate" — most just take -s. Box → boxes.
+  const plural = noun.endsWith("box")
+    ? noun.replace(/box$/, "boxes")
+    : noun === "shelf"
+      ? "shelves"
+      : `${noun}s`;
+  return `${word} ${plural}`;
+}
+
+const NUMBER_WORDS: Record<number, string> = {
+  2: "two",
+  3: "three",
+  4: "four",
+  5: "five",
+};
+
+function capitalize(s: string): string {
+  return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// Verb pool per container type, used by the Loot action. Picks one variant
+// per call so successive Loot ticks vary their phrasing.
+function lootVerb(container: string, rand: () => number): string {
+  const pool = LOOT_VERBS[container] ?? LOOT_VERBS_DEFAULT;
+  return pool[Math.floor(rand() * pool.length)];
+}
+
+const LOOT_VERBS_DEFAULT = ["Searched", "Pried open", "Pulled apart"];
+
+const LOOT_VERBS: Record<string, string[]> = {
+  crate: ["Pried open", "Cracked open", "Tipped over"],
+  "supply crate": ["Pried open", "Cracked open", "Cut into"],
+  footlocker: ["Cracked open", "Tipped", "Pried into"],
+  locker: ["Cracked open", "Forced", "Snapped the lock on"],
+  shelf: ["Searched", "Swept", "Cleared"],
+  duffel: ["Rummaged through", "Tossed", "Unzipped"],
+  desk: ["Tossed", "Pulled apart", "Searched"],
+  "filing cabinet": ["Pulled open", "Rifled through", "Forced"],
+  drawer: ["Pulled open", "Rifled through"],
+  "monitor cluster": ["Sifted through", "Searched"],
+  "tool chest": ["Tipped open", "Cracked into", "Forced open"],
+  "junction box": ["Pried back", "Cracked into", "Forced open"],
+  "spare parts bin": ["Tipped over", "Sifted through"],
+  panel: ["Pried back", "Forced", "Pulled aside"],
+};
+
 // ---- Action-driven tick ----
 
 export const ACTION_TIMER_MS = 6000;
 const INTERRUPT_CHANCE = 0.22;
-const PATROL_ENCOUNTER_CHANCE = 0.15;
 const PATROL_TIMER_MS = 10000;
 
 // A patrol encounter — fired as a forced-choice modal when the operative
@@ -220,12 +292,18 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
 
   switch (action) {
     case "move_forward": {
-      // Roll for a patrol encounter before committing the move. If hit,
-      // the operative freezes in place and a forced-choice modal pops.
-      if (rand() < PATROL_ENCOUNTER_CHANCE) {
+      // Pre-gen patrol encounter: if the destination tile holds a threat,
+      // freeze in place and pop the forced-choice modal. The operative has
+      // already glanced into adjacent tiles via revealFrom, so the threat
+      // is on the visible map before they move.
+      const dest = raid.nextStep;
+      const destTile = dest
+        ? raid.map.tiles[dest.y * raid.map.width + dest.x]
+        : undefined;
+      if (destTile && destTile.threat) {
         return {
           logs: [
-            makeLog("flavor", "Movement in the next room. Holding.", undefined),
+            makeLog("flavor", "Hostiles in the next room. Holding.", undefined),
           ],
           alertnessDelta: 0,
           healthDelta: -bleed,
@@ -246,10 +324,13 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         logs.push(makeLog("flavor", "Nothing left worth searching here.", undefined));
         break;
       }
-      // Each container has a ~70% chance of yielding an item.
-      const yields = rand() < 0.7;
       consumedLoot = true;
       energyDelta -= 1;
+      const container = currentTile.containers[0] ?? "container";
+      const verb = lootVerb(container, rand);
+      const article = /^[aeiou]/i.test(container) ? "an" : "a";
+      // Each container has a ~70% chance of yielding an item.
+      const yields = rand() < 0.7;
       if (yields) {
         const loc = LOCATIONS_BY_ID[raid.locationId];
         const isRare = rand() < 0.08;
@@ -265,15 +346,19 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
           logs.push(
             makeLog(
               "loot",
-              `Found ⟦${item?.name ?? itemId}⟧ — left it on the floor.`,
+              `${verb} ${article} ${container}. ⟦${item?.name ?? itemId}⟧ inside.`,
               itemId,
             ),
           );
         } else {
-          logs.push(makeLog("flavor", "Searched a container. Empty.", undefined));
+          logs.push(
+            makeLog("flavor", `${verb} ${article} ${container}. Empty.`, undefined),
+          );
         }
       } else {
-        logs.push(makeLog("flavor", "Searched a container. Empty.", undefined));
+        logs.push(
+          makeLog("flavor", `${verb} ${article} ${container}. Nothing in it.`, undefined),
+        );
       }
       break;
     }
@@ -284,8 +369,32 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
       break;
     }
     case "extract_step": {
+      // Same threat check as move_forward: the path back may pass through
+      // a tile with a hostile, and the operative still has to deal with it.
+      const dest = raid.nextStep;
+      const destTile = dest
+        ? raid.map.tiles[dest.y * raid.map.width + dest.x]
+        : undefined;
+      if (destTile && destTile.threat) {
+        return {
+          logs: [
+            makeLog("flavor", "Hostiles between me and extract. Holding.", undefined),
+          ],
+          alertnessDelta: 0,
+          healthDelta: -bleed,
+          energyDelta: 0,
+          ammoDelta: 0,
+          flagsAdded: [],
+          flagsRemoved: [],
+          movement: "none",
+          consumedLoot: false,
+          pendingChoice: patrolPendingChoice(),
+        };
+      }
       movement = "backward";
-      logs.push(makeLog("flavor", "Backtracking toward extract.", undefined));
+      // No flat "backtracking" log — too repetitive. The entrance flavor in
+      // the store covers re-entry into rooms with loot left or items on the
+      // floor.
       break;
     }
     case "fight": {

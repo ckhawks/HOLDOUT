@@ -208,22 +208,55 @@ describe("revealFrom", () => {
   });
 });
 
+describe("threat placement", () => {
+  it("does not place threats on the entry tile or the always-walkable forward-of-entry tile", () => {
+    for (let seed = 1; seed < 200; seed++) {
+      const m = generateMap(makeRng(seed));
+      expect(tileAt(m, m.entry.x, m.entry.y)?.threat).toBe(false);
+      expect(tileAt(m, m.entry.x + 1, m.entry.y)?.threat).toBe(false);
+    }
+  });
+
+  it("does not place threats on blocked tiles", () => {
+    for (let seed = 1; seed < 50; seed++) {
+      const m = generateMap(makeRng(seed));
+      for (const t of m.tiles) {
+        if (t.blocked) expect(t.threat).toBe(false);
+      }
+    }
+  });
+
+  it("places at least one threat on most maps (loose check across seeds)", () => {
+    let mapsWithThreats = 0;
+    for (let seed = 1; seed < 100; seed++) {
+      const m = generateMap(makeRng(seed));
+      if (m.tiles.some((t) => t.threat)) mapsWithThreats++;
+    }
+    // 0.1 ratio over ~50 eligible tiles → expect threats on ~99%+ of maps.
+    expect(mapsWithThreats).toBeGreaterThan(85);
+  });
+});
+
 describe("consumeLootFromTile", () => {
-  it("decrements lootRemaining and returns a new ref", () => {
+  it("decrements lootRemaining, pops the front container, returns a new ref", () => {
     const m = generateMap(makeRng(1));
-    // Find a tile with loot to consume
     const target = m.tiles.find((t) => t.lootRemaining > 0);
     if (!target) return;
     const before = target.lootRemaining;
-    const next = consumeLootFromTile(m, target.x, target.y);
+    const headBefore = target.containers[0];
+    const { map: next, container } = consumeLootFromTile(m, target.x, target.y);
     expect(next).not.toBe(m);
-    expect(next.tiles[target.y * m.width + target.x].lootRemaining).toBe(before - 1);
+    expect(container).toBe(headBefore);
+    const after = next.tiles[target.y * m.width + target.x];
+    expect(after.lootRemaining).toBe(before - 1);
+    expect(after.containers.length).toBe(target.containers.length - 1);
   });
 
   it("returns the same map ref when lootRemaining is 0", () => {
     const m = generateMap(makeRng(1));
     const target = m.tiles.find((t) => t.lootRemaining === 0)!;
-    const next = consumeLootFromTile(m, target.x, target.y);
+    const { map: next, container } = consumeLootFromTile(m, target.x, target.y);
     expect(next).toBe(m);
+    expect(container).toBeUndefined();
   });
 });

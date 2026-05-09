@@ -192,21 +192,47 @@ describe("combat sub-mode", () => {
     expect(fails).toBeGreaterThan(20);
   });
 
-  it("move_forward sometimes raises a patrol pendingChoice", () => {
-    const raid = makeRaid({ queuedAction: "move_forward" });
-    let saw = false;
-    for (let seed = 1; seed < 200 && !saw; seed++) {
+  it("move_forward raises a patrol pendingChoice when destination tile has a threat", () => {
+    const baseMap = generateMap(makeRng(1));
+    // Place a threat on the tile right of entry by mutating the tile array.
+    const entry = baseMap.entry;
+    const dest = { x: entry.x + 1, y: entry.y };
+    const tiles = baseMap.tiles.slice();
+    const idx = dest.y * baseMap.width + dest.x;
+    tiles[idx] = { ...tiles[idx], threat: true };
+    const raid = makeRaid({
+      map: { ...baseMap, tiles },
+      operativePos: { x: entry.x, y: entry.y },
+      nextStep: dest,
+      queuedAction: "move_forward",
+    });
+    const result = tickAction(raid, makeRng(1));
+    expect(result.pendingChoice).toBeDefined();
+    expect(result.movement).toBe("none");
+    const ids = result.pendingChoice!.options.map((o) => o.id);
+    expect(ids).toContain("engage");
+    expect(ids).toContain("hide");
+  });
+
+  it("move_forward into a clean tile does not raise a patrol", () => {
+    const baseMap = generateMap(makeRng(1));
+    const entry = baseMap.entry;
+    const dest = { x: entry.x + 1, y: entry.y };
+    const tiles = baseMap.tiles.slice();
+    const idx = dest.y * baseMap.width + dest.x;
+    tiles[idx] = { ...tiles[idx], threat: false };
+    const raid = makeRaid({
+      map: { ...baseMap, tiles },
+      operativePos: { x: entry.x, y: entry.y },
+      nextStep: dest,
+      queuedAction: "move_forward",
+    });
+    // Run many seeds — none should raise pendingChoice on a clean dest.
+    for (let seed = 1; seed < 50; seed++) {
       const result = tickAction(raid, makeRng(seed));
-      if (result.pendingChoice) {
-        expect(result.movement).toBe("none");
-        expect(result.pendingChoice.options.length).toBeGreaterThanOrEqual(2);
-        const ids = result.pendingChoice.options.map((o) => o.id);
-        expect(ids).toContain("engage");
-        expect(ids).toContain("hide");
-        saw = true;
-      }
+      expect(result.pendingChoice).toBeUndefined();
+      expect(result.movement).toBe("forward");
     }
-    expect(saw).toBe(true);
   });
 });
 

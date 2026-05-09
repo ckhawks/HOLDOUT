@@ -206,12 +206,20 @@ export interface MapTile {
   lootRemaining: number;
   // Initial lootRemaining at generation, used for "2/3 searched" displays.
   lootMax: number;
+  // Specific container names left in this room ("locker", "crate", "duffel"
+  // etc.), in the order the operative will work through them. Length always
+  // equals lootRemaining; popped from the front on each Loot action.
+  containers: string[];
   // Items currently sitting in this room — dropped by loot actions or by
   // the player. Persist across operative leaving and returning.
   contents: StashItem[];
   // Operative has been on this tile OR an orthogonal neighbor — drives fog
   // of war reveal.
   seen: boolean;
+  // Pre-generated patrol present in this room. When the operative tries to
+  // move into a threat tile, the patrol forced-choice modal fires. Cleared
+  // when the patrol is resolved (target_down or target_fled).
+  threat: boolean;
 }
 
 export interface RaidMap {

@@ -88,7 +88,7 @@ describe("save round-trip", () => {
       packGrid: { width: 4, height: 4 },
       active: true,
       pendingChoice: null,
-      map: { width: 1, height: 1, entry: { x: 0, y: 0 }, tiles: [{ x: 0, y: 0, type: "entry", name: "entry", blocked: false, visited: true, lootRemaining: 0, lootMax: 0, contents: [], seen: true }] },
+      map: { width: 1, height: 1, entry: { x: 0, y: 0 }, tiles: [{ x: 0, y: 0, type: "entry", name: "entry", blocked: false, visited: true, lootRemaining: 0, lootMax: 0, containers: [], contents: [], seen: true, threat: false }] },
       operativePos: { x: 0, y: 0 },
       nextStep: null,
       pausedAt: null,

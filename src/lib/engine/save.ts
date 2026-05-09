@@ -8,7 +8,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 15;
 
 export interface PersistedState {
   cash: number;
@@ -152,6 +152,26 @@ export function migrateSave(saved: SavedGame): SavedGame {
   // since their tile.looted means "visited" under the old semantics; safer to
   // restart than to interpret.
   if (saved.schemaVersion < 13) {
+    s.currentRaid = null;
+  }
+  // v14: tile gains threat. Backfill false on legacy tiles so existing in-
+  // progress raids don't suddenly have hostiles materialize. New raids get
+  // threats placed during generateMap.
+  if (saved.schemaVersion < 14) {
+    const cr = s.currentRaid;
+    if (cr?.map?.tiles) {
+      cr.map = {
+        ...cr.map,
+        tiles: cr.map.tiles.map((t) => {
+          const tile = t as unknown as { threat?: boolean };
+          return tile.threat === undefined ? { ...t, threat: false } : t;
+        }),
+      };
+    }
+  }
+  // v15: tile gains containers (per-tile container vocabulary). Drop in-
+  // progress raids since lootRemaining and containers must agree.
+  if (saved.schemaVersion < 15) {
     s.currentRaid = null;
   }
   return { ...saved, schemaVersion: SCHEMA_VERSION, state: s };

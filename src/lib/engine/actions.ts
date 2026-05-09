@@ -25,6 +25,9 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     label: "Loot the room",
     description: "Search the current room for items.",
     isEligible: (raid) => {
+      // Allowed during raid AND extract — the operative can opportunistically
+      // search a room they're passing back through. Combat suspends it.
+      if (raid.runState.flags.includes("combat_engaged")) return false;
       const tile = currentTile(raid);
       if (!tile) return false;
       return tile.type !== "entry" && tile.lootRemaining > 0;
@@ -72,13 +75,14 @@ export function autoPickAction(raid: CurrentRaid): ActionId {
 }
 
 // Returns the actions the player can override to right now. Combat sub-mode
-// shows only fight/flee; extract sub-mode shows extract_step/stay; raiding
-// shows the regular trio.
+// shows only fight/flee; extract sub-mode shows extract_step plus loot/stay
+// so the player can opportunistically search a room they're passing back
+// through; raiding shows the regular trio.
 export function availableActions(raid: CurrentRaid): ActionDef[] {
   const order: ActionId[] = raid.runState.flags.includes("combat_engaged")
     ? ["fight", "flee"]
     : raid.runState.flags.includes("extracting")
-      ? ["extract_step", "stay"]
+      ? ["extract_step", "loot", "stay"]
       : ["move_forward", "loot", "stay"];
   return order.map((id) => ACTIONS[id]).filter((a) => a.isEligible(raid));
 }

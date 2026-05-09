@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useGame } from "@/store/game";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
-import { Bandage, CornerDownRight, Crosshair, Droplet, Loader2, LogOut, Pause, Play } from "lucide-react";
+import { Bandage, CornerDownRight, Crosshair, Droplet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
 import { PackTetris } from "./PackTetris";
@@ -15,9 +15,7 @@ import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
 export function FeedPanel() {
   const raid = useGame((s) => s.currentRaid);
-  const recall = useGame((s) => s.recall);
   const useBandage = useGame((s) => s.useBandage);
-  const togglePause = useGame((s) => s.togglePause);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,36 +43,16 @@ export function FeedPanel() {
   const extracting = rs.flags.includes("extracting");
   const paused = !!raid.pausedAt;
 
+  const locationName = LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId;
+
   return (
     <section className="relative flex min-h-0 flex-1 flex-col">
       <PanelHeader
         title="Comms Feed"
         subtitle={
           extracting
-            ? `Extracting · about ${rs.distanceFromExtract} rooms away`
-            : `Channel open · ${LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId} · depth ${rs.depth}`
-        }
-        right={
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={togglePause}
-              className="rounded-sm"
-            >
-              {paused ? "Resume" : "Pause"}
-              {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={recall}
-              disabled={extracting}
-              className="rounded-sm"
-            >
-              {extracting ? <Loader2 className="size-4 animate-spin" /> : null}
-              {extracting ? "Extracting…" : "Recall"}
-              <LogOut className="size-4" />
-            </Button>
-          </div>
+            ? `${locationName} · extracting · about ${rs.distanceFromExtract} rooms away`
+            : `${locationName} · depth ${rs.depth}`
         }
       />
       {paused ? (
@@ -202,9 +180,9 @@ export function FeedPanel() {
           );
         })}
       </div>
-      <NextActionCard />
       <RaidMap />
       </div>
+      <NextActionCard />
       <PackTetris />
       </div>
       <BranchModal />
