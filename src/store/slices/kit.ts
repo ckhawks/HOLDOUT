@@ -138,6 +138,7 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
       uid: removed.item.uid,
       itemId: removed.item.itemId,
       flavor: removed.item.flavor,
+      acquiredAt: Date.now(),
     };
     set({
       stash: [...stash, stashItem],
@@ -171,6 +172,7 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
       uid: result.removed.uid,
       itemId: result.removed.itemId,
       flavor: result.removed.flavor,
+      acquiredAt: Date.now(),
     };
     set({
       stash: [...stash, stashItem],
@@ -222,6 +224,7 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
     if (currentRaid) return; // idle only
     const cap = hideout.modules.stash.capacity ?? Infinity;
     const nextStash = [...stash];
+    const now = Date.now();
     let pockets = operative.equipment.pockets;
     let bag = operative.equipment.bag;
     // Drain pockets first, then bag. Stop on capacity — don't silently lose.
@@ -232,7 +235,7 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
           remaining.push(p);
           continue;
         }
-        nextStash.push({ uid: p.uid, itemId: p.itemId, flavor: p.flavor });
+        nextStash.push({ uid: p.uid, itemId: p.itemId, flavor: p.flavor, acquiredAt: now });
       }
       return remaining;
     };

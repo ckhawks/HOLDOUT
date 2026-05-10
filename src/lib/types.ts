@@ -43,6 +43,10 @@ export interface StashItem {
   uid: string;
   itemId: string;
   flavor?: string;
+  // Wall-clock timestamp the item entered the stash. Stamped at all push
+  // sites (kit→stash, shop buy, empty-kit). Optional for backwards-compat
+  // with pre-v26 saves; sort-by-date treats missing as 0 (oldest).
+  acquiredAt?: number;
 }
 
 export interface PackPlacement extends StashItem {

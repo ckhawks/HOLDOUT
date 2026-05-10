@@ -53,6 +53,7 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
     const newItem: StashItem = {
       uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       itemId: offer.itemId,
+      acquiredAt: Date.now(),
     };
     const nextStock = offer.stock - 1;
     const nextOffers = nextStock <= 0

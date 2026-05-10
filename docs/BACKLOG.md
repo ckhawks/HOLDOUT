@@ -65,7 +65,6 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - later: make blasting to get rare loot take some sort of explosives item. maybe we shouldnt say guarantee rare loot
 - stash sized by # of cells (tetris cells), bigger items = more space, no grid management
 - ability to pin/lock items in stash
-- ability to sort stash (group by kind/category, sort by value, sort by date obtained)
 - sometimes make the extract point not the starting point (midway in level somewhere)
 - small shop: buy backpack, decent low/mid weapon, ammo
 - show inventory value
@@ -177,6 +176,12 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 - ✅ **Loot categories per location** — each location biases toward certain item categories. Shipped via `location.categoryWeights` in `src/lib/data/locations.ts` (Warehouse → mechanical 5 / consumables 3 / electronics 2; Datacenter → electronics 6 / intel 5; Biolab → medical 5 / experimental 4; etc.) and routed through `pickItemForLocation()` in `src/lib/data/items.ts` — picks a category by weight, then a tier by depth+rarity, then an item from the intersection (with a generic fallback when no weights are set).
 
 ## Sprints
+
+### Stash sort + group by category (2026-05-10)
+
+- `StashItem` gains optional `acquiredAt: number` (in `src/lib/types.ts`); stamped at all stash-push sites: `stashFromKit`, `unequipToStash`, `emptyKitToStash` (in `src/store/slices/kit.ts`), and shop `buyOffer` (in `src/store/slices/economy.ts`). Pre-existing items missing the field sort as oldest.
+- `StashPanel` (`src/components/panels/StashPanel.tsx`) gains a toolbar above the items grid: Sort (Date / Value, default Date desc) and Group by category toggle. When grouped, items render in category bands using `CATEGORY_ORDER` (military / bag / mechanical / electronics / medical / consumables / experimental / intel / valuables) with a small icon + count header per section.
+- State is local-only — resets on reload. No save migration needed (the new field is optional).
 
 ### After-raid report (pass 1) (2026-05-10)
 

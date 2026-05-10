@@ -8,12 +8,13 @@ import { cn } from "@/lib/utils";
 import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { categoryIconFor } from "@/lib/itemIcon";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Backpack, Coins, PackageOpen, Shirt } from "lucide-react";
+import { ArrowLeft, Backpack, Coins, FolderTree, PackageOpen, Shirt } from "lucide-react";
 import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
 import { findFit } from "@/lib/engine/equipment";
 import { gridCellAt, isInside, slotUnder } from "@/lib/dnd";
 import { useDragDrop } from "@/lib/useDragDrop";
-import type { EquipSlot, Rotation } from "@/lib/types";
+import type { EquipSlot, ItemCategory, Rotation, StashItem } from "@/lib/types";
+import { CATEGORY_ICON } from "@/lib/itemIcon";
 import { EquippedColumn, SLOT_ORDER, type SlotHover, type SlotRefMap } from "./EquippedColumn";
 import { ItemTooltip, Tooltip } from "@/components/ui/Tooltip";
 import { KitDragGhost, KitGrid, KIT_CELL, type KitHover } from "./KitGrid";
@@ -54,6 +55,11 @@ export function StashPanel() {
   const [slotHover, setSlotHover] = useState<SlotHover>(null);
   const [kitHover, setKitHover] = useState<{ slot: KitSlot } & KitHover | null>(null);
   const [overStash, setOverStash] = useState(false);
+  // Stash display prefs. State only — not persisted; defaults are fine on
+  // reload. Default Date desc is what most players expect ("show me what
+  // I just got"). Group toggles a category-banded layout.
+  const [sortMode, setSortMode] = useState<"date" | "value">("value");
+  const [grouped, setGrouped] = useState(true);
 
   // Refs declared at the top level so the hook count is stable across
   // renders and HMR. Bundling them into an object literal calling useRef()
@@ -182,6 +188,36 @@ export function StashPanel() {
   const kitItemCount =
     equipment.pockets.items.length + (equipment.bag?.items.length ?? 0);
   const canEmptyAll = !inRaid && kitItemCount > 0;
+
+  const sortedStash = useMemo(() => {
+    const sorter =
+      sortMode === "value"
+        ? (a: StashItem, b: StashItem) =>
+            (ITEMS[b.itemId]?.sellValue ?? 0) - (ITEMS[a.itemId]?.sellValue ?? 0)
+        : (a: StashItem, b: StashItem) => (b.acquiredAt ?? 0) - (a.acquiredAt ?? 0);
+    return [...stash].sort(sorter);
+  }, [stash, sortMode]);
+
+  // Group sections — when grouped is false, return a single unlabeled section
+  // so the renderer can iterate over the same shape.
+  const sections = useMemo(() => {
+    if (!grouped) {
+      return [{ category: null as ItemCategory | null, items: sortedStash }];
+    }
+    const map = new Map<ItemCategory, StashItem[]>();
+    for (const si of sortedStash) {
+      const cat = ITEMS[si.itemId]?.category;
+      if (!cat) continue;
+      if (!map.has(cat)) map.set(cat, []);
+      map.get(cat)!.push(si);
+    }
+    const out: Array<{ category: ItemCategory | null; items: StashItem[] }> = [];
+    for (const cat of CATEGORY_ORDER) {
+      const items = map.get(cat);
+      if (items && items.length > 0) out.push({ category: cat, items });
+    }
+    return out;
+  }, [sortedStash, grouped]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -341,93 +377,119 @@ export function StashPanel() {
               stash empty · run a raid
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-1 md:grid-cols-2 lg:grid-cols-3">
-              {stash.map((si) => {
-                const item = ITEMS[si.itemId];
-                if (!item) return null;
-                const sellable = item.sellValue > 0;
-                const equippable = item.slot != null;
-                const equippableNow =
-                  !inRaid && equippable && (
-                    item.slot === "bag" ? !equipment.bag : !equipment[item.slot!]
-                  );
-                const fit = !inRaid && !equippable ? findFit(equipment, si) : null;
-                const ctrlClickAction = equippableNow
-                  ? () => equipFromStash(si.uid)
-                  : fit
-                    ? () => kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
-                    : null;
-                const ctrlHint = equippableNow
-                  ? `Ctrl+click to equip · drag to ${item.slot} slot`
-                  : fit
-                    ? `Ctrl+click to move into kit`
-                    : "";
-                const beingDragged = drag?.kind === "stash" && drag.uid === si.uid;
-                const Icon = categoryIconFor(si.itemId);
-                return (
-                  <ItemTooltip key={si.uid} itemId={si.itemId} hint={ctrlHint || undefined}>
-                    <div
-                      onPointerDown={(e) => {
-                        if (inRaid) return;
-                        if ((e.target as HTMLElement).closest("button")) return;
-                        e.preventDefault();
-                        setDrag({
-                          kind: "stash",
-                          uid: si.uid,
-                          itemId: si.itemId,
-                          mouseX: e.clientX,
-                          mouseY: e.clientY,
-                        });
-                      }}
-                      onClick={(e) => {
-                        if ((e.ctrlKey || e.metaKey) && ctrlClickAction) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          ctrlClickAction();
-                          playSfx("inventory");
-                        }
-                      }}
-                      className={cn(
-                        "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2",
-                        !inRaid && "cursor-grab active:cursor-grabbing",
-                        ctrlClickAction && "hover:border-emerald-500/40",
-                        beingDragged && "opacity-30",
-                      )}
-                    >
-                      <span className={cn("flex min-w-0 items-center gap-1.5 text-sm font-semibold", TIER_COLOR[item.tier])}>
-                        {Icon && <Icon className="size-3.5 shrink-0 opacity-80" />}
-                        <span className="truncate">{item.name}</span>
+            <div className="space-y-3">
+              <StashToolbar
+                sortMode={sortMode}
+                grouped={grouped}
+                onSortChange={setSortMode}
+                onGroupedToggle={() => setGrouped((g) => !g)}
+              />
+              {sections.map((section) => (
+                <div key={section.category ?? "_all"} className="space-y-1">
+                  {section.category && (
+                    <div className="flex items-center gap-1.5 border-b border-border/40 pb-1">
+                      {(() => {
+                        const Icon = CATEGORY_ICON[section.category];
+                        return <Icon className="size-3 text-muted-foreground" />;
+                      })()}
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        {section.category}
                       </span>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                          ¤{item.sellValue}
-                        </span>
-                        {fit && (
-                          <Tooltip text={`Move to ${fit.slot}`}>
-                            <button
-                              onClick={() =>
-                                kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
-                              }
-                              className="inline-flex cursor-pointer items-center gap-0.5 rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
-                            >
-                              <ArrowLeft className="size-3" />
-                              kit
-                            </button>
-                          </Tooltip>
-                        )}
-                        {sellable && (
-                          <button
-                            onClick={() => sellItem(si.uid)}
-                            className="cursor-pointer rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
-                          >
-                            sell
-                          </button>
-                        )}
-                      </div>
+                      <span className="font-mono text-[10px] text-muted-foreground/60">
+                        {section.items.length}
+                      </span>
                     </div>
-                  </ItemTooltip>
-                );
-              })}
+                  )}
+                  <div className="grid grid-cols-1 gap-1 md:grid-cols-2 lg:grid-cols-3">
+                    {section.items.map((si) => {
+                      const item = ITEMS[si.itemId];
+                      if (!item) return null;
+                      const sellable = item.sellValue > 0;
+                      const equippable = item.slot != null;
+                      const equippableNow =
+                        !inRaid && equippable && (
+                          item.slot === "bag" ? !equipment.bag : !equipment[item.slot!]
+                        );
+                      const fit = !inRaid && !equippable ? findFit(equipment, si) : null;
+                      const ctrlClickAction = equippableNow
+                        ? () => equipFromStash(si.uid)
+                        : fit
+                          ? () => kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
+                          : null;
+                      const ctrlHint = equippableNow
+                        ? `Ctrl+click to equip · drag to ${item.slot} slot`
+                        : fit
+                          ? `Ctrl+click to move into kit`
+                          : "";
+                      const beingDragged = drag?.kind === "stash" && drag.uid === si.uid;
+                      const Icon = categoryIconFor(si.itemId);
+                      return (
+                        <ItemTooltip key={si.uid} itemId={si.itemId} hint={ctrlHint || undefined}>
+                          <div
+                            onPointerDown={(e) => {
+                              if (inRaid) return;
+                              if ((e.target as HTMLElement).closest("button")) return;
+                              e.preventDefault();
+                              setDrag({
+                                kind: "stash",
+                                uid: si.uid,
+                                itemId: si.itemId,
+                                mouseX: e.clientX,
+                                mouseY: e.clientY,
+                              });
+                            }}
+                            onClick={(e) => {
+                              if ((e.ctrlKey || e.metaKey) && ctrlClickAction) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                ctrlClickAction();
+                                playSfx("inventory");
+                              }
+                            }}
+                            className={cn(
+                              "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2",
+                              !inRaid && "cursor-grab active:cursor-grabbing",
+                              ctrlClickAction && "hover:border-emerald-500/40",
+                              beingDragged && "opacity-30",
+                            )}
+                          >
+                            <span className={cn("flex min-w-0 items-center gap-1.5 text-sm font-semibold", TIER_COLOR[item.tier])}>
+                              {Icon && <Icon className="size-3.5 shrink-0 opacity-80" />}
+                              <span className="truncate">{item.name}</span>
+                            </span>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                                ¤{item.sellValue}
+                              </span>
+                              {fit && (
+                                <Tooltip text={`Move to ${fit.slot}`}>
+                                  <button
+                                    onClick={() =>
+                                      kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
+                                    }
+                                    className="inline-flex cursor-pointer items-center gap-0.5 rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
+                                  >
+                                    <ArrowLeft className="size-3" />
+                                    kit
+                                  </button>
+                                </Tooltip>
+                              )}
+                              {sellable && (
+                                <button
+                                  onClick={() => sellItem(si.uid)}
+                                  className="cursor-pointer rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
+                                >
+                                  sell
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </ItemTooltip>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -446,6 +508,83 @@ export function StashPanel() {
           <StashDragGhost itemId={drag.itemId} mouseX={drag.mouseX} mouseY={drag.mouseY} />
         ))}
     </section>
+  );
+}
+
+// Display order for category bands when grouping is on. Roughly: equippables
+// first (military / bag / mechanical / electronics), consumables second,
+// valuables / intel last. Keeps "stuff to use" near the top.
+const CATEGORY_ORDER: ItemCategory[] = [
+  "military",
+  "bag",
+  "mechanical",
+  "electronics",
+  "medical",
+  "consumables",
+  "experimental",
+  "intel",
+  "valuables",
+];
+
+function StashToolbar({
+  sortMode,
+  grouped,
+  onSortChange,
+  onGroupedToggle,
+}: {
+  sortMode: "date" | "value";
+  grouped: boolean;
+  onSortChange: (m: "date" | "value") => void;
+  onGroupedToggle: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 border-b border-border/40 pb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+      <span>Sort</span>
+      <div className="inline-flex overflow-hidden rounded-sm border border-border/60">
+        <ToolbarToggle active={sortMode === "value"} onClick={() => onSortChange("value")}>
+          Value
+        </ToolbarToggle>
+        <ToolbarToggle active={sortMode === "date"} onClick={() => onSortChange("date")}>
+          Date
+        </ToolbarToggle>
+      </div>
+      <button
+        onClick={onGroupedToggle}
+        className={cn(
+          "inline-flex cursor-pointer items-center gap-1.5 rounded-sm border px-2 py-1 font-sans normal-case tracking-normal transition",
+          grouped
+            ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
+            : "border-border/60 hover:border-border hover:text-foreground",
+        )}
+      >
+        <FolderTree className="size-3" />
+        Group by category
+      </button>
+    </div>
+  );
+}
+
+function ToolbarToggle({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "cursor-pointer px-2 py-1 font-sans normal-case tracking-normal transition",
+        active
+          ? "bg-emerald-500/10 text-emerald-200"
+          : "hover:bg-muted/40 hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
