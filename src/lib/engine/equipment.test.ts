@@ -1,0 +1,205 @@
+import { describe, expect, it } from "vitest";
+import {
+  equipItem,
+  findFit,
+  moveBetweenSlots,
+  placeIntoSlot,
+  removeFromKit,
+  unequipItem,
+} from "./equipment";
+import type { BagState, Equipment, PackPlacement, PocketsState } from "@/lib/types";
+
+// Test fixtures: bare 4x4 pockets, no bag, no equip slots.
+function makePockets(items: PackPlacement[] = []): PocketsState {
+  return { grid: { width: 4, height: 4 }, items };
+}
+
+function makeBag(width = 4, height = 4, items: PackPlacement[] = []): BagState {
+  return {
+    slot: { uid: "bag-uid", itemId: "canvas_satchel" },
+    grid: { width, height },
+    items,
+  };
+}
+
+function makeEq(overrides: Partial<Equipment> = {}): Equipment {
+  return {
+    pockets: makePockets(),
+    bag: null,
+    weapon: null,
+    armor: null,
+    helmet: null,
+    ...overrides,
+  };
+}
+
+const BANDAGE = (uid: string): PackPlacement => ({
+  uid,
+  itemId: "bandage_pack",
+  x: 0,
+  y: 0,
+  rotation: 0,
+});
+
+describe("placeIntoSlot", () => {
+  it("places a 1x1 item into empty pockets", () => {
+    const next = placeIntoSlot(makeEq(), "pockets", { uid: "u1", itemId: "bandage_pack" }, 0, 0, 0);
+    expect(next?.pockets.items).toHaveLength(1);
+    expect(next?.pockets.items[0]).toMatchObject({ uid: "u1", x: 0, y: 0 });
+  });
+
+  it("returns null when target cell is occupied", () => {
+    const eq = makeEq({ pockets: makePockets([BANDAGE("existing")]) });
+    const next = placeIntoSlot(eq, "pockets", { uid: "new", itemId: "bandage_pack" }, 0, 0, 0);
+    expect(next).toBeNull();
+  });
+
+  it("returns null when placing into bag slot but no bag is equipped", () => {
+    const next = placeIntoSlot(makeEq(), "bag", { uid: "u1", itemId: "bandage_pack" }, 0, 0, 0);
+    expect(next).toBeNull();
+  });
+
+  it("places into bag when bag is equipped", () => {
+    const eq = makeEq({ bag: makeBag() });
+    const next = placeIntoSlot(eq, "bag", { uid: "u1", itemId: "bandage_pack" }, 1, 1, 0);
+    expect(next?.bag?.items).toHaveLength(1);
+    expect(next?.bag?.items[0]).toMatchObject({ uid: "u1", x: 1, y: 1 });
+    expect(next?.pockets.items).toHaveLength(0);
+  });
+
+  it("returns null when out of grid bounds", () => {
+    const next = placeIntoSlot(makeEq(), "pockets", { uid: "u1", itemId: "bandage_pack" }, 5, 5, 0);
+    expect(next).toBeNull();
+  });
+});
+
+describe("moveBetweenSlots", () => {
+  it("moves an item within pockets to a new position", () => {
+    const eq = makeEq({ pockets: makePockets([BANDAGE("u1")]) });
+    const next = moveBetweenSlots(eq, "u1", "pockets", 2, 2, 0);
+    expect(next?.pockets.items).toHaveLength(1);
+    expect(next?.pockets.items[0]).toMatchObject({ uid: "u1", x: 2, y: 2 });
+  });
+
+  it("self-overlap is allowed (same-slot move ignores self in occupancy)", () => {
+    // An item at (0,0) being "moved" to (0,0) — sanity-check the same-slot
+    // exclusion in buildOccupancy doesn't block the trivial case.
+    const eq = makeEq({ pockets: makePockets([BANDAGE("u1")]) });
+    const next = moveBetweenSlots(eq, "u1", "pockets", 0, 0, 0);
+    expect(next?.pockets.items[0]).toMatchObject({ uid: "u1", x: 0, y: 0 });
+  });
+
+  it("moves an item from pockets to bag", () => {
+    const eq = makeEq({
+      pockets: makePockets([BANDAGE("u1")]),
+      bag: makeBag(),
+    });
+    const next = moveBetweenSlots(eq, "u1", "bag", 1, 1, 0);
+    expect(next?.pockets.items).toHaveLength(0);
+    expect(next?.bag?.items).toHaveLength(1);
+    expect(next?.bag?.items[0]).toMatchObject({ uid: "u1", x: 1, y: 1 });
+  });
+
+  it("returns null when uid doesn't exist anywhere in equipment", () => {
+    const next = moveBetweenSlots(makeEq(), "nope", "pockets", 0, 0, 0);
+    expect(next).toBeNull();
+  });
+
+  it("returns null when destination is occupied by a different item", () => {
+    const eq = makeEq({
+      pockets: makePockets([BANDAGE("u1"), { ...BANDAGE("u2"), x: 1, y: 0 }]),
+    });
+    const next = moveBetweenSlots(eq, "u1", "pockets", 1, 0, 0);
+    expect(next).toBeNull();
+  });
+});
+
+describe("removeFromKit", () => {
+  it("removes from pockets and returns the item", () => {
+    const eq = makeEq({ pockets: makePockets([BANDAGE("u1")]) });
+    const result = removeFromKit(eq, "u1");
+    expect(result?.next.pockets.items).toHaveLength(0);
+    expect(result?.item).toMatchObject({ uid: "u1", itemId: "bandage_pack" });
+  });
+
+  it("removes from bag when item is in bag", () => {
+    const eq = makeEq({ bag: makeBag(4, 4, [BANDAGE("u1")]) });
+    const result = removeFromKit(eq, "u1");
+    expect(result?.next.bag?.items).toHaveLength(0);
+    expect(result?.item.uid).toBe("u1");
+  });
+
+  it("returns null for unknown uid", () => {
+    expect(removeFromKit(makeEq(), "nope")).toBeNull();
+  });
+});
+
+describe("equipItem", () => {
+  it("equips a bag from a free item", () => {
+    const next = equipItem(makeEq(), { uid: "bag1", itemId: "canvas_satchel" });
+    expect(next?.bag).not.toBeNull();
+    expect(next?.bag?.slot.itemId).toBe("canvas_satchel");
+    expect(next?.bag?.grid).toEqual({ width: 4, height: 2 });
+    expect(next?.bag?.items).toHaveLength(0);
+  });
+
+  it("refuses to equip a bag if one is already equipped", () => {
+    const eq = makeEq({ bag: makeBag() });
+    expect(equipItem(eq, { uid: "bag2", itemId: "canvas_satchel" })).toBeNull();
+  });
+
+  it("returns null for non-equippable items (no `slot` field)", () => {
+    expect(equipItem(makeEq(), { uid: "u1", itemId: "bandage_pack" })).toBeNull();
+  });
+});
+
+describe("unequipItem", () => {
+  it("unequips an empty bag", () => {
+    const eq = makeEq({ bag: makeBag() });
+    const result = unequipItem(eq, "bag");
+    expect(result?.next.bag).toBeNull();
+    expect(result?.removed.itemId).toBe("canvas_satchel");
+  });
+
+  it("refuses to unequip a bag that has contents", () => {
+    const eq = makeEq({ bag: makeBag(4, 4, [BANDAGE("u1")]) });
+    expect(unequipItem(eq, "bag")).toBeNull();
+  });
+
+  it("returns null when slot is empty", () => {
+    expect(unequipItem(makeEq(), "bag")).toBeNull();
+  });
+});
+
+describe("findFit (auto-placement)", () => {
+  const stashItem = { uid: "u1", itemId: "bandage_pack" } as const;
+
+  it("finds a slot in empty pockets", () => {
+    const fit = findFit(makeEq(), stashItem);
+    expect(fit).toMatchObject({ slot: "pockets", x: 0, y: 0 });
+  });
+
+  it("falls through to bag when pockets is full", () => {
+    // Fill all 16 cells with 1x1 items.
+    const items: PackPlacement[] = [];
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        items.push({ uid: `fill-${x}-${y}`, itemId: "bandage_pack", x, y, rotation: 0 });
+      }
+    }
+    const eq = makeEq({ pockets: makePockets(items), bag: makeBag() });
+    const fit = findFit(eq, stashItem);
+    expect(fit?.slot).toBe("bag");
+  });
+
+  it("returns null when pockets is full and no bag is equipped", () => {
+    const items: PackPlacement[] = [];
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        items.push({ uid: `fill-${x}-${y}`, itemId: "bandage_pack", x, y, rotation: 0 });
+      }
+    }
+    const eq = makeEq({ pockets: makePockets(items) });
+    expect(findFit(eq, stashItem)).toBeNull();
+  });
+});
