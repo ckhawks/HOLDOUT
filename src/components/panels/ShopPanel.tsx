@@ -29,6 +29,8 @@ export function ShopPanel() {
   const stashLen = useGame((s) => s.stash.length);
   const stashCap = useGame((s) => s.hideout.modules.stash.capacity ?? 0);
   const buyOffer = useGame((s) => s.buyOffer);
+  const debugMode = useGame((s) => s.debugMode);
+  const debugResetShop = useGame((s) => s.debugResetShop);
   const stashFull = stashLen >= stashCap;
   const [toasts, setToasts] = useState<PurchaseToast[]>([]);
 
@@ -57,10 +59,22 @@ export function ShopPanel() {
         title="Marketplace"
         subtitle={`Stock rotates after each raid · ${offers.length} offers · ¤${cash.toLocaleString()} on hand`}
         right={
-          <span className="inline-flex items-center gap-1 rounded-sm border border-border/60 bg-card/30 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            <Droplet className="size-3" />
-            stash {stashLen}/{stashCap}
-          </span>
+          <div className="flex items-center gap-2">
+            {debugMode ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => debugResetShop()}
+                className="h-7 rounded-sm font-mono text-[10px] uppercase tracking-widest"
+              >
+                Debug: reset stock
+              </Button>
+            ) : null}
+            <span className="inline-flex items-center gap-1 rounded-sm border border-border/60 bg-card/30 px-2 py-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              <Droplet className="size-3" />
+              stash {stashLen}/{stashCap}
+            </span>
+          </div>
         }
       />
       <div className="flex-1 overflow-y-auto px-6 py-4">

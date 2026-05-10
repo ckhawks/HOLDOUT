@@ -2,6 +2,8 @@ import type { StateCreator } from "zustand";
 import type { Item, StashItem, Upgrades } from "@/lib/types";
 import { ITEMS } from "@/lib/data/items";
 import { isConsumable } from "@/lib/engine/consumables";
+import { makeRng } from "@/lib/engine/raid";
+import { refreshShop } from "@/lib/engine/shop";
 import { stashCapacity, stashUpgradeCost } from "@/lib/engine/upgrades";
 import type { GameState } from "../game";
 
@@ -25,6 +27,9 @@ export interface EconomySlice {
   sellAllJunk: () => void;
   buyOffer: (offerId: string) => boolean;
   buyStashUpgrade: () => void;
+  // Debug-only: re-roll the shop offers immediately. Wired to a button in
+  // the Marketplace panel that's only shown when debugMode is on.
+  debugResetShop: () => void;
 }
 
 export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> = (set, get) => ({
@@ -79,6 +84,11 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
       shop: { ...shop, offers: nextOffers },
     });
     return true;
+  },
+
+  debugResetShop: () => {
+    const seed = Math.floor(Math.random() * 0xffffffff);
+    set({ shop: refreshShop(makeRng(seed), Date.now()) });
   },
 
   buyStashUpgrade: () => {
