@@ -109,6 +109,24 @@ describe("save round-trip", () => {
       queuedAction: "move_forward",
       actionStartedAt: 0,
       pendingEnd: null,
+      startingEquipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+      tally: {
+        damageTaken: 0,
+        energySpent: 0,
+        heatPeak: 0,
+        combatTargetsDown: 0,
+        combatTargetsFled: 0,
+        combatBrokeContact: 0,
+        combatTradedShots: 0,
+        choicesMade: [],
+        consumablesUsed: [],
+      },
     };
     saveGame(s);
     const loaded = loadGame();

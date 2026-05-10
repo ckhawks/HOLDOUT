@@ -26,10 +26,50 @@ import {
 
 export type PanelId = "hideout" | "stash" | "ops" | "feed" | "shop" | "manual" | "data" | "settings";
 
+// After-raid report. Built once in endRaid() — captures the diff between
+// startingEquipment and final equipment plus the per-tick counters the slice
+// accumulated during the raid. The modal renders directly off this.
+export interface RaidReportItem {
+  uid: string;
+  itemId: string;
+  // Sell value at the moment the report was built. Snapshotted so a future
+  // item-data change doesn't retroactively shift the report numbers.
+  sellValue: number;
+}
+
 export interface RaidOutcome {
   type: "death" | "extracted";
-  recoveredCount: number;
   locationId: string;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  // Loot diff. itemsKept = present at end AND start (carried back). itemsLost
+  // = in start, missing at end. itemsLooted = present at end but not in start
+  // (newly acquired). On death everything starting + everything looted is in
+  // itemsLost since the kit gets stripped.
+  itemsKept: RaidReportItem[];
+  itemsLost: RaidReportItem[];
+  itemsLooted: RaidReportItem[];
+  startingValue: number;
+  endingValue: number;
+  // Vitals snapshot at end + accumulators.
+  finalHealth: number;
+  finalEnergy: number;
+  damageTaken: number;
+  energySpent: number;
+  heatPeak: number;
+  // Combat counters.
+  combatTargetsDown: number;
+  combatTargetsFled: number;
+  combatBrokeContact: number;
+  combatTradedShots: number;
+  // Decisions made via interrupt modals.
+  choicesMade: Array<{ eventId: string; optionId: string; label: string }>;
+  // Consumables used, collapsed by itemId with a count.
+  consumablesUsed: Array<{ itemId: string; count: number }>;
+  // Map exploration.
+  tilesVisited: number;
+  totalTiles: number;
 }
 
 // State + non-slice actions. Slice interfaces (KitSlice, etc.) are merged in

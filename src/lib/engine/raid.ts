@@ -55,6 +55,18 @@ export function startRaid(
     },
     log: [log("system", `Operative inserted at ${locationId}. Comms green.`)],
     equipment,
+    startingEquipment: equipment,
+    tally: {
+      damageTaken: 0,
+      energySpent: 0,
+      heatPeak: 0,
+      combatTargetsDown: 0,
+      combatTargetsFled: 0,
+      combatBrokeContact: 0,
+      combatTradedShots: 0,
+      choicesMade: [],
+      consumablesUsed: [],
+    },
     active: true,
     pendingChoice: null,
     map,
@@ -300,7 +312,14 @@ interface DeltaAccum {
   movement: "none" | "forward" | "lateral" | "backward";
   consumedLoot: boolean;
   breachedLocked: boolean;
+  combatOutcome?: CombatOutcome;
 }
+
+export type CombatOutcome =
+  | "target_down"
+  | "target_fled"
+  | "broke_contact"
+  | "trade_shots";
 
 // Patrol interrupt — fired both pre-move and pre-extract-step. Pre-gen threat
 // tiles are visible to the player on the map; heat-driven ambushes are not.
@@ -453,17 +472,20 @@ function handleFight(ctx: TickCtx, d: DeltaAccum): void {
     d.heatDelta += 4;
     d.ammoDelta = -1;
     d.flagsRemoved.push("combat_engaged");
+    d.combatOutcome = "target_down";
   } else if (r < 0.85) {
     d.healthDelta -= 7;
     d.ammoDelta = -2;
     d.heatDelta += 5;
     if (rand() < 0.25) d.flagsAdded.push("bleeding_minor");
     d.logs.push(log("damage", "Trading shots. Took a glancing hit.", undefined));
+    d.combatOutcome = "trade_shots";
   } else {
     d.heatDelta += 8;
     d.ammoDelta = -1;
     d.flagsRemoved.push("combat_engaged");
     d.logs.push(log("combat_resolved", "Target broke contact and ran. Lost them.", undefined));
+    d.combatOutcome = "target_fled";
   }
 }
 
@@ -474,11 +496,13 @@ function handleFlee(ctx: TickCtx, d: DeltaAccum): void {
     d.heatDelta += 6;
     d.flagsRemoved.push("combat_engaged");
     d.logs.push(log("combat_resolved", "Broke contact — clear of the threat for now.", undefined));
+    d.combatOutcome = "broke_contact";
   } else {
     d.healthDelta -= 5;
     d.ammoDelta = -1;
     if (rand() < 0.2) d.flagsAdded.push("bleeding_minor");
     d.logs.push(log("damage", "Couldn't break clean. Took a round on the way out.", undefined));
+    d.combatOutcome = "trade_shots";
   }
 }
 
@@ -523,6 +547,9 @@ export interface ActionTickResult {
   // move). When set, the store sets pendingChoice and the action that
   // would have been applied is suppressed.
   pendingChoice?: PendingChoice;
+  // For after-raid report counters: which combat sub-outcome resolved this
+  // tick, if any. Set by handleFight / handleFlee.
+  combatOutcome?: CombatOutcome;
 }
 
 // Resolve one tick by carrying out the queued action on the current raid.
@@ -592,6 +619,7 @@ export function tickAction(
     movement: d.movement,
     consumedLoot: d.consumedLoot,
     breachedLocked: d.breachedLocked,
+    combatOutcome: d.combatOutcome,
   };
 }
 

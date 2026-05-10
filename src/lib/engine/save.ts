@@ -9,7 +9,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 export interface PersistedState {
   cash: number;
@@ -296,6 +296,33 @@ export function migrateSave(saved: SavedGame): SavedGame {
         s.currentRaid = null;
       } else {
         cr.pendingEnd = null;
+      }
+    }
+  }
+  // v25: CurrentRaid gains startingEquipment + tally for the after-raid report.
+  // Backfill on in-progress raids: snapshot current equipment as starting (so
+  // the loot diff shows nothing-new-since-resume), zero out the counters.
+  if (saved.schemaVersion < 25) {
+    const cr = s.currentRaid;
+    if (cr) {
+      const c = cr as unknown as {
+        equipment: CurrentRaid["equipment"];
+        startingEquipment?: CurrentRaid["equipment"];
+        tally?: CurrentRaid["tally"];
+      };
+      if (!c.startingEquipment) c.startingEquipment = c.equipment;
+      if (!c.tally) {
+        c.tally = {
+          damageTaken: 0,
+          energySpent: 0,
+          heatPeak: 0,
+          combatTargetsDown: 0,
+          combatTargetsFled: 0,
+          combatBrokeContact: 0,
+          combatTradedShots: 0,
+          choicesMade: [],
+          consumablesUsed: [],
+        };
       }
     }
   }

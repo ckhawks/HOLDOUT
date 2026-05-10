@@ -59,6 +59,7 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - need item that can restore HP (over time?) — see also AI medical-ladder proposal below
 - need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
 - remove randomly got shot when entered room, replace with just pure environmental things (later todo: make it so like an agility skill could reduce % of this happening)
+- persist operative health + energy + ammo into stash, allow using consumables in the stash
 - debug button to reset shop stock
 - increase the rate of rare items in locked crates
 - later: make blasting to get rare loot take some sort of explosives item. maybe we shouldnt say guarantee rare loot
@@ -79,6 +80,7 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - add more items in inventory = more heat gain per turn (very slight, just to counter end-game-y stuff) (because you're louder moving around); maybe this could be based on weight (items get weight separate from cells size?)
 - repair bench, uses wurm-style rotating repair materials/items to increase condition
 - hacking minigame? keypads?
+- multiple operatives...
 
 ### From the older IDEAS.md (carried over)
 
@@ -122,6 +124,7 @@ Make "scrounge / push / lay low" real instead of theatre.
 
 ## Smaller follow-ups (any order)
 
+- [ ] **After-raid report — pass 2: map replay.** Pass 1 (2026-05-10) shipped the report modal with loot diff / vitals / combat / choices / consumables. Pass 2 adds the map-replay section: render the same 12×5 strip with visited tiles dimmed and the operative's path drawn in order. Needs new state on `CurrentRaid` (`pathVisited: Array<{x,y,tick}>` updated each move in `doTick`) since fog only tells us *which* tiles, not *when*. Optional polish: scrubber, or static end-state with arrows.
 - [ ] First-run intro modal.
 - [ ] Tick-rate / action-timer debug slider in Settings.
 - [ ] Gate the Data panel behind an admin/debug flag (currently visible to everyone — fine for now, but eventually it leaks the loot tables and threat math to players).
@@ -137,7 +140,7 @@ Items #1, #2, #6, #7, #9 (partial) shipped 2026-05-09 — see Changelog. Remaini
 
 4. **`lib/engine/raid.ts` (~675 lines)** — `tickAction` is a ~315-line switch with nested branching, mixed with RNG setup, log flavor (`makeLog`, `entranceLog`, `lootVerb`), branch/choice factories, and bleed/recall helpers. Decompose into `branches.ts`, `flavor.ts`, per-action handlers.
 5. **`PackTetris.tsx` (~488 lines)** — drag state machine, grid math, validation, and rendering all in one component. Grid math overlaps with `engine/shapes.ts` but isn't reused consistently. Extract `usePackDrag` hook, lean on `shapes.ts` for placement validation. (Partially addressed by the `KitGrid` extraction in commit `86ce488`.)
-9. **Remaining test coverage gaps**: UI components untested (acceptable v1). Engine + store now covered by 149 tests across 9 files; the deepest gap left is `tickAction`'s combat sub-mode + locked-container branches, which would benefit from targeted scenario tests if #4 lands.
+6. **Remaining test coverage gaps**: UI components untested (acceptable v1). Engine + store now covered by 149 tests across 9 files; the deepest gap left is `tickAction`'s combat sub-mode + locked-container branches, which would benefit from targeted scenario tests if #4 lands.
 
 ---
 
@@ -174,6 +177,16 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 - ✅ **Loot categories per location** — each location biases toward certain item categories. Shipped via `location.categoryWeights` in `src/lib/data/locations.ts` (Warehouse → mechanical 5 / consumables 3 / electronics 2; Datacenter → electronics 6 / intel 5; Biolab → medical 5 / experimental 4; etc.) and routed through `pickItemForLocation()` in `src/lib/data/items.ts` — picks a category by weight, then a tier by depth+rarity, then an item from the intersection (with a generic fallback when no weights are set).
 
 ## Sprints
+
+### After-raid report (pass 1) (2026-05-10)
+
+- `CurrentRaid` gains `startingEquipment` (snapshot at raid start) + `tally` (running counters: damage taken, energy spent, heat peak, combat outcomes, choices made, consumables used). Initialized in `startRaid()` in `src/lib/engine/raid.ts`.
+- `tickAction` returns a new `combatOutcome?` field (`target_down` / `target_fled` / `broke_contact` / `trade_shots`) so the slice can count fights without log-text scraping.
+- Raid slice (`src/store/slices/raid.ts`): `doTick` accumulates damage/energy/heat-peak + combat counters from each tick. `resolvePendingChoice` pushes onto `tally.choicesMade` and counts the choice's deltas. `useBandage` / `useConsumable` push onto `tally.consumablesUsed`.
+- `RaidOutcome` reshaped from death-flavor stub into a full report: loot diff (kept / lost / looted with sell values), starting + ending value, final HP/energy, damage taken, energy spent, heat peak, combat counters, choices, consumables, exploration ratio. Built by `buildRaidReport()` in the same slice; emitted on both extract and death.
+- `RaidOutcomeModal` (`src/components/panels/RaidOutcomeModal.tsx`) rewritten as a sectioned report with extract/death styling variants. VFX: backdrop fade-in, card scale-up, one-shot sweep highlight (keyframes in `src/app/globals.css` — `.raid-report-backdrop`, `.raid-report-card`, `.raid-report-sweep`).
+- Save schema bumped to v25 with backfill for in-progress raids missing the new fields.
+- Map-replay (path tracking + visualization) deliberately deferred to pass 2.
 
 ### Sprint K — Energy as hunger/thirst + medical ladder (2026-05-09)
 

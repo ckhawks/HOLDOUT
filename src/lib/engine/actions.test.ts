@@ -19,17 +19,30 @@ function freshRunState(over: Partial<RunState> = {}): RunState {
 
 function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
   const map = generateMap(makeRng(1));
+  const equipment = {
+    pockets: { grid: { width: 4, height: 4 }, items: [] },
+    bag: null,
+    weapon: null,
+    armor: null,
+    helmet: null,
+  };
   return {
     locationId: "warehouse",
     startedAt: 0,
     runState: freshRunState(),
     log: [],
-    equipment: {
-      pockets: { grid: { width: 4, height: 4 }, items: [] },
-      bag: null,
-      weapon: null,
-      armor: null,
-      helmet: null,
+    equipment,
+    startingEquipment: equipment,
+    tally: {
+      damageTaken: 0,
+      energySpent: 0,
+      heatPeak: 0,
+      combatTargetsDown: 0,
+      combatTargetsFled: 0,
+      combatBrokeContact: 0,
+      combatTradedShots: 0,
+      choicesMade: [],
+      consumablesUsed: [],
     },
     active: true,
     pendingChoice: null,

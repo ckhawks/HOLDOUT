@@ -302,6 +302,22 @@ export interface RaidMap {
   entry: { x: number; y: number };
 }
 
+// Running counters captured during a raid, surfaced in the after-raid report.
+// Updated by the store as ticks resolve / consumables are used / choices are
+// made. Stays on CurrentRaid (not on the engine result) so the report can
+// summarize the entire run, not just the last tick.
+export interface RaidTally {
+  damageTaken: number;
+  energySpent: number;
+  heatPeak: number;
+  combatTargetsDown: number;
+  combatTargetsFled: number;
+  combatBrokeContact: number;
+  combatTradedShots: number;
+  choicesMade: Array<{ eventId: EventKind; optionId: string; label: string }>;
+  consumablesUsed: Array<{ itemId: string }>;
+}
+
 export interface CurrentRaid {
   locationId: string;
   startedAt: number;
@@ -312,6 +328,11 @@ export interface CurrentRaid {
   // back to operative.equipment. On death: contents wiped, bag/weapon/armor/
   // helmet stripped, operative comes back with bare pockets.
   equipment: Equipment;
+  // Snapshot of equipment at raid start, taken in startRaid(). Used by the
+  // after-raid report to diff what came home (kept) vs what was lost vs
+  // what was newly looted. UIDs are the join key.
+  startingEquipment: Equipment;
+  tally: RaidTally;
   active: boolean;
   pendingChoice: PendingChoice | null;
   map: RaidMap;

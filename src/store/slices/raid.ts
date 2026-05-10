@@ -34,7 +34,8 @@ import {
   tileAt,
 } from "@/lib/engine/map";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
-import type { GameState, RaidOutcome } from "../game";
+import { ITEMS } from "@/lib/data/items";
+import type { GameState, RaidOutcome, RaidReportItem } from "../game";
 
 // Raid lifecycle slice. Owns currentRaid + raidOutcome state and every action
 // that mutates a raid in flight: begin, tick, override, choice resolution,
@@ -199,15 +200,31 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     const distanceFromExtract = Math.max(0, path.length - 1);
 
     const allLogs = entrance ? [...t.logs, entrance] : t.logs;
+    const nextHeat = Math.max(0, Math.min(100, currentRaid.runState.heat + t.heatDelta));
+    const tally: typeof currentRaid.tally = {
+      ...currentRaid.tally,
+      damageTaken: currentRaid.tally.damageTaken + Math.max(0, -t.healthDelta),
+      energySpent: currentRaid.tally.energySpent + Math.max(0, -t.energyDelta),
+      heatPeak: Math.max(currentRaid.tally.heatPeak, nextHeat),
+      combatTargetsDown:
+        currentRaid.tally.combatTargetsDown + (t.combatOutcome === "target_down" ? 1 : 0),
+      combatTargetsFled:
+        currentRaid.tally.combatTargetsFled + (t.combatOutcome === "target_fled" ? 1 : 0),
+      combatBrokeContact:
+        currentRaid.tally.combatBrokeContact + (t.combatOutcome === "broke_contact" ? 1 : 0),
+      combatTradedShots:
+        currentRaid.tally.combatTradedShots + (t.combatOutcome === "trade_shots" ? 1 : 0),
+    };
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, ...allLogs],
       operativePos: nextPos,
       map: nextMap,
       nextStep,
+      tally,
       runState: {
         ...currentRaid.runState,
-        heat: Math.max(0, Math.min(100, currentRaid.runState.heat + t.heatDelta)),
+        heat: nextHeat,
         health: Math.max(0, Math.min(100, currentRaid.runState.health + t.healthDelta)),
         energy: Math.max(0, Math.min(100, currentRaid.runState.energy + t.energyDelta)),
         ammo: Math.max(0, currentRaid.runState.ammo + t.ammoDelta),
@@ -331,6 +348,21 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     const choiceLogs: LogEntry[] = [
       makeLog("choice_result", choice.label, undefined, Date.now(), Math.random),
     ];
+    const choiceHeat = Math.max(0, Math.min(100, rs.heat + (fx.heatDelta ?? 0)));
+    const tally: typeof currentRaid.tally = {
+      ...currentRaid.tally,
+      damageTaken: currentRaid.tally.damageTaken + Math.max(0, -(fx.healthDelta ?? 0)),
+      energySpent: currentRaid.tally.energySpent + Math.max(0, -(fx.energyDelta ?? 0)),
+      heatPeak: Math.max(currentRaid.tally.heatPeak, choiceHeat),
+      choicesMade: [
+        ...currentRaid.tally.choicesMade,
+        {
+          eventId: currentRaid.pendingChoice.eventId,
+          optionId: choice.id,
+          label: choice.label,
+        },
+      ],
+    };
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, ...choiceLogs],
@@ -338,9 +370,10 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       operativePos: nextPos,
       map: nextMap,
       nextStep,
+      tally,
       runState: {
         ...rs,
-        heat: Math.max(0, Math.min(100, rs.heat + (fx.heatDelta ?? 0))),
+        heat: choiceHeat,
         health: Math.max(0, Math.min(100, rs.health + (fx.healthDelta ?? 0))),
         energy: Math.max(0, Math.min(100, rs.energy + (fx.energyDelta ?? 0))),
         ammo: Math.max(0, rs.ammo + (fx.ammoDelta ?? 0)),
@@ -402,15 +435,39 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     if (!currentRaid || !currentRaid.active) return;
     const next = applyBandage(currentRaid, Date.now(), Math.random);
     if (next === currentRaid) return;
-    set({ currentRaid: next });
+    set({
+      currentRaid: {
+        ...next,
+        tally: {
+          ...next.tally,
+          consumablesUsed: [...next.tally.consumablesUsed, { itemId: "bandage_pack" }],
+        },
+      },
+    });
   },
 
   useConsumable: (uid) => {
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
+    // Capture itemId before applyConsumable so we can record what was used.
+    const eq = currentRaid.equipment;
+    const placement =
+      eq.pockets.items.find((p) => p.uid === uid) ??
+      eq.bag?.items.find((p) => p.uid === uid);
+    const itemId = placement?.itemId;
     const next = applyConsumable(currentRaid, uid, Date.now(), Math.random);
     if (next === currentRaid) return;
-    set({ currentRaid: next });
+    set({
+      currentRaid: itemId
+        ? {
+            ...next,
+            tally: {
+              ...next.tally,
+              consumablesUsed: [...next.tally.consumablesUsed, { itemId }],
+            },
+          }
+        : next,
+    });
   },
 
   cancelRecall: () => {
@@ -480,6 +537,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
   endRaid: (extracted) => {
     const { currentRaid, operative, unlocks } = get();
     if (!currentRaid) return;
+    const report = buildRaidReport(currentRaid, extracted, Date.now());
     let nextOperative: Operative;
     let nextUnlocks = unlocks;
     if (extracted) {
@@ -529,14 +587,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       unlocks: nextUnlocks,
       operative: nextOperative,
       shop,
-      // Only death forces a modal — extracts go straight back to the terminal.
-      raidOutcome: extracted
-        ? null
-        : {
-            type: "death",
-            recoveredCount: 0,
-            locationId: currentRaid.locationId,
-          },
+      raidOutcome: report,
     });
   },
 
@@ -544,3 +595,86 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     set({ raidOutcome: null });
   },
 });
+
+// Build the after-raid report from the raid's startingEquipment snapshot,
+// final equipment, and tally counters. On death the kit is treated as fully
+// lost — itemsKept/itemsLooted are empty and everything visible at start +
+// every item picked up sits in itemsLost.
+function buildRaidReport(
+  raid: CurrentRaid,
+  extracted: boolean,
+  endedAt: number,
+): RaidOutcome {
+  const startItems = flattenEquipment(raid.startingEquipment);
+  const endItems = extracted ? flattenEquipment(raid.equipment) : [];
+  const startUids = new Set(startItems.map((i) => i.uid));
+  const endUids = new Set(endItems.map((i) => i.uid));
+
+  const itemsKept = endItems.filter((i) => startUids.has(i.uid)).map(toReportItem);
+  const itemsLooted = endItems.filter((i) => !startUids.has(i.uid)).map(toReportItem);
+  const itemsLost = extracted
+    ? startItems.filter((i) => !endUids.has(i.uid)).map(toReportItem)
+    : // On death: starting kit + everything picked up during the raid is gone.
+      [...startItems, ...flattenEquipment(raid.equipment).filter((i) => !startUids.has(i.uid))]
+        .map(toReportItem);
+
+  const startingValue = startItems.reduce((s, i) => s + sellValueFor(i.itemId), 0);
+  const endingValue = endItems.reduce((s, i) => s + sellValueFor(i.itemId), 0);
+
+  // Collapse consumablesUsed by itemId.
+  const consumableCounts = new Map<string, number>();
+  for (const c of raid.tally.consumablesUsed) {
+    consumableCounts.set(c.itemId, (consumableCounts.get(c.itemId) ?? 0) + 1);
+  }
+
+  const totalTiles = raid.map.tiles.filter((t) => !t.blocked).length;
+  const tilesVisited = raid.map.tiles.filter((t) => t.visited).length;
+
+  return {
+    type: extracted ? "extracted" : "death",
+    locationId: raid.locationId,
+    startedAt: raid.startedAt,
+    endedAt,
+    durationMs: endedAt - raid.startedAt,
+    itemsKept,
+    itemsLost,
+    itemsLooted,
+    startingValue,
+    endingValue,
+    finalHealth: raid.runState.health,
+    finalEnergy: raid.runState.energy,
+    damageTaken: raid.tally.damageTaken,
+    energySpent: raid.tally.energySpent,
+    heatPeak: raid.tally.heatPeak,
+    combatTargetsDown: raid.tally.combatTargetsDown,
+    combatTargetsFled: raid.tally.combatTargetsFled,
+    combatBrokeContact: raid.tally.combatBrokeContact,
+    combatTradedShots: raid.tally.combatTradedShots,
+    choicesMade: raid.tally.choicesMade.map((c) => ({
+      eventId: c.eventId,
+      optionId: c.optionId,
+      label: c.label,
+    })),
+    consumablesUsed: Array.from(consumableCounts.entries()).map(([itemId, count]) => ({
+      itemId,
+      count,
+    })),
+    tilesVisited,
+    totalTiles,
+  };
+}
+
+function flattenEquipment(eq: import("@/lib/types").Equipment) {
+  return [
+    ...eq.pockets.items.map((i) => ({ uid: i.uid, itemId: i.itemId })),
+    ...(eq.bag?.items.map((i) => ({ uid: i.uid, itemId: i.itemId })) ?? []),
+  ];
+}
+
+function toReportItem(i: { uid: string; itemId: string }): RaidReportItem {
+  return { uid: i.uid, itemId: i.itemId, sellValue: sellValueFor(i.itemId) };
+}
+
+function sellValueFor(itemId: string): number {
+  return ITEMS[itemId]?.sellValue ?? 0;
+}
