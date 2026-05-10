@@ -708,11 +708,11 @@ function ConfirmSellJunkDialog({
 }
 
 // Display order for category bands when grouping is on. Roughly: equippables
-// first (military / bag / mechanical / electronics), consumables second,
+// first (military / apparel / mechanical / electronics), consumables second,
 // valuables / intel last. Keeps "stuff to use" near the top.
 const CATEGORY_ORDER: ItemCategory[] = [
   "military",
-  "bag",
+  "apparel",
   "mechanical",
   "electronics",
   "medical",

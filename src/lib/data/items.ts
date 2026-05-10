@@ -100,11 +100,12 @@ export const ITEMS: Record<string, Item> = {
   bio_synth_sample: { id: "bio_synth_sample", name: "Bio-Synth Sample",  tier: "experimental", category: "experimental", sellValue: 380, weight: 1, shape: S.vert2 },
   workbench_schematic:{ id: "workbench_schematic", name: "Schematic: Workbench", tier: "experimental", category: "experimental", sellValue: 0, weight: 1, shape: S.s4 },
 
-  // bags — equippable. Provides a secondary grid alongside built-in pockets.
-  // Not in random loot pools yet; intended for the shop and rare tagged drops.
-  canvas_satchel:   { id: "canvas_satchel",   name: "Canvas Satchel",     tier: "common",   category: "bag", sellValue: 60,  weight: 2, shape: S.square2, slot: "bag", bagGrid: { width: 4, height: 2 } },
-  tactical_pack:    { id: "tactical_pack",    name: "Tactical Pack",      tier: "uncommon", category: "bag", sellValue: 220, weight: 3, shape: S.square2, slot: "bag", bagGrid: { width: 5, height: 5 } },
-  raider_rucksack:  { id: "raider_rucksack",  name: "Raider Rucksack",    tier: "rare",     category: "bag", sellValue: 540, weight: 4, shape: S.square2, slot: "bag", bagGrid: { width: 6, height: 6 } },
+  // bags — equippable apparel. Provides a secondary grid alongside built-in
+  // pockets. Drop via the `apparel` category weight on each location (eventual
+  // home for armor/helmet items too).
+  canvas_satchel:   { id: "canvas_satchel",   name: "Canvas Satchel",     tier: "common",   category: "apparel", sellValue: 60,  weight: 2, shape: S.square2, slot: "bag", bagGrid: { width: 4, height: 2 } },
+  tactical_pack:    { id: "tactical_pack",    name: "Tactical Pack",      tier: "uncommon", category: "apparel", sellValue: 220, weight: 3, shape: S.square2, slot: "bag", bagGrid: { width: 5, height: 5 } },
+  raider_rucksack:  { id: "raider_rucksack",  name: "Raider Rucksack",    tier: "rare",     category: "apparel", sellValue: 540, weight: 4, shape: S.square2, slot: "bag", bagGrid: { width: 6, height: 6 } },
 };
 
 export const ITEM_IDS = Object.keys(ITEMS);

@@ -14,10 +14,10 @@ import type { ItemCategory, ItemTier, ShopOffer } from "@/lib/types";
 
 type PurchaseToast = { id: number; name: string; tier: ItemTier; x: number; y: number };
 
-const CATEGORY_ORDER: ItemCategory[] = ["bag", "medical", "consumables", "military"];
+const CATEGORY_ORDER: ItemCategory[] = ["apparel", "medical", "consumables", "military"];
 
 const CATEGORY_META: Record<string, { label: string; Icon: typeof Backpack }> = {
-  bag: { label: "Bags", Icon: Backpack },
+  apparel: { label: "Apparel", Icon: Backpack },
   medical: { label: "Medical", Icon: Pill },
   consumables: { label: "Rations", Icon: Soup },
   military: { label: "Munitions", Icon: Crosshair },

@@ -23,7 +23,7 @@ export const CATEGORY_ICON: Record<ItemCategory, LucideIcon> = {
   intel: FileText,
   military: Crosshair,
   experimental: Atom,
-  bag: Backpack,
+  apparel: Backpack,
 };
 
 export function categoryIconFor(itemId: string | undefined): LucideIcon | null {

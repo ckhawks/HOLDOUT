@@ -15,6 +15,7 @@ export const LOCATIONS: Location[] = [
       military: 1,
       valuables: 1,
       intel: 1,
+      apparel: 1,
     },
     roomTypeWeights: {
       corridor: 6,
@@ -39,6 +40,7 @@ export const LOCATIONS: Location[] = [
       intel: 2,
       valuables: 1,
       electronics: 1,
+      apparel: 1,
     },
     roomTypeWeights: {
       corridor: 8,
@@ -65,6 +67,7 @@ export const LOCATIONS: Location[] = [
       military: 2,
       intel: 2,
       consumables: 1,
+      apparel: 1,
     },
     roomTypeWeights: {
       gantry: 5,
@@ -88,6 +91,7 @@ export const LOCATIONS: Location[] = [
       mechanical: 1,
       valuables: 1,
       experimental: 1,
+      apparel: 1,
     },
     roomTypeWeights: {
       office: 6,
@@ -116,6 +120,7 @@ export const LOCATIONS: Location[] = [
       electronics: 3,
       intel: 2,
       mechanical: 1,
+      apparel: 1,
     },
     roomTypeWeights: {
       mechanical: 5,

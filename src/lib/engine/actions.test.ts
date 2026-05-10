@@ -59,11 +59,30 @@ function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
 }
 
 describe("autoPickAction", () => {
-  it("picks extract_step when extracting flag is set", () => {
+  it("picks extract_step when extracting flag is set and operative is away from entry", () => {
+    const baseMap = generateMap(makeRng(1));
+    const offEntry = baseMap.tiles.find(
+      (t) => t.type !== "entry" && !t.blocked,
+    );
+    if (!offEntry) throw new Error("seed produced no off-entry tile");
     const raid = makeRaid({
+      map: baseMap,
+      operativePos: { x: offEntry.x, y: offEntry.y },
       runState: freshRunState({ flags: ["extracting"], distanceFromExtract: 5 }),
     });
     expect(autoPickAction(raid)).toBe("extract_step");
+  });
+
+  it("picks extract_now when extracting and standing on the entry tile", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ flags: ["extracting"], distanceFromExtract: 0 }),
+    });
+    expect(autoPickAction(raid)).toBe("extract_now");
+  });
+
+  it("does NOT auto-pick extract_now when on entry tile but not extracting", () => {
+    const raid = makeRaid();
+    expect(autoPickAction(raid)).not.toBe("extract_now");
   });
 
   it("picks loot when current tile has loot remaining", () => {

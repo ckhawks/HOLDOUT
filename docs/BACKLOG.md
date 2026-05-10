@@ -169,6 +169,12 @@ Shipped work, newest phases last. Acts as a record of what landed when.
 
 ## Phases
 
+### Apparel category + bags droppable as loot (2026-05-10)
+
+- Renamed `ItemCategory` member `bag` → `apparel` (`src/lib/types.ts`) so the slot can eventually house armor/helmet drops alongside bags. Updated `category: "apparel"` on canvas_satchel / tactical_pack / raider_rucksack (`src/lib/data/items.ts`), `CATEGORY_ICON.apparel` (`src/lib/itemIcon.ts`), ShopPanel `CATEGORY_ORDER`/`CATEGORY_META` (label "Apparel"), and StashPanel grouping order.
+- Added `apparel: 1` to every location's `categoryWeights` in `src/lib/data/locations.ts`. Before, no location weighted `bag`, so bags could only land via the 6% wildcard fallback in `pickItemForLocation` — effectively never. Now they drop at a noticeable-but-modest rate via the normal weighted path.
+- Comment in `src/lib/data/items.ts` updated; the prior "Not in random loot pools yet" note was stale.
+
 ### Item pool expansion + fuel_cell de-consumed (2026-05-10)
 
 - Added 22 items in `src/lib/data/items.ts` across mechanical (ball_bearing, valve_handle, precision_gear, powered_actuator), electronics (microchip, coolant_loop, quantum_capacitor), medical (gauze_roll, iodine_packet, vitamin_shot — all sellable scrap, no consumable effects), consumables (protein_bar, tea_brick, electrolyte_pouch — registered in CONSUMABLE_EFFECTS), valuables (copper_coin_stack, vintage_zippo, tarnished_pendant, collector_pin, platinum_band), intel (shipping_manifest, patrol_schedule), military (spent_casing, combat_knife, camo_strip), and experimental (corrupted_data_slug, bio_synth_sample). Total item count now ~67 (was ~45).

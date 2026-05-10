@@ -9,7 +9,7 @@ export type ItemCategory =
   | "intel"
   | "military"
   | "experimental"
-  | "bag";
+  | "apparel";
 
 // Equipment slots an item can occupy. `bag` is functional (defines the
 // secondary grid). `weapon`/`armor`/`helmet` are reserved — slots exist but
@@ -382,6 +382,7 @@ export type ActionId =
   | "loot"
   | "stay"
   | "extract_step"
+  | "extract_now"
   | "fight"
   | "flee"
   | "breach_locked";

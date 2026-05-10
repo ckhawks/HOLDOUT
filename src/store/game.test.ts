@@ -166,17 +166,36 @@ describe("doTick", () => {
     expect(next.pendingEnd?.at).toBeGreaterThan(Date.now() - 100);
   });
 
-  it("sets pendingEnd on extract success when operative reaches entry tile", () => {
+  it("sets pendingEnd on extract success when operative fires extract_now on entry tile", () => {
     useGame.getState().beginRaid("warehouse");
     const raid = useGame.getState().currentRaid!;
-    // Place the operative on the entry tile, mark them extracting, queue a
-    // tick. doTick should detect "at extract" and set pendingEnd.success=true.
+    // Operative on the entry tile while extracting, with extract_now queued —
+    // the new "leave" action. doTick should mark the raid extracted-successful.
     useGame.setState({
       currentRaid: {
         ...raid,
         operativePos: { x: raid.map.entry.x, y: raid.map.entry.y },
-        // nextStep null so extract_step doesn't see a forward-pointing
-        // destination tile and fire a patrol-encounter pendingChoice.
+        nextStep: null,
+        runState: { ...raid.runState, flags: ["extracting"] },
+        queuedAction: "extract_now",
+      },
+    });
+    useGame.getState().doTick();
+    const next = useGame.getState().currentRaid!;
+    expect(next.active).toBe(false);
+    expect(next.pendingEnd?.success).toBe(true);
+  });
+
+  it("does NOT end raid just by arriving at entry tile while extracting", () => {
+    useGame.getState().beginRaid("warehouse");
+    const raid = useGame.getState().currentRaid!;
+    // Operative on entry tile, extracting, queued action is extract_step (not
+    // extract_now). The raid must stay active — leaving requires firing
+    // extract_now, not merely standing on the tile.
+    useGame.setState({
+      currentRaid: {
+        ...raid,
+        operativePos: { x: raid.map.entry.x, y: raid.map.entry.y },
         nextStep: null,
         runState: { ...raid.runState, flags: ["extracting"] },
         queuedAction: "extract_step",
@@ -184,8 +203,10 @@ describe("doTick", () => {
     });
     useGame.getState().doTick();
     const next = useGame.getState().currentRaid!;
-    expect(next.active).toBe(false);
-    expect(next.pendingEnd?.success).toBe(true);
+    expect(next.active).toBe(true);
+    expect(next.pendingEnd).toBeNull();
+    // Auto-picker should now have promoted the queued action to extract_now.
+    expect(next.queuedAction).toBe("extract_now");
   });
 });
 

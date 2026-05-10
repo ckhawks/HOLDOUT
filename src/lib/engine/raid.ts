@@ -309,6 +309,7 @@ interface DeltaAccum {
   movement: "none" | "forward" | "lateral" | "backward";
   consumedLoot: boolean;
   breachedLocked: boolean;
+  extractedNow: boolean;
   combatOutcome?: CombatOutcome;
 }
 
@@ -344,6 +345,7 @@ function tryPatrolInterrupt(
     movement: "none",
     consumedLoot: false,
     breachedLocked: false,
+    extractedNow: false,
     pendingChoice: patrolPendingChoice(now),
   };
 }
@@ -384,6 +386,11 @@ function handleExtractStep(ctx: TickCtx, d: DeltaAccum, bleed: number): ActionTi
   });
   if (interrupt) return interrupt;
   d.movement = "backward";
+}
+
+function handleExtractNow(ctx: TickCtx, d: DeltaAccum): void {
+  d.extractedNow = true;
+  d.logs.push(ctx.log("system", "At the extract point. Pulling out.", undefined));
 }
 
 function handleStay(ctx: TickCtx, d: DeltaAccum): void {
@@ -554,6 +561,9 @@ export interface ActionTickResult {
   consumedLoot: boolean;
   // True if the action consumed one of the tile's locked containers.
   breachedLocked: boolean;
+  // True if the operative just executed the "leave" action on the extract
+  // tile. The store reads this to schedule a successful raid end.
+  extractedNow: boolean;
   // Forced-choice modal raised by this action (e.g. patrol encounter on a
   // move). When set, the store sets pendingChoice and the action that
   // would have been applied is suppressed.
@@ -600,6 +610,7 @@ export function tickAction(
     movement: "none",
     consumedLoot: false,
     breachedLocked: false,
+    extractedNow: false,
   };
 
   // Dispatch. Patrol-style handlers can short-circuit with a full result
@@ -608,6 +619,7 @@ export function tickAction(
   switch (action) {
     case "move_forward": early = handleMoveForward(ctx, d, bleed) ?? undefined; break;
     case "extract_step": early = handleExtractStep(ctx, d, bleed) ?? undefined; break;
+    case "extract_now": handleExtractNow(ctx, d); break;
     case "stay": handleStay(ctx, d); break;
     case "loot": handleLootAction(ctx, d); break;
     case "breach_locked": handleBreachLocked(ctx, d); break;
@@ -639,6 +651,7 @@ export function tickAction(
     movement: d.movement,
     consumedLoot: d.consumedLoot,
     breachedLocked: d.breachedLocked,
+    extractedNow: d.extractedNow,
     combatOutcome: d.combatOutcome,
   };
 }

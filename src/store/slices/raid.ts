@@ -256,18 +256,13 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       return;
     }
 
-    // Extract complete: operative actually standing on the entry tile.
-    const stillExtracting = raid.runState.flags.includes("extracting");
-    const atEntry =
-      raid.operativePos.x === raid.map.entry.x &&
-      raid.operativePos.y === raid.map.entry.y;
-    if (stillExtracting && atEntry) {
+    // Extract complete: the operative just fired the `extract_now` action on
+    // the entry tile. Arriving at the entry tile no longer ends the raid by
+    // itself — the player (or auto-picker, when `extracting` is set) has to
+    // commit to leaving.
+    if (t.extractedNow) {
       raid = {
         ...raid,
-        log: [
-          ...raid.log,
-          makeLog("system", "At the extract point. Pulling out.", undefined, tickNow, rand),
-        ],
         active: false,
         pendingEnd: { at: tickNow + 600, success: true },
       };

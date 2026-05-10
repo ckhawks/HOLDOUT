@@ -45,6 +45,16 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     description: "Move toward the extract point.",
     isEligible: (raid) => raid.runState.flags.includes("extracting"),
   },
+  extract_now: {
+    id: "extract_now",
+    label: "Leave",
+    description: "Step off the extract point and end the raid.",
+    isEligible: (raid) => {
+      if (raid.runState.flags.includes("combat_engaged")) return false;
+      const tile = currentTile(raid);
+      return !!tile && tile.type === "entry";
+    },
+  },
   fight: {
     id: "fight",
     label: "Fight back",
@@ -99,6 +109,7 @@ const STATIC_CHIPS: Record<ActionId, ActionChip[]> = {
     { kind: "energy", value: "-2", tone: "bad" },
   ],
   extract_step: [{ kind: "distance", value: "-1", tone: "good" }],
+  extract_now: [{ kind: "misc", value: "leave", tone: "good" }],
   fight: [
     { kind: "ammo", value: "-2", tone: "bad" },
     { kind: "heat", value: "+5", tone: "bad" },
@@ -175,6 +186,7 @@ export function autoPickAction(raid: CurrentRaid): ActionId {
   if (raid.runState.flags.includes("combat_engaged")) return "fight";
   if (raid.runState.flags.includes("extracting")) {
     if (raid.queuedAction === "loot" && ACTIONS.loot.isEligible(raid)) return "loot";
+    if (ACTIONS.extract_now.isEligible(raid)) return "extract_now";
     return "extract_step";
   }
   if (ACTIONS.loot.isEligible(raid)) return "loot";
@@ -195,7 +207,7 @@ export function primaryActionOrder(raid: CurrentRaid): ActionId[] {
 // Context actions only appear (under a divider) when their isEligible
 // returns true. They're the "this room has X" interactions: breach a
 // locked container, future lockpick, future use-key.
-const CONTEXT_ACTION_IDS: ActionId[] = ["breach_locked"];
+const CONTEXT_ACTION_IDS: ActionId[] = ["extract_now", "breach_locked"];
 export function contextActions(raid: CurrentRaid): ActionDef[] {
   if (raid.runState.flags.includes("combat_engaged")) return [];
   return CONTEXT_ACTION_IDS.map((id) => ACTIONS[id]).filter((a) =>
