@@ -17,10 +17,10 @@ export const THREAT_TILE_RATIO = 0.1;
 // breathing room to spot hostiles before they're forced into one.
 const MIN_THREAT_DEPTH = 2;
 
-// Per-location difficulty multiplier. Drives BLOCKED_TILE_RATIO and
-// THREAT_TILE_RATIO so a single field on Location can say "this place is
-// 40% harder" without per-knob overrides. Locations that need finer control
-// can still set blockedTileRatio explicitly to override the derived value.
+// Per-location difficulty multiplier. Scales THREAT_TILE_RATIO (i.e. how
+// dangerous the map is). Does NOT scale blockers — those are a layout-feel
+// choice per location (a Datacenter feels denser than a Warehouse regardless
+// of how dangerous it is), so each location sets blockedTileRatio explicitly.
 export const DIFFICULTY_MULTIPLIER: Record<"low" | "mid" | "high", number> = {
   low: 0.7,
   mid: 1.0,
@@ -260,7 +260,7 @@ export function generateMap(
       const adjacentToEntry = x === entry.x + 1 && y === entry.y;
       const protectedTile = adjacentToEntry || onCorridor(x, y);
       const mult = location ? DIFFICULTY_MULTIPLIER[location.difficulty] : 1;
-      const blockRatio = location?.blockedTileRatio ?? BLOCKED_TILE_RATIO * mult;
+      const blockRatio = location?.blockedTileRatio ?? BLOCKED_TILE_RATIO;
       const blocked = !protectedTile && rand() < blockRatio;
       const type: RoomType = blocked ? "locked" : pickWeighted(rand, weights);
       const lootMax = blocked ? 0 : pickLootPotential(rand, type);
