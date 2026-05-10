@@ -20,6 +20,7 @@ import { useGame } from "@/store/game";
 import { ACTION_TIMER_MS } from "@/lib/engine/raid";
 import {
   ACTIONS,
+  actionLabelFor,
   chipsFor,
   contextActions,
   countFor,
@@ -204,7 +205,7 @@ function ActionRow({
         )}
       />
       <div className="flex flex-1 flex-col gap-1">
-        <span className="text-[12px] font-medium leading-tight">{a.label}</span>
+        <span className="text-[12px] font-medium leading-tight">{actionLabelFor(id, raid)}</span>
         <span className="text-[10px] font-normal leading-tight text-muted-foreground opacity-80">
           {a.description}
         </span>

@@ -141,6 +141,23 @@ export function countFor(id: ActionId, raid: CurrentRaid): number | null {
 // Backwards-compat export so existing imports keep working.
 export const ACTION_CHIPS = STATIC_CHIPS;
 
+// Dynamic label that reflects the actual move direction for `move_forward`.
+// The auto-picker's lane drift and the player's tile-click override can both
+// produce moves that aren't strictly forward; the label tracks reality so
+// the action card matches the next-step preview arrow on the map.
+export function actionLabelFor(id: ActionId, raid: CurrentRaid): string {
+  if (id !== "move_forward") return ACTIONS[id].label;
+  const step = raid.nextStep;
+  if (!step) return ACTIONS.move_forward.label;
+  const dx = step.x - raid.operativePos.x;
+  const dy = step.y - raid.operativePos.y;
+  if (dx > 0) return "Move forward";
+  if (dx < 0) return "Move back";
+  if (dy < 0) return "Move up";
+  if (dy > 0) return "Move down";
+  return ACTIONS.move_forward.label;
+}
+
 export function currentTile(raid: CurrentRaid): MapTile | undefined {
   return tileAt(raid.map, raid.operativePos.x, raid.operativePos.y);
 }
