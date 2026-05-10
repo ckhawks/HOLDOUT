@@ -413,12 +413,16 @@ function handleBreachLocked(ctx: TickCtx, d: DeltaAccum): void {
   d.ammoDelta = -2;
   d.heatDelta = 14;
   d.breachedLocked = true;
+  // Roll: 25% empty / 40% common / 35% rare. Locked containers should reward
+  // the noise + ammo cost more than a regular looter — bumped from the
+  // initial 30/50/20 split. Fast-follow on the backlog: require an
+  // explosives item (or a quieter key) to actually pop the lock.
   const r = rand();
-  if (r < 0.3) {
+  if (r < 0.25) {
     d.logs.push(log("flavor", `Blasted the ${target.name}. Empty inside.`, undefined));
     return;
   }
-  const isRare = r >= 0.8;
+  const isRare = r >= 0.65;
   const drop = rollLoot(ctx, isRare);
   if (!drop) {
     d.logs.push(log("flavor", `Blasted the ${target.name}. Empty inside.`, undefined));
