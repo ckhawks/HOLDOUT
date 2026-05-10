@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { categoryIconFor } from "@/lib/itemIcon";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Backpack, Coins, Crosshair, FolderTree, Heart, PackageOpen, PillBottle, Shirt, Zap } from "lucide-react";
+import { ArrowLeft, Backpack, Coins, Crosshair, FolderTree, Heart, PackageOpen, Pin, PillBottle, Shirt, Zap } from "lucide-react";
 import { isConsumable } from "@/lib/engine/consumables";
 import { isJunk } from "@/store/slices/economy";
 import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
@@ -30,6 +30,7 @@ export function StashPanel() {
   const equipment = operative.equipment;
   const inRaid = useGame((s) => !!s.currentRaid);
   const sellItem = useGame((s) => s.sellItem);
+  const togglePinItem = useGame((s) => s.togglePinItem);
   const sellAllJunk = useGame((s) => s.sellAllJunk);
   const kitFromStash = useGame((s) => s.kitFromStash);
   const stashFromKit = useGame((s) => s.stashFromKit);
@@ -208,7 +209,7 @@ export function StashPanel() {
   const [confirmSellJunk, setConfirmSellJunk] = useState(false);
   const [hoveringSellJunk, setHoveringSellJunk] = useState(false);
   const junkItems = useMemo(
-    () => stash.filter((si) => isJunk(ITEMS[si.itemId])),
+    () => stash.filter((si) => !si.pinned && isJunk(ITEMS[si.itemId])),
     [stash],
   );
   const junkUidSet = useMemo(() => new Set(junkItems.map((i) => i.uid)), [junkItems]);
@@ -531,6 +532,7 @@ export function StashPanel() {
                               "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2 transition-opacity",
                               !inRaid && "cursor-grab active:cursor-grabbing",
                               ctrlClickAction && "hover:border-emerald-500/40",
+                              si.pinned && "border-amber-400/40 bg-amber-400/5",
                               beingDragged && "opacity-30",
                               hoveringSellJunk && !junkUidSet.has(si.uid) && "opacity-25",
                             )}
@@ -543,6 +545,19 @@ export function StashPanel() {
                               <span className="font-mono text-xs text-muted-foreground tabular-nums">
                                 ¤{item.sellValue}
                               </span>
+                              <Tooltip text={si.pinned ? "Unpin (allow bulk sell)" : "Pin (protect from bulk sell)"}>
+                                <button
+                                  onClick={() => togglePinItem(si.uid)}
+                                  className={cn(
+                                    "inline-flex cursor-pointer items-center rounded-sm border border-transparent px-1.5 py-0.5 transition",
+                                    si.pinned
+                                      ? "text-amber-300 hover:text-amber-200"
+                                      : "text-muted-foreground/60 opacity-0 hover:border-border hover:text-foreground group-hover:opacity-100",
+                                  )}
+                                >
+                                  <Pin className="size-3" />
+                                </button>
+                              </Tooltip>
                               {fit && (
                                 <Tooltip text={`Move to ${fit.slot}`}>
                                   <button

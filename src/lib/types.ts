@@ -47,6 +47,9 @@ export interface StashItem {
   // sites (kit→stash, shop buy, empty-kit). Optional for backwards-compat
   // with pre-v26 saves; sort-by-date treats missing as 0 (oldest).
   acquiredAt?: number;
+  // Pinned items are excluded from sellAllJunk and never auto-sold. Doesn't
+  // affect equip/kit movement — pin = "don't sell", not "freeze".
+  pinned?: boolean;
 }
 
 export interface PackPlacement extends StashItem {

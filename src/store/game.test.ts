@@ -318,6 +318,29 @@ describe("sellItem", () => {
   });
 });
 
+describe("pin / sellAllJunk", () => {
+  it("togglePinItem flips the pinned flag", () => {
+    resetStore([{ uid: "u1", itemId: "scrap_metal" }]);
+    useGame.getState().togglePinItem("u1");
+    expect(useGame.getState().stash[0].pinned).toBe(true);
+    useGame.getState().togglePinItem("u1");
+    expect(useGame.getState().stash[0].pinned).toBeFalsy();
+  });
+
+  it("sellAllJunk skips pinned items", () => {
+    resetStore([
+      { uid: "u1", itemId: "scrap_metal" },
+      { uid: "u2", itemId: "rusted_bolt", pinned: true },
+    ]);
+    const before = useGame.getState().cash;
+    useGame.getState().sellAllJunk();
+    const s = useGame.getState();
+    expect(s.stash.find((x) => x.uid === "u1")).toBeUndefined();
+    expect(s.stash.find((x) => x.uid === "u2")).toBeDefined();
+    expect(s.cash).toBeGreaterThan(before);
+  });
+});
+
 describe("kit / equipment flow", () => {
   it("equipFromStash bag → operative.equipment.bag set, stash entry removed", () => {
     resetStore([{ uid: "bag1", itemId: "canvas_satchel" }]);

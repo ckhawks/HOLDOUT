@@ -27,6 +27,7 @@ export interface EconomySlice {
   sellAllJunk: () => void;
   buyOffer: (offerId: string) => boolean;
   buyStashUpgrade: () => void;
+  togglePinItem: (uid: string) => void;
   // Debug-only: re-roll the shop offers immediately. Wired to a button in
   // the Marketplace panel that's only shown when debugMode is on.
   debugResetShop: () => void;
@@ -37,6 +38,8 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
     const { stash, cash } = get();
     const idx = stash.findIndex((i) => i.uid === uid);
     if (idx === -1) return;
+    // Pinned items can still be sold via single-item sell — pin only blocks
+    // the bulk sell-all-junk path (where accidental sells matter most).
     const value = ITEMS[stash[idx].itemId]?.sellValue ?? 0;
     if (value <= 0) return;
     const next = [...stash];
@@ -50,7 +53,7 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
     const keep: StashItem[] = [];
     for (const si of stash) {
       const item = ITEMS[si.itemId];
-      if (isJunk(item)) {
+      if (!si.pinned && isJunk(item)) {
         earned += item!.sellValue;
       } else {
         keep.push(si);
@@ -58,6 +61,15 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
     }
     if (earned === 0) return;
     set({ stash: keep, cash: cash + earned });
+  },
+
+  togglePinItem: (uid) => {
+    const { stash } = get();
+    const idx = stash.findIndex((i) => i.uid === uid);
+    if (idx === -1) return;
+    const next = [...stash];
+    next[idx] = { ...next[idx], pinned: !next[idx].pinned };
+    set({ stash: next });
   },
 
   buyOffer: (offerId) => {
