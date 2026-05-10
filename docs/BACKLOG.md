@@ -58,23 +58,18 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - food consumed during raid to keep energy up
 - need item that can restore HP (over time?) — see also AI medical-ladder proposal below
 - need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
-- remove randomly got shot when entered room, replace with just pure environmental things (later todo: make it so like an agility skill could reduce % of this happening)
-- debug button to reset shop stock
-- increase the rate of rare items in locked crates
-- later: make blasting to get rare loot take some sort of explosives item. maybe we shouldnt say guarantee rare loot
+- later: make blasting to get rare loot take some sort of explosives item; key/keycard as quieter alternative (uses key before explosives → quieter)
+- stock-market-style price drift over time — item categories (or specific items) sell for different values across days/raids; not just per-instance variance, a slow market trend on top
+- agility skill that reduces the chance of environmental damage interrupts
 - stash sized by # of cells (tetris cells), bigger items = more space, no grid management
-- ability to pin/lock items in stash
 - sometimes make the extract point not the starting point (midway in level somewhere)
 - small shop: buy backpack, decent low/mid weapon, ammo
 - make it so bags can have split inventory sections, like tarkov rigs/bags (i.e. a 2x3 area and a 3x3 area)
 - backpack packing like Tarkov for dropped bags (hard)
-- item value should fluctuate
-- stash should show how long you've had an item for
 - hideout: foundry — melt metals down, forge items. Construct foundry first.
 - realistic ammo: magazines, swap mags, reload from pack ammo
 - opponent quality preview ("the big scary guy" vs "the little shrimp" vs "cant tell")
 - add locked doors (edges on map); action in action list to try to keypad/lockpick etc
-- add more items in inventory = more heat gain per turn (very slight, just to counter end-game-y stuff) (because you're louder moving around); maybe this could be based on weight (items get weight separate from cells size?)
 - repair bench, uses wurm-style rotating repair materials/items to increase condition
 - hacking minigame? keypads?
 - multiple operatives...
@@ -243,6 +238,15 @@ Shipped work, newest phases last. Acts as a record of what landed when.
 
 ## From the player wishlist
 
+- ✅ **QoL pass (2026-05-10)** — bundled wishlist hits:
+  - **Stash item age** — tooltip shows "acquired Xm/h/d/w ago" (existing `acquiredAt` field, just rendered).
+  - **Debug mode toggle** — Settings checkbox; gates the Data tab and the new shop reset button. Persisted in save schema v27, off by default.
+  - **Shop reset debug button** — "Debug: reset stock" in Marketplace header, only visible in debug mode. Re-rolls offers via existing `refreshShop`.
+  - **Locked-crate rare-rate bump** — 30/50/20 → 25/40/35 (empty/common/rare). Locked containers cost ammo + heat, now reward.
+  - **Pin items in stash** — `pinned?: boolean` on StashItem, pin/unpin button per row, excluded from sellAllJunk and the junk-preview dim. Single-item sell still works on pinned items.
+  - **Per-item value variance** — each loot drop / shop buy rolls a ±15% sell-value modifier stored on the StashItem; preserved through pickup/kit/stash. Effective sell = round(base × mod). New helper `effectiveSellValue` in `slices/economy.ts`.
+  - **Carried weight → heat per move** — locomotion ticks add `round(weight × WEIGHT_HEAT_PER_KG)` heat. Lever in `engine/raid.ts`. First-cut tuning, expect to retune.
+  - **Random damage no longer gunfire** — environmental flavor pool replaces the "Took fire. Plate held — mostly." line; bleed odds retuned. (Also see fee8f59.)
 - ✅ **Movement override (one-shot)** — click an adjacent map tile to redirect the operative there next tick. Store action `overrideNextStep` validates orthogonal-adjacent + non-blocked + bounds + not in pendingChoice / extract / combat sub-modes; if valid, swaps `queuedAction` to `move_forward` and sets `nextStep` to the target. UI: hovered valid targets get a `cursor-pointer` + emerald hover ring (vs. the default foreground hover); the next-tile preview arrow follows the hovered target while hovering, so the player sees the redirect before clicking. Threat tiles are valid override targets — walking into them fires the existing patrol modal. Pass-2 (multi-tile destination/goal) is in the smaller-follow-ups section.
 - ✅ button to skip action timer (force proceed)
 - ✅ ctrl-click to move items to inventory quickly
