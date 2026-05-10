@@ -1,4 +1,12 @@
-# HOLDOUT
+# HOLDOUT — Design
+
+The canonical design doc. Combines the original brainstorm notes (concept, constraints, sprint plan from 2026-05-05) with the load-bearing constraints, principles, and UI pins consolidated from the now-retired PLAN.md (2026-05-06 → 2026-05-09).
+
+For active backlog and shipped changelog, see `BACKLOG.md`. For wide blue-sky ideas, see `BRAINSTORM.md`.
+
+---
+
+# Original concept notes (2026-05-05)
 
 Active design notes for the meshed game concept that emerged from the 2026-05-05 brainstorm. Name locked 2026-05-05 (was "Run Sheet"). Captures decisions made + open questions so the design doesn't have to be re-derived from chat.
 
@@ -328,3 +336,93 @@ Ideas that are good but explicitly NOT in the v1 sprint plan. Pull from this lis
 - **RimWorld** — Death Model A is RimWorld-flavor "downed colonist" handling.
 - **Wurm Unlimited** — skill-grows-by-use progression.
 - **Balatro** — collection-synergy feel (deferred to optional cards sprint).
+
+---
+
+# Locked design decisions (consolidated from PLAN.md)
+
+These are the constraints that shaped the design. Don't violate them without revisiting.
+
+- **No real-time skill PvP** as core loop
+- **No permadeath wipe** / progress erasure (Rust-style is out)
+- **No mobile-game energy timers / construction waits.** The game pauses when the player closes the tab. Zero real-world-clock gating anywhere.
+- **No tactical squad turn-based** (no XCOM, no Door Kickers)
+- **No quest-shaped objectives** (open-ended raids only — pick a location, go loot, come back; no "fetch X from Y")
+- **No Factorio-conveyor-cloning.** Crafting matters but factory automation as core does not.
+- **No logic gates / in-game coding** (not a redstoner sim)
+- **Not run-based progression** (Balatro-style is out — long single playthroughs preferred)
+- **No achievement-completionist hooks**
+- **No 3D, no game engine, no pixel-art-required v1**
+- **Endless progression.** No retirement, no cap, no soft-reset. Power-fantasy maximalism.
+
+---
+
+# Stack
+
+- **Next.js 16** + **TypeScript** + **Tailwind 4** + **shadcn/ui** (initialized with neutral base)
+- **Zustand 5** for state
+- **localStorage** for save state (no backend in v1)
+- **pnpm** as the package manager
+- **Vercel** for deploy (later)
+
+---
+
+# Implementation principles
+
+- **Pure engine, dirty UI.** Game logic in `lib/engine/` should be pure functions: `nextState = step(state, action)`. UI components subscribe to Zustand slices and dispatch actions.
+- **Single source of truth.** All game state in Zustand. No duplicated state in component-level useState.
+- **Schema versioning from day 1.** Save format already has it; data files (items, events) should use ID strings not array indices.
+- **No real-world-clock gating.** All "delays" are in-game ticks that pause when the game pauses. Use a manual tick loop or `requestAnimationFrame` driven by store state, NOT chained `setTimeout`s.
+- **Style discipline.** Monospace + neutral palette + one accent color. Don't theme-hop. shadcn defaults are fine.
+- **Data as data, not code.** Items, events, vocab tables live in `lib/data/` as plain TS objects. No magic strings; use ID consts.
+
+## Multiplayer port-readiness (deferred but plausible)
+
+Multiplayer is not on the roadmap, but it's a likely future direction. Until/unless the call changes, **keep the engine port-ready** so we don't have to rewrite gear/kit/combat systems if it lands later:
+
+- All game logic stays in `lib/engine/` as pure, side-effect-free, seedable functions. No DOM, no `window`, no `Date.now()` baked into RNG or game math.
+- Time inputs come in as parameters (e.g. `prunePending(raid, now)`), never read from `Date.now()` inside the engine. The store is the only place allowed to call `Date.now()`.
+- Zustand store stays a thin shell over engine helpers — store actions compute `next = engineFn(prev, ...)` and `set({ next })`. No game logic in components or in store closures.
+- Save format stays schema-versioned (already done).
+
+If we never go multiplayer, this discipline costs nothing. If we do, the engine ports to a Node server essentially as-is.
+
+---
+
+# Pinned UI/feel decisions
+
+These were tuned with the user — they're not accidents. Don't undo without asking.
+
+## Typography & feel
+
+- **Mixed typography**: sans for prose (subtitles, descriptions, log message text, item names in lists, module status); mono for terminal chrome (header, panel titles, stat labels, kind tags, timestamps, ¤ values, location IDs).
+- **Buttons**: sentence case (not all caps), sans (not mono), lucide icon on the *right* side of the label. Default `cursor-pointer` on Button base + sidebar buttons + select; `disabled:cursor-not-allowed` on disabled Buttons.
+- **Background**: dot pattern in `.grid-paper` (radial-gradient, 18px), not line grid. Lighter so text is readable.
+- **Sidebar width** is `w-20` (80px) — needed to fit "Hideout" / "Settings" labels at `text-[10px]`.
+
+## Items & loot display
+
+- **Items in feed log are highlighted via `⟦…⟧` markers** wrapped at template-substitution time. Renderer splits on the marker and applies tier color + `font-semibold`. **Not monospace** — user explicitly rejected mono for items. Templates **must not** pre-wrap `{item}` in `⟦…⟧` (regression test catches this).
+- **Item tier colors live in `src/lib/itemDisplay.ts`** (`TIER_COLOR` map). Reuse it; don't redeclare locally.
+
+## Comms feed
+
+- **Log feed**: opacity fade based on row distance from end (-5%/row, floor 0.25). NOT time-based. `transition-opacity` smooths the step.
+- **Log feed**: ghost "next event incoming" row at the bottom with pulsing dots + 10s linear progress bar that resets via `key={raid.log.length}`.
+- **Combat resolution log entries** (`kind: combat_resolved`) render as a distinct boxed callout (Crosshair icon, amber left border, soft amber bg). Choice-result entries (`kind: choice_result`) render compact and indented with `CornerDownRight` icon.
+
+## Stats
+
+- **Health + Energy split** (not stamina). Damage events reduce Health; every tick drains Energy. User asked for this explicitly — don't merge them back.
+- **Stats row**: 5-column grid of icon-prefixed stats (Health/Heart, Energy/Zap, Heat/Flame, Ammo/Crosshair, Distance/Footprints). Animated value flash (color + drift) on change; Heat marked `inverted` so high = bad.
+- **Heat icon = Flame** everywhere it appears.
+
+## Map
+
+- **Pack** is a 240px right-side column inside Feed panel (not a bottom strip). Always rendered while raid is active so layout doesn't shift when the first item lands.
+- **Map**: 12-wide × 5-tall horizontal strip, identity coords (`gridColumn = x+1`, `gridRow = y+1`). Operative = pulsing emerald dot. Next-tile preview = dim amber fill + edge-straddling lucide arrow. Threat tiles = red border + AlertTriangle. Blocked tiles = Slash icon.
+- **Tooltip pattern**: cursor-following, +14px down-right offset, edge-clamped via `useLayoutEffect`. Used by both pack tooltips and map tooltip.
+
+## Action card
+
+- **Action card**: sidebar column. Active row gets a leading ChevronRight + subtle bg tint (no curved-edge accent, no amber flood). Chips are tiny icon + value with no border. Top-right `Nx` badge for actions with per-room counts.

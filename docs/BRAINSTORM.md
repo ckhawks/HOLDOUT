@@ -1,13 +1,15 @@
 # HOLDOUT — Brainstorm dump
 
+> **Snapshot: 2026-05-06** (last updated 2026-05-06). A wide, blue-sky idea pool — kept as a reference well rather than a living backlog. Re-read when looking for the next direction; don't expect it to reflect what's currently shipped.
+
 Wide, unranked, unfiltered idea pool from a brainstorm session. **Not scope, not commitments, not prioritized.** Reorder, prune, steal from freely.
 
 Companion docs:
-- `PLAN.md` — locked execution plan for Sprint 1
-- `IDEAS.md` — curated near-term candidates (Sprint 2-ish)
+- `DESIGN.md` — canonical design (concept, locked constraints, principles, UI pins)
+- `BACKLOG.md` — current open work + changelog
 - this file — blue-sky dump, including stuff that might never ship
 
-All ideas here must respect the locked design decisions in `PLAN.md` (no real-time PvP, no permadeath wipe, no real-world-clock gating, no quests, no factory automation, no run-based progression, endless progression). If something here violates those, it's a flag to revisit, not a green-light.
+All ideas here must respect the locked design decisions in `DESIGN.md` (no real-time PvP, no permadeath wipe, no real-world-clock gating, no quests, no factory automation, no run-based progression, endless progression). If something here violates those, it's a flag to revisit, not a green-light.
 
 ---
 
