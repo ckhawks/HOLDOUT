@@ -81,6 +81,7 @@ function tileTypeLabel(tile: MapTile): string {
 
 export function RaidMap() {
   const raid = useGame((s) => s.currentRaid);
+  const overrideNextStep = useGame((s) => s.overrideNextStep);
   const [hover, setHover] = useState<HoverState | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
@@ -104,8 +105,25 @@ export function RaidMap() {
 
   if (!raid) return null;
   const { map, operativePos } = raid;
-  const previewPos = raid.nextStep;
   const isExtracting = raid.runState.flags.includes("extracting");
+  const inCombat = raid.runState.flags.includes("combat_engaged");
+  const canOverride = raid.active && !raid.pendingChoice && !isExtracting && !inCombat;
+  // While the player hovers a valid override target, show the preview arrow
+  // at the hovered tile instead of the cached nextStep so they can see what
+  // the click will do before committing.
+  const isValidOverrideTarget = (x: number, y: number): boolean => {
+    if (!canOverride) return false;
+    const dx = Math.abs(x - operativePos.x);
+    const dy = Math.abs(y - operativePos.y);
+    if (dx + dy !== 1) return false;
+    const tile = map.tiles[y * map.width + x];
+    return !tile.blocked;
+  };
+  const hoveredOverride =
+    hover && isValidOverrideTarget(hover.tile.x, hover.tile.y)
+      ? { x: hover.tile.x, y: hover.tile.y }
+      : null;
+  const previewPos = hoveredOverride ?? raid.nextStep;
   const path = isExtracting ? pathToEntry(map, operativePos.x, operativePos.y) : [];
   const previewDir: MoveDir = previewPos
     ? dirFrom(previewPos.x - operativePos.x, previewPos.y - operativePos.y)
@@ -136,6 +154,7 @@ export function RaidMap() {
                 hover && hover.tile.x === x && hover.tile.y === y;
               const isPreview =
                 !!previewPos && previewPos.x === x && previewPos.y === y;
+              const isOverrideTarget = isValidOverrideTarget(x, y);
               return (
                 <Tile
                   key={`${x}-${y}`}
@@ -144,6 +163,7 @@ export function RaidMap() {
                   isHovered={!!isHovered}
                   isPreview={isPreview}
                   previewDir={isPreview ? previewDir : null}
+                  isOverrideTarget={isOverrideTarget}
                   style={{ gridColumn: x + 1, gridRow: y + 1 }}
                   onPointerEnter={(e) =>
                     setHover({
@@ -158,6 +178,9 @@ export function RaidMap() {
                       isOperative,
                       cursor: { x: e.clientX, y: e.clientY },
                     })
+                  }
+                  onClick={
+                    isOverrideTarget ? () => overrideNextStep({ x, y }) : undefined
                   }
                 />
               );
@@ -194,20 +217,30 @@ function Tile({
   isHovered,
   isPreview,
   previewDir,
+  isOverrideTarget,
   style,
   onPointerEnter,
   onPointerMove,
+  onClick,
 }: {
   tile: MapTile;
   isOperative: boolean;
   isHovered: boolean;
   isPreview: boolean;
   previewDir: MoveDir;
+  isOverrideTarget: boolean;
   style: React.CSSProperties;
   onPointerEnter: (e: React.PointerEvent) => void;
   onPointerMove: (e: React.PointerEvent) => void;
+  onClick?: () => void;
 }) {
-  const ringClass = cn(isHovered && "ring-2 ring-foreground/70");
+  // Override targets get an emerald hover ring instead of the default
+  // foreground hover, so the player can tell at a glance which tiles are
+  // actually clickable. Cursor flips to pointer.
+  const ringClass = cn(
+    isHovered && (isOverrideTarget ? "ring-2 ring-emerald-400/80" : "ring-2 ring-foreground/70"),
+    isOverrideTarget && "cursor-pointer",
+  );
   // Gradient direction tells the player where the operative is heading: the
   // saturated end of the gradient sits on the side facing the operative, and
   // fades toward the opposite edge.
@@ -225,6 +258,7 @@ function Tile({
     style,
     onPointerEnter,
     onPointerMove,
+    onClick,
   };
 
   // Unseen — fog of war. Render as a blank dim cell, no info.

@@ -208,6 +208,81 @@ describe("togglePause", () => {
   });
 });
 
+describe("overrideNextStep", () => {
+  it("redirects nextStep + swaps action to move_forward when target is adjacent and unblocked", () => {
+    useGame.getState().beginRaid("warehouse");
+    const raid = useGame.getState().currentRaid!;
+    const op = raid.operativePos;
+    // Pick an orthogonal neighbor that's in bounds and not blocked. The
+    // entry tile's row may have lane shifts, so scan for a valid target.
+    const candidates = [
+      { x: op.x + 1, y: op.y },
+      { x: op.x - 1, y: op.y },
+      { x: op.x, y: op.y + 1 },
+      { x: op.x, y: op.y - 1 },
+    ].filter((p) => {
+      if (p.x < 0 || p.x >= raid.map.width) return false;
+      if (p.y < 0 || p.y >= raid.map.height) return false;
+      return !raid.map.tiles[p.y * raid.map.width + p.x].blocked;
+    });
+    expect(candidates.length).toBeGreaterThan(0);
+    const target = candidates[0];
+    // Pre-empt with a non-move action so we can verify the swap.
+    useGame.setState({
+      currentRaid: { ...raid, queuedAction: "stay" },
+    });
+    useGame.getState().overrideNextStep(target);
+    const next = useGame.getState().currentRaid!;
+    expect(next.nextStep).toEqual(target);
+    expect(next.queuedAction).toBe("move_forward");
+  });
+
+  it("noops on a non-adjacent target", () => {
+    useGame.getState().beginRaid("warehouse");
+    const before = useGame.getState().currentRaid!;
+    const op = before.operativePos;
+    useGame.getState().overrideNextStep({ x: op.x + 2, y: op.y });
+    expect(useGame.getState().currentRaid!.nextStep).toEqual(before.nextStep);
+  });
+
+  it("noops while a pendingChoice is open", () => {
+    useGame.getState().beginRaid("warehouse");
+    const raid = useGame.getState().currentRaid!;
+    const op = raid.operativePos;
+    useGame.setState({
+      currentRaid: {
+        ...raid,
+        pendingChoice: {
+          eventId: "spotted_patrol",
+          prompt: "test",
+          defaultId: "hide",
+          startedAt: 0,
+          timerMs: 10000,
+          options: [{ id: "hide", label: "Hide", description: "", effects: {}, isDefault: true }],
+        },
+      },
+    });
+    const before = useGame.getState().currentRaid!.nextStep;
+    useGame.getState().overrideNextStep({ x: op.x + 1, y: op.y });
+    expect(useGame.getState().currentRaid!.nextStep).toEqual(before);
+  });
+
+  it("noops while the operative is extracting", () => {
+    useGame.getState().beginRaid("warehouse");
+    const raid = useGame.getState().currentRaid!;
+    const op = raid.operativePos;
+    useGame.setState({
+      currentRaid: {
+        ...raid,
+        runState: { ...raid.runState, flags: ["extracting"] },
+      },
+    });
+    const before = useGame.getState().currentRaid!.nextStep;
+    useGame.getState().overrideNextStep({ x: op.x + 1, y: op.y });
+    expect(useGame.getState().currentRaid!.nextStep).toEqual(before);
+  });
+});
+
 describe("recall + cancelRecall", () => {
   it("recall sets the extracting flag", () => {
     useGame.getState().beginRaid("warehouse");

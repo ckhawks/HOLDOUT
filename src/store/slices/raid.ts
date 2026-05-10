@@ -46,6 +46,7 @@ export interface RaidSlice {
   beginRaid: (locationId: string) => void;
   doTick: () => void;
   overrideAction: (action: ActionId) => void;
+  overrideNextStep: (target: { x: number; y: number }) => void;
   resolvePendingChoice: (choiceId: string) => void;
   useBandage: () => void;
   useConsumable: (uid: string) => void;
@@ -288,6 +289,39 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
     set({ currentRaid: { ...currentRaid, queuedAction: action } });
+  },
+
+  // One-shot movement override. Player clicks an adjacent tile on the map;
+  // we redirect the operative there next tick. Also swaps the queued action
+  // to move_forward so "click tile to go there" works regardless of what
+  // was queued (loot / stay / breach). Disabled during pendingChoice and
+  // sub-modes (combat / extracting) where movement isn't the player's call.
+  overrideNextStep: (target) => {
+    const { currentRaid } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    if (currentRaid.pendingChoice) return;
+    const flags = currentRaid.runState.flags;
+    if (flags.includes("extracting") || flags.includes("combat_engaged")) return;
+    // Must be exactly one orthogonal step from the operative.
+    const { x: ox, y: oy } = currentRaid.operativePos;
+    if (Math.abs(target.x - ox) + Math.abs(target.y - oy) !== 1) return;
+    const { map } = currentRaid;
+    if (
+      target.x < 0 ||
+      target.x >= map.width ||
+      target.y < 0 ||
+      target.y >= map.height
+    )
+      return;
+    const tile = map.tiles[target.y * map.width + target.x];
+    if (tile.blocked) return;
+    set({
+      currentRaid: {
+        ...currentRaid,
+        queuedAction: "move_forward",
+        nextStep: { x: target.x, y: target.y },
+      },
+    });
   },
 
   resolvePendingChoice: (choiceId) => {

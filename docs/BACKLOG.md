@@ -55,7 +55,6 @@ Context, only shown when eligible (under a divider in the action card):
 
 Open wishlist from the player. DONE items have been moved to the Changelog at the bottom.
 
-- allow player to override movement direction
 - food consumed during raid to keep energy up
 - need item that can restore HP (over time?) — see also AI medical-ladder proposal below
 - need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
@@ -128,6 +127,7 @@ Make "scrounge / push / lay low" real instead of theatre.
 - [ ] Gate the Data panel behind an admin/debug flag (currently visible to everyone — fine for now, but eventually it leaks the loot tables and threat math to players).
 - [ ] More room-type narrative variety: room-type-specific event templates (instead of just bias multipliers).
 - [ ] More context-eligible actions for the action card's bottom section (lockpick-on-locked, use-key-on-locked, examine-corpse, etc.).
+- [ ] **Movement override — pass 2: destination/goal.** Builds on the one-shot tile-click override (the player wishlist item). Once the primitive ships, this layer lets the player click any tile (not just adjacent) to set it as the operative's *goal*. `move_forward` ticks BFS-step toward it each cycle until the operative arrives, gets interrupted (combat / pendingChoice), or the player cancels. Adds a `goal: {x,y} | null` field on `CurrentRaid`, a goal-tile highlight on the map, and a cancel control on the action card. Stays on-theme (the operative still acts each tick — the player has radioed in a destination, not micro-steered). Defer until the one-shot version has been played enough to confirm players need multi-tick redirects.
 - [ ] Item flavor: per-stash-item adjective so each loot has individual identity (carried over from older IDEAS.md — partially shipped via room/container vocab, but not per-item adjectives yet).
 - [ ] Hideout depth: Workbench schematic currently flips a flag and does nothing. Wire actual crafting (consume X, Y → produce Z gear). Medbay healing flow.
 
@@ -243,6 +243,7 @@ Shipped work, newest phases last. Acts as a record of what landed when.
 
 ## From the player wishlist
 
+- ✅ **Movement override (one-shot)** — click an adjacent map tile to redirect the operative there next tick. Store action `overrideNextStep` validates orthogonal-adjacent + non-blocked + bounds + not in pendingChoice / extract / combat sub-modes; if valid, swaps `queuedAction` to `move_forward` and sets `nextStep` to the target. UI: hovered valid targets get a `cursor-pointer` + emerald hover ring (vs. the default foreground hover); the next-tile preview arrow follows the hovered target while hovering, so the player sees the redirect before clicking. Threat tiles are valid override targets — walking into them fires the existing patrol modal. Pass-2 (multi-tile destination/goal) is in the smaller-follow-ups section.
 - ✅ button to skip action timer (force proceed)
 - ✅ ctrl-click to move items to inventory quickly
 - ✅ add item archetype icons to stash and tooltip
