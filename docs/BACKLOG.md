@@ -82,7 +82,6 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 
 ### From the older IDEAS.md (carried over)
 
-- **Loot categories per location** — each location biases toward certain item categories (e.g. Warehouse → industrial scrap; Lab → electronics; Med facility → consumables). Currently the drop pool is global.
 - **Random threat / danger levels per location** — within a range, so locations roll a danger value each session (or per-raid). Player strategizes which to hit when. Pairs with health/energy loop and operative state (injured? avoid hot zones).
 
 ---
@@ -196,6 +195,10 @@ Known "not now" decisions. Pull from this list when the active work needs depth.
 # Changelog
 
 Shipped work, newest sprints last. Acts as a record of what landed when.
+
+## From the older IDEAS.md
+
+- ✅ **Loot categories per location** — each location biases toward certain item categories. Shipped via `location.categoryWeights` in `src/lib/data/locations.ts` (Warehouse → mechanical 5 / consumables 3 / electronics 2; Datacenter → electronics 6 / intel 5; Biolab → medical 5 / experimental 4; etc.) and routed through `pickItemForLocation()` in `src/lib/data/items.ts` — picks a category by weight, then a tier by depth+rarity, then an item from the intersection (with a generic fallback when no weights are set).
 
 ## From the player wishlist
 
