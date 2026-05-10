@@ -414,7 +414,7 @@ describe("applyConsumable", () => {
     expect(next).toBe(raid);
   });
 
-  it("noops on items without an effect (bandage stays bleed-only)", () => {
+  it("bandage with no bleed is a no-op (would-help guard saves the bandage)", () => {
     const raid = makeRaid({
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("bandage_pack", "u1")] },
@@ -427,6 +427,67 @@ describe("applyConsumable", () => {
     const next = applyConsumable(raid, "u1", 0, makeRng(1));
     expect(next).toBe(raid);
     expect(next.equipment.pockets.items).toHaveLength(1);
+  });
+
+  it("bandage with bleed clears the bleed and consumes the item", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ flags: ["bleeding_minor"] }),
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("bandage_pack", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next.runState.flags).not.toContain("bleeding_minor");
+    expect(next.equipment.pockets.items).toHaveLength(0);
+  });
+
+  it("syrette at full HP no-ops (would-help guard prevents waste)", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ health: 100 }),
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("med_syrette", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next).toBe(raid);
+    expect(next.equipment.pockets.items).toHaveLength(1);
+  });
+
+  it("ration at full energy no-ops (would-help guard)", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ energy: 100 }),
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("ration_pack", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next).toBe(raid);
+  });
+
+  it("noops on uid that maps to an item not in CONSUMABLE_EFFECTS", () => {
+    const raid = makeRaid({
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("scrap_metal", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next).toBe(raid);
   });
 
   it("pulls from bag if not in pockets", () => {

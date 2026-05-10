@@ -610,6 +610,7 @@ export interface ConsumableEffect {
 }
 
 export const CONSUMABLE_EFFECTS: Record<string, ConsumableEffect> = {
+  bandage_pack: { clearBleed: true, log: "Bandage applied — bleed under control." },
   antiseptic_vial: { hp: 10, log: "Patched up. +10 HP." },
   med_syrette: { hp: 30, log: "Med syrette injected. +30 HP." },
   nano_clot: { hp: 60, clearBleed: true, log: "Nano-clot fired. +60 HP, bleed clamped." },
@@ -636,6 +637,17 @@ export function applyConsumable(
     pocketIdx !== -1 ? eq.pockets.items[pocketIdx] : eq.bag!.items[bagIdx];
   const effect = CONSUMABLE_EFFECTS[placement.itemId];
   if (!effect) return raid;
+
+  // Don't consume an item that wouldn't actually do anything. Bandage with
+  // no bleed, syrette at full HP, ration at full energy → no-op. Prevents
+  // the drag-misclick footgun in the Use zone.
+  const rs = raid.runState;
+  const hasBleed =
+    rs.flags.includes("bleeding_minor") || rs.flags.includes("bleeding_major");
+  const hpHelps = (effect.hp ?? 0) > 0 && rs.health < 100;
+  const energyHelps = (effect.energy ?? 0) > 0 && rs.energy < 100;
+  const bleedHelps = !!effect.clearBleed && hasBleed;
+  if (!hpHelps && !energyHelps && !bleedHelps) return raid;
 
   const equipment: Equipment =
     pocketIdx !== -1
