@@ -109,6 +109,23 @@ export const PATROL_TIMER_MS = 10000;
 // At heat 100 → 25% ambush per move with the default 400.
 export const HEAT_AMBUSH_DIVISOR = 400;
 
+// Per-kg heat tick added on every locomotion tick (move_forward,
+// extract_step) — a heavy operative is louder. Tuning lever: bump up to
+// punish over-stuffing more, drop to ignore weight. Total carried weight
+// is summed via `carriedWeight(equipment)` below; with the default 0.025
+// a 40-kg pack adds +1 heat per move (a Stay tick wipes ~8 of these).
+//
+// 2026-05-10 first cut — likely too weak rather than too strong; expect
+// to retune after a few raids of playtest.
+export const WEIGHT_HEAT_PER_KG = 0.025;
+
+export function carriedWeight(equipment: import("@/lib/types").Equipment): number {
+  let w = 0;
+  for (const p of equipment.pockets.items) w += ITEMS[p.itemId]?.weight ?? 0;
+  if (equipment.bag) for (const p of equipment.bag.items) w += ITEMS[p.itemId]?.weight ?? 0;
+  return w;
+}
+
 // A patrol encounter — fired as a forced-choice modal when the operative
 // runs into hostiles while pushing forward.
 function patrolPendingChoice(now: number): PendingChoice {
@@ -598,6 +615,15 @@ export function tickAction(
     case "flee": handleFlee(ctx, d); break;
   }
   if (early) return early;
+
+  // Weight → heat: every locomotion tick adds heat proportional to carried
+  // weight. Stationary actions (stay, loot, breach) don't pay this cost —
+  // it's specifically about how loud you are while moving.
+  if (d.movement !== "none") {
+    const w = carriedWeight(raid.equipment);
+    const wHeat = Math.round(w * WEIGHT_HEAT_PER_KG);
+    if (wHeat > 0) d.heatDelta += wHeat;
+  }
 
   maybeInterrupt(ctx, d, action);
 
