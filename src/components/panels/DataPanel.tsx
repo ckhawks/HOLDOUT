@@ -10,7 +10,9 @@ import {
   ACTION_TIMER_MS,
   BLEED_MAJOR_DRAIN,
   BLEED_MINOR_DRAIN,
+  CONSUMABLE_EFFECTS,
   ENERGY_BASE_DRAIN,
+  EXHAUSTION_DRAIN,
   HEAT_AMBUSH_DIVISOR,
   INTERRUPT_CHANCE,
   PATROL_TIMER_MS,
@@ -61,6 +63,19 @@ export function DataPanel() {
           <KV k="Energy drain / tick" v={ENERGY_BASE_DRAIN} />
           <KV k="Bleed minor / tick" v={`${BLEED_MINOR_DRAIN} hp`} />
           <KV k="Bleed major / tick" v={`${BLEED_MAJOR_DRAIN} hp`} />
+          <KV k="Exhaustion drain / tick (energy = 0)" v={`${EXHAUSTION_DRAIN} hp`} />
+        </Section>
+
+        <Section title="Consumables">
+          <Table
+            head={["item", "+hp", "+energy", "clears bleed"]}
+            rows={Object.entries(CONSUMABLE_EFFECTS).map(([id, eff]) => [
+              ITEMS[id]?.name ?? id,
+              eff.hp ? `+${eff.hp}` : "—",
+              eff.energy ? `+${eff.energy}` : "—",
+              eff.clearBleed ? "yes" : "—",
+            ])}
+          />
         </Section>
 
         <Section title="Map gen">

@@ -107,13 +107,6 @@ Make "scrounge / push / lay low" real instead of theatre.
   - **Lay low**: more frequent `stay` (cools heat), cautious about `move_forward` when heat is high.
 - [ ] Save preference per-operative (hooks into Sprint J kit/loadout).
 
-### Sprint K — Energy as hunger/thirst
-
-- [ ] At 0 energy, HP starts draining (-2/tick).
-- [ ] `useConsumable(uid)` action: ration / water / coffee / fuel cell restores energy from pack inventory.
-- [ ] UI: when energy is low, glowing warning + "use consumable" prompt.
-- [ ] Consumables already exist in `items.ts` under category `consumables` — just need wiring.
-
 ### Sprint L — Reload + ammo realism
 
 - [ ] Magazines as discrete pack items (size 1–2 cells).
@@ -147,26 +140,12 @@ Items #1, #2, #6, #7, #9 (partial) shipped 2026-05-09 — see Changelog. Remaini
 5. **`PackTetris.tsx` (~488 lines)** — drag state machine, grid math, validation, and rendering all in one component. Grid math overlaps with `engine/shapes.ts` but isn't reused consistently. Extract `usePackDrag` hook, lean on `shapes.ts` for placement validation. (Partially addressed by the `KitGrid` extraction in commit `86ce488`.)
 9. **Remaining test coverage gaps**: UI components untested (acceptable v1). Engine + store now covered by 149 tests across 9 files; the deepest gap left is `tickAction`'s combat sub-mode + locked-container branches, which would benefit from targeted scenario tests if #4 lands.
 
-## Health system proposal (open question)
-
-How I'd slot heals into a coherent medical ladder. Right now Bandage covers bleed and nothing covers HP — that's the gap these items fill.
-
-- **Antiseptic Vial** (common, ¤9) — one-shot +10 HP restore. The cheap "patched up a few scrapes" item. Fills the early-game "I took some hits and want to top off" need. Always carryable since it's small (1 cell).
-- **Med Syrette** (uncommon, ¤35) — one-shot +30 HP restore. The mid-game heal. Single cell, faster than antiseptic feels because the number's bigger. Use case: you're at 45 HP heading into a deep-room push.
-- **Nano-Clot Syringe** (rare, ¤130) — already exists, currently does nothing. I'd make it the emergency button: +60 HP and clears all bleeds in one shot. So when a major bleed and low HP combine, this is the panic-pop.
-- **Bandage Pack** stays bleed-only — still meaningful because nano-clot is rare/expensive, so most bleeds you'll patch with cheap bandages and use HP restores for the damage that already happened.
-- **Combat Stim** (uncommon, ¤50) — orthogonal to the medical line. Sprint K (energy as hunger/thirst) is the logical home: instant +30 energy, or a 5-tick buff that suppresses energy drain. Don't ship until energy actually punishes at 0.
-
-UX: all heals follow the bandage pattern — instant, no action-tick, one cell, consumed on use. The action card grows context entries (`use_antiseptic`, `use_syrette`, `use_nanoclot`) when each is in pockets/bag, with effect chips showing +10 hp etc. Or simpler: a side rail of "consumables in kit" with click-to-use, since these don't need timing.
-
-**Open question for user:** ship the medical ladder now, or wait until Sprint K so combat_stim lands at the same time?
-
 ---
 
 # Risks (current as of 2026-05-09)
 
 - **Auto-picker is too predictable.** With seven actions but only three ever in the primary slot, players will stop reading the next-action card after a few raids. Sprint I (preferences) helps, but the real fix is more _kinds_ of actions — sub-mode variety, environmental interactions, opportunistic tile features.
-- **Heat is the only real consumer of player choices right now.** Energy still drains but doesn't punish at 0. Ammo is consumed but never gates. Sprint K and L close those gaps.
+- **Ammo is consumed but never gates.** Sprint L (mag/reload realism) is the fix. Energy now punishes at 0 (Sprint K shipped 2026-05-09 — see Changelog).
 - **Combat outcome distribution is fixed.** `fight` always rolls the same 55/30/15 — opponent quality (the user's wishlist item) would make this dynamic.
 - **No long-term meta progression beyond cash.** Once stash and pack are upgraded a few times, there's nothing to chase. Sprint J + workbench crafting need to land before mid-game has shape.
 
@@ -194,6 +173,28 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 ## From the older IDEAS.md
 
 - ✅ **Loot categories per location** — each location biases toward certain item categories. Shipped via `location.categoryWeights` in `src/lib/data/locations.ts` (Warehouse → mechanical 5 / consumables 3 / electronics 2; Datacenter → electronics 6 / intel 5; Biolab → medical 5 / experimental 4; etc.) and routed through `pickItemForLocation()` in `src/lib/data/items.ts` — picks a category by weight, then a tier by depth+rarity, then an item from the intersection (with a generic fallback when no weights are set).
+
+## Sprints
+
+### Sprint K — Energy as hunger/thirst + medical ladder (2026-05-09)
+
+- Engine: `tickAction` drains -2 HP/tick when energy is at 0 (`EXHAUSTION_DRAIN`). Logs `damage` line "Running on empty — body's eating itself."
+- Engine: `applyConsumable(raid, uid, now, rand)` parallel to `applyBandage`. Uses a `CONSUMABLE_EFFECTS` table:
+  - antiseptic_vial: +10 HP
+  - med_syrette: +30 HP
+  - nano_clot: +60 HP, clears all bleeds (the panic-pop)
+  - ration_pack: +30 energy
+  - water_bulb: +15 energy
+  - coffee_can: +25 energy
+  - fuel_cell: +40 energy
+  - combat_stim: +30 energy
+- Bandage stays bleed-only — `applyConsumable` no-ops on bandage_pack so the existing flow isn't redirected.
+- Store: `useConsumable(uid)` action wraps `applyConsumable` with Date.now/Math.random.
+- UI: FeedPanel grows two new banners + a row:
+  - Exhaustion banner (amber, when energy ≤ 0)
+  - Consumables row (always visible when any consumable is in kit) — grouped by itemId with ×N count, click-to-use, tooltip shows the effect
+- Data panel: new "Consumables" section listing the effect table.
+- Tests: 9 new tests for exhaustion drain + applyConsumable (HP variants, bleed-clear on nano_clot, energy items, bag fallback, no-op on unknown uid / non-consumable). Total tests: 159.
 
 ## Tech debt / refactor (from arch review 2026-05-09)
 

@@ -106,6 +106,8 @@ export function nextTickDelay(rand: () => number): number {
 }
 
 export const ENERGY_BASE_DRAIN = 3;
+// HP loss per tick when energy is at 0. Sprint K — gives energy real teeth.
+export const EXHAUSTION_DRAIN = 2;
 
 // Build a flavor log line for the operative entering a room. Names the
 // specific containers and any loose items on the floor so subsequent Loot
@@ -303,7 +305,12 @@ export function tickAction(
   const log = makeLogger(now, rand);
   const uid = () => makeUid(now, rand);
 
-  let healthDelta = -bleed;
+  // Sprint K — exhaustion: when energy is already 0 entering this tick, the
+  // operative starves down HP. Pairs with consumables (ration / water /
+  // coffee / fuel cell / combat stim) so the player has a way out.
+  const exhausted = raid.runState.energy <= 0;
+
+  let healthDelta = -bleed - (exhausted ? EXHAUSTION_DRAIN : 0);
   let heatDelta = 0;
   let energyDelta = -ENERGY_BASE_DRAIN;
   let ammoDelta = 0;
@@ -314,6 +321,11 @@ export function tickAction(
   let consumedLoot = false;
   let breachedLocked = false;
   const logs: LogEntry[] = [];
+  if (exhausted) {
+    logs.push(
+      log("damage", "Running on empty — body's eating itself.", undefined),
+    );
+  }
 
   // Current tile reference for the Loot action.
   const currentTile =
@@ -610,6 +622,97 @@ export function tickAction(
     movement,
     consumedLoot,
     breachedLocked,
+  };
+}
+
+// Consumable effects table. Items not in this map can't be consumed (the
+// store action no-ops). Bandage stays bleed-only via applyBandage; nano_clot
+// is the panic-pop that does both HP + bleed clear.
+//
+// Per the medical-ladder design in BACKLOG: cheap antiseptic for top-off,
+// med syrette for mid-game, nano-clot for emergencies. Energy items map to
+// Sprint K's hunger/thirst loop.
+export interface ConsumableEffect {
+  hp?: number;
+  energy?: number;
+  clearBleed?: boolean;
+  log?: string;
+}
+
+export const CONSUMABLE_EFFECTS: Record<string, ConsumableEffect> = {
+  antiseptic_vial: { hp: 10, log: "Patched up. +10 HP." },
+  med_syrette: { hp: 30, log: "Med syrette injected. +30 HP." },
+  nano_clot: { hp: 60, clearBleed: true, log: "Nano-clot fired. +60 HP, bleed clamped." },
+  ration_pack: { energy: 30, log: "Ration down. +30 energy." },
+  water_bulb: { energy: 15, log: "Water down. +15 energy." },
+  coffee_can: { energy: 25, log: "Coffee. +25 energy." },
+  fuel_cell: { energy: 40, log: "Fuel cell tapped. +40 energy." },
+  combat_stim: { energy: 30, log: "Combat stim. +30 energy." },
+};
+
+export function applyConsumable(
+  raid: CurrentRaid,
+  uid: string,
+  now: number,
+  rand: () => number,
+): CurrentRaid {
+  // Find the item by uid in pockets first, then bag.
+  const eq = raid.equipment;
+  const pocketIdx = eq.pockets.items.findIndex((p) => p.uid === uid);
+  const bagIdx =
+    pocketIdx === -1 && eq.bag ? eq.bag.items.findIndex((p) => p.uid === uid) : -1;
+  if (pocketIdx === -1 && bagIdx === -1) return raid;
+  const placement =
+    pocketIdx !== -1 ? eq.pockets.items[pocketIdx] : eq.bag!.items[bagIdx];
+  const effect = CONSUMABLE_EFFECTS[placement.itemId];
+  if (!effect) return raid;
+
+  const equipment: Equipment =
+    pocketIdx !== -1
+      ? {
+          ...eq,
+          pockets: {
+            ...eq.pockets,
+            items: [
+              ...eq.pockets.items.slice(0, pocketIdx),
+              ...eq.pockets.items.slice(pocketIdx + 1),
+            ],
+          },
+        }
+      : {
+          ...eq,
+          bag: eq.bag
+            ? {
+                ...eq.bag,
+                items: [
+                  ...eq.bag.items.slice(0, bagIdx),
+                  ...eq.bag.items.slice(bagIdx + 1),
+                ],
+              }
+            : null,
+        };
+
+  let flags = raid.runState.flags;
+  if (effect.clearBleed) {
+    flags = flags.filter((f) => f !== "bleeding_minor" && f !== "bleeding_major");
+  }
+  const health = Math.max(
+    0,
+    Math.min(100, raid.runState.health + (effect.hp ?? 0)),
+  );
+  const energy = Math.max(
+    0,
+    Math.min(100, raid.runState.energy + (effect.energy ?? 0)),
+  );
+
+  return {
+    ...raid,
+    equipment,
+    runState: { ...raid.runState, health, energy, flags },
+    log: [
+      ...raid.log,
+      makeLogger(now, rand)("system", effect.log ?? "Consumed."),
+    ],
   };
 }
 

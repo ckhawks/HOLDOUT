@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ACTIONS, autoPickAction } from "./actions";
 import { generateMap } from "./map";
-import { makeRng, tickAction } from "./raid";
-import type { CurrentRaid, MapTile, RunState } from "@/lib/types";
+import { applyConsumable, makeRng, tickAction } from "./raid";
+import type { CurrentRaid, MapTile, PackPlacement, RunState } from "@/lib/types";
 
 function freshRunState(over: Partial<RunState> = {}): RunState {
   return {
@@ -302,5 +302,150 @@ describe("ACTIONS eligibility", () => {
         makeRaid({ runState: freshRunState({ flags: ["extracting"] }) }),
       ),
     ).toBe(true);
+  });
+});
+
+describe("exhaustion (Sprint K)", () => {
+  it("at energy 0, tickAction drains HP via the exhaustion penalty", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ energy: 0 }),
+      queuedAction: "stay",
+    });
+    const result = tickAction(raid, makeRng(1), 0);
+    // Bleed is zero (no flags), so any negative healthDelta comes from exhaustion.
+    expect(result.healthDelta).toBeLessThan(0);
+  });
+
+  it("at energy > 0, no exhaustion drain (only bleed if any)", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ energy: 50 }),
+      queuedAction: "stay",
+    });
+    const result = tickAction(raid, makeRng(1), 0);
+    // Vitest distinguishes +0 from -0; check the absolute value instead.
+    expect(Math.abs(result.healthDelta)).toBe(0);
+  });
+
+  it("logs an exhaustion warning when at energy 0", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ energy: 0 }),
+      queuedAction: "stay",
+    });
+    const result = tickAction(raid, makeRng(1), 0);
+    const exhaustLog = result.logs.find((l) => l.text.toLowerCase().includes("empty"));
+    expect(exhaustLog).toBeDefined();
+  });
+});
+
+describe("applyConsumable", () => {
+  function packed(itemId: string, uid = "u1"): PackPlacement {
+    return { uid, itemId, x: 0, y: 0, rotation: 0 };
+  }
+
+  it("antiseptic_vial restores +10 HP and consumes the item", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ health: 50 }),
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("antiseptic_vial", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next.runState.health).toBe(60);
+    expect(next.equipment.pockets.items).toHaveLength(0);
+  });
+
+  it("med_syrette restores +30 HP, clamped at 100", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ health: 90 }),
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("med_syrette", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next.runState.health).toBe(100);
+  });
+
+  it("nano_clot restores +60 HP AND clears all bleeds", () => {
+    const raid = makeRaid({
+      runState: freshRunState({
+        health: 20,
+        flags: ["bleeding_minor", "bleeding_major"],
+      }),
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("nano_clot", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next.runState.health).toBe(80);
+    expect(next.runState.flags).not.toContain("bleeding_minor");
+    expect(next.runState.flags).not.toContain("bleeding_major");
+  });
+
+  it("ration_pack restores +30 energy, clamped at 100", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ energy: 80 }),
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("ration_pack", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next.runState.energy).toBe(100);
+  });
+
+  it("noops on unknown uid", () => {
+    const raid = makeRaid();
+    const next = applyConsumable(raid, "does-not-exist", 0, makeRng(1));
+    expect(next).toBe(raid);
+  });
+
+  it("noops on items without an effect (bandage stays bleed-only)", () => {
+    const raid = makeRaid({
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [packed("bandage_pack", "u1")] },
+        bag: null,
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next).toBe(raid);
+    expect(next.equipment.pockets.items).toHaveLength(1);
+  });
+
+  it("pulls from bag if not in pockets", () => {
+    const raid = makeRaid({
+      runState: freshRunState({ health: 50 }),
+      equipment: {
+        pockets: { grid: { width: 4, height: 4 }, items: [] },
+        bag: {
+          slot: { uid: "bag", itemId: "canvas_satchel" },
+          grid: { width: 4, height: 4 },
+          items: [packed("antiseptic_vial", "u1")],
+        },
+        weapon: null,
+        armor: null,
+        helmet: null,
+      },
+    });
+    const next = applyConsumable(raid, "u1", 0, makeRng(1));
+    expect(next.runState.health).toBe(60);
+    expect(next.equipment.bag?.items).toHaveLength(0);
   });
 });

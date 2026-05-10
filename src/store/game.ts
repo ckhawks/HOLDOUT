@@ -23,6 +23,7 @@ import {
   startRaid,
   tickAction,
   applyBandage,
+  applyConsumable,
   makeLog,
   makeRng,
 } from "@/lib/engine/raid";
@@ -91,6 +92,7 @@ interface GameState {
   overrideAction: (action: ActionId) => void;
   resolvePendingChoice: (choiceId: string) => void;
   useBandage: () => void;
+  useConsumable: (uid: string) => void;
   togglePause: () => void;
   skipActionTimer: () => void;
   recall: () => void;
@@ -517,6 +519,14 @@ export const useGame = create<GameState>((set, get) => ({
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
     const next = applyBandage(currentRaid, Date.now(), Math.random);
+    if (next === currentRaid) return;
+    set({ currentRaid: next });
+  },
+
+  useConsumable: (uid) => {
+    const { currentRaid } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    const next = applyConsumable(currentRaid, uid, Date.now(), Math.random);
     if (next === currentRaid) return;
     set({ currentRaid: next });
   },
