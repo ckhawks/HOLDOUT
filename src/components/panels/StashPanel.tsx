@@ -505,7 +505,7 @@ export function StashPanel() {
                       const beingDragged = drag?.kind === "stash" && drag.uid === si.uid;
                       const Icon = categoryIconFor(si.itemId);
                       return (
-                        <ItemTooltip key={si.uid} itemId={si.itemId} hint={ctrlHint || undefined}>
+                        <ItemTooltip key={si.uid} itemId={si.itemId} hint={ctrlHint || undefined} acquiredAt={si.acquiredAt}>
                           <div
                             onPointerDown={(e) => {
                               if (inRaid) return;

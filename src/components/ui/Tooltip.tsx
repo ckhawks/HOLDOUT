@@ -110,14 +110,32 @@ export function Tooltip({
 // tier + sell value, optional hint). Used everywhere an item's identity is
 // exposed — stash rows, kit grids, equipped slots, shop offers — so the
 // presentation stays consistent.
+// Format wall-clock duration (now - acquiredAt) into a stash-tooltip string.
+// Aim is "how long you've had this for" — single most-significant unit.
+function formatAcquiredAge(acquiredAt: number, now: number): string {
+  const ms = Math.max(0, now - acquiredAt);
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  const wk = Math.floor(day / 7);
+  return `${wk}w ago`;
+}
+
 export function ItemTooltip({
   itemId,
   hint,
+  acquiredAt,
   children,
   disabled,
 }: {
   itemId: string;
   hint?: string;
+  acquiredAt?: number;
   children: React.ReactNode;
   disabled?: boolean;
 }) {
@@ -176,6 +194,11 @@ export function ItemTooltip({
                 backgroundSize: `${cellPx}px ${cellPx}px`,
               }}
             />
+          </div>
+        )}
+        {acquiredAt != null && (
+          <div className="text-muted-foreground/70">
+            acquired {formatAcquiredAge(acquiredAt, Date.now())}
           </div>
         )}
         {hint && <div className="mt-0.5 text-muted-foreground/70">{hint}</div>}
