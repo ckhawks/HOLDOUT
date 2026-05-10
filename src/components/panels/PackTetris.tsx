@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Backpack, Pill, Shirt, Trash2 } from "lucide-react";
+import { Backpack, Pill, Shirt } from "lucide-react";
 import { useGame, type KitSlot } from "@/store/game";
 import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
 import type { EquipSlot, PocketsState, BagState, Rotation } from "@/lib/types";
@@ -47,8 +47,6 @@ export function PackTetris() {
   const pickupFromFloor = useGame((s) => s.pickupFromFloor);
   const moveKitItem = useGame((s) => s.moveKitItem);
   const dropToFloor = useGame((s) => s.dropToFloor);
-  const trashFromFloor = useGame((s) => s.trashFromFloor);
-  const trashFromKit = useGame((s) => s.trashFromKit);
   const equipFromFloor = useGame((s) => s.equipFromFloor);
   const unequipToFloor = useGame((s) => s.unequipToFloor);
   // Aliased away from `useConsumable` — the `use` prefix would trigger
@@ -57,7 +55,6 @@ export function PackTetris() {
 
   const pocketsRef = useRef<HTMLDivElement>(null);
   const bagRef = useRef<HTMLDivElement>(null);
-  const trashRef = useRef<HTMLDivElement>(null);
   const consumeZoneRef = useRef<HTMLDivElement>(null);
   const floorRef = useRef<HTMLDivElement>(null);
   // Stable refs (declared individually) so the hook count never changes
@@ -173,19 +170,6 @@ export function PackTetris() {
       if (d.source === "floor") {
         if (equipFromFloor(d.uid)) played = true;
       }
-    } else if (isInside(trashRef.current, e.clientX, e.clientY)) {
-      if (d.source === "floor") {
-        trashFromFloor(d.uid);
-        played = true;
-      } else if (d.source === "pockets" || d.source === "bag") {
-        trashFromKit(d.uid);
-        played = true;
-      } else if (d.source.startsWith("slot:")) {
-        // Routes equipped item to floor instead of /dev/null so a one-drag
-        // trash doesn't accidentally vaporize a bag.
-        const slot = d.source.slice(5) as EquipSlot;
-        if (unequipToFloor(slot)) played = true;
-      }
     } else if (isInside(consumeZoneRef.current, e.clientX, e.clientY)) {
       // Use-zone: only consumables in pockets/bag with a CONSUMABLE_EFFECTS
       // entry. Other items dropped here just fall back to drag-cancel.
@@ -220,7 +204,7 @@ export function PackTetris() {
     setDrag(null);
     setHover(null);
     setSlotHover(null);
-  }, [pockets, bag, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, trashFromFloor, trashFromKit, equipFromFloor, unequipToFloor, consume]);
+  }, [pockets, bag, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, equipFromFloor, unequipToFloor, consume]);
 
   const rotateInPlace = useCallback(() => {
     setDrag((d) => {
@@ -313,30 +297,18 @@ export function PackTetris() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div
-              ref={consumeZoneRef}
-              className={cn(
-                "flex items-center justify-center gap-2 rounded-sm border border-dashed border-border/60 bg-background/30 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors",
-                // Light up green only when a consumable is being dragged.
-                drag && CONSUMABLE_EFFECTS[drag.itemId] && (drag.source === "pockets" || drag.source === "bag") &&
-                  "border-emerald-500/70 bg-emerald-950/30 text-emerald-300",
-              )}
-              title="Drag a consumable here to use it"
-            >
-              <Pill className="size-3.5" />
-              <span>Use</span>
-            </div>
-            <div
-              ref={trashRef}
-              className={cn(
-                "flex items-center justify-center gap-2 rounded-sm border border-dashed border-border/60 bg-background/30 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors",
-                drag && "border-red-500/70 bg-red-950/30 text-red-300",
-              )}
-            >
-              <Trash2 className="size-3.5" />
-              <span>Discard</span>
-            </div>
+          <div
+            ref={consumeZoneRef}
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-border/60 bg-background/30 py-8 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors",
+              // Light up green only when a consumable is being dragged.
+              drag && CONSUMABLE_EFFECTS[drag.itemId] && (drag.source === "pockets" || drag.source === "bag") &&
+                "border-emerald-500/70 bg-emerald-950/30 text-emerald-300",
+            )}
+            title="Drag a consumable here to use it"
+          >
+            <Pill className="size-5" />
+            <span>Use</span>
           </div>
         </div>
 
