@@ -37,6 +37,7 @@ export function startRaid(
   locationId: string,
   equipment: Equipment,
   rand: () => number,
+  now: number,
 ): CurrentRaid {
   const baseMap = generateMap(rand, LOCATIONS_BY_ID[locationId]);
   // Entry tile starts visited. It has no loot pool so it's never "looted."
@@ -46,9 +47,10 @@ export function startRaid(
   // Reveal entry + its orthogonal neighbors (the operative can see what's
   // immediately around them on insertion).
   const map = revealFrom({ ...baseMap, tiles }, baseMap.entry.x, baseMap.entry.y);
+  const log = makeLogger(now, rand);
   return {
     locationId,
-    startedAt: Date.now(),
+    startedAt: now,
     runState: {
       heat: 0,
       health: 100,
@@ -58,9 +60,7 @@ export function startRaid(
       distanceFromExtract: 0,
       flags: [],
     },
-    log: [
-      makeLog("system", `Operative inserted at ${locationId}. Comms green.`),
-    ],
+    log: [log("system", `Operative inserted at ${locationId}. Comms green.`)],
     equipment,
     active: true,
     pendingChoice: null,
@@ -71,7 +71,7 @@ export function startRaid(
     // Initial action: push out of the entry. autoPickAction can refine but
     // entry tile has no loot, so move_forward is the natural start.
     queuedAction: "move_forward",
-    actionStartedAt: Date.now(),
+    actionStartedAt: now,
   };
 }
 
@@ -82,14 +82,30 @@ export function bleedDrain(flags: ReadonlyArray<string>): number {
   return d;
 }
 
-export function makeLog(kind: LogEntry["kind"], text: string, itemId?: string): LogEntry {
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    timestamp: Date.now(),
-    text,
-    kind,
-    itemId,
-  };
+// Engine purity: id + timestamp come from caller-supplied `now` and `rand`
+// so raid logic stays seedable and the wall-clock leak is contained to the
+// store. See ARCH_REVIEW item #1 / DESIGN.md "Multiplayer port-readiness."
+export function makeUid(now: number, rand: () => number): string {
+  return `${now.toString(36)}-${rand().toString(36).slice(2, 8)}`;
+}
+
+export function makeLog(
+  kind: LogEntry["kind"],
+  text: string,
+  itemId: string | undefined,
+  now: number,
+  rand: () => number,
+): LogEntry {
+  return { id: makeUid(now, rand), timestamp: now, text, kind, itemId };
+}
+
+// Closure factory to keep internal call sites short: `const log = makeLogger(now, rand)`
+// then `log("flavor", "...")` instead of repeating now/rand at every call.
+export function makeLogger(
+  now: number,
+  rand: () => number,
+): (kind: LogEntry["kind"], text: string, itemId?: string) => LogEntry {
+  return (kind, text, itemId) => makeLog(kind, text, itemId, now, rand);
 }
 
 export function nextTickDelay(rand: () => number): number {
@@ -106,7 +122,11 @@ export const ENERGY_BASE_DRAIN = 3;
 // Build a flavor log line for the operative entering a room. Names the
 // specific containers and any loose items on the floor so subsequent Loot
 // logs and pickup actions match.
-export function entranceLog(tile: import("@/lib/types").MapTile): LogEntry {
+export function entranceLog(
+  tile: import("@/lib/types").MapTile,
+  now: number,
+  rand: () => number,
+): LogEntry {
   const lootHint = (() => {
     if (tile.lootMax === 0 && tile.lockedContainers.length === 0) return "";
     if (tile.lootRemaining === 0 && tile.lockedContainers.length === 0)
@@ -135,10 +155,9 @@ export function entranceLog(tile: import("@/lib/types").MapTile): LogEntry {
     }
     return ` ${tile.contents.length} items on the floor.`;
   })();
-  return makeLog(
+  return makeLogger(now, rand)(
     "flavor",
     `Stepped into the ${tile.name}.${lootHint}${inRoom}`,
-    undefined,
   );
 }
 
@@ -216,12 +235,12 @@ const PATROL_TIMER_MS = 10000;
 // Force-locked encounter — fired when the player queues force_locked on a
 // tile with a locked container. Blast / Skip for now (Key path TODO once we
 // add key items to the pack).
-function lockedCratePendingChoice(containerName: string): PendingChoice {
+function lockedCratePendingChoice(containerName: string, now: number): PendingChoice {
   return {
     eventId: "locked_door",
     prompt: `${capitalize(containerName)}. How do I crack it?`,
     defaultId: "skip",
-    startedAt: Date.now(),
+    startedAt: now,
     timerMs: 10000,
     options: [
       {
@@ -243,13 +262,13 @@ function lockedCratePendingChoice(containerName: string): PendingChoice {
 
 // A patrol encounter — fired as a forced-choice modal when the operative
 // runs into hostiles while pushing forward.
-function patrolPendingChoice(): PendingChoice {
+function patrolPendingChoice(now: number): PendingChoice {
   return {
     eventId: "spotted_patrol",
     prompt:
       "Movement up ahead — patrol in the next room. They haven't spotted me yet.",
     defaultId: "hide",
-    startedAt: Date.now(),
+    startedAt: now,
     timerMs: PATROL_TIMER_MS,
     options: [
       {
@@ -308,10 +327,18 @@ export interface ActionTickResult {
 
 // Resolve one tick by carrying out the queued action on the current raid.
 // Pure: returns the result; the store applies it to state.
-export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickResult {
+export function tickAction(
+  raid: CurrentRaid,
+  rand: () => number,
+  now: number,
+): ActionTickResult {
   const action = raid.queuedAction;
   const flags = raid.runState.flags;
   const bleed = bleedDrain(flags);
+  // Closure factory keeps log calls short; ARCH_REVIEW #1 — engine no longer
+  // reads Date.now()/Math.random() directly, callers thread them in.
+  const log = makeLogger(now, rand);
+  const uid = () => makeUid(now, rand);
 
   let healthDelta = -bleed;
   let heatDelta = 0;
@@ -347,12 +374,12 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         return {
           logs: [
             heatRoll
-              ? makeLog(
+              ? log(
                   "flavor",
                   "Footsteps closing in — they heard me.",
                   undefined,
                 )
-              : makeLog(
+              : log(
                   "flavor",
                   "Hostiles in the next room. Holding.",
                   undefined,
@@ -367,7 +394,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
           movement: "none",
           consumedLoot: false,
           breachedLocked: false,
-          pendingChoice: patrolPendingChoice(),
+          pendingChoice: patrolPendingChoice(now),
         };
       }
       movement = "forward";
@@ -375,7 +402,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
     }
     case "loot": {
       if (!currentTile || currentTile.lootRemaining <= 0) {
-        logs.push(makeLog("flavor", "Nothing left worth searching here.", undefined));
+        logs.push(log("flavor", "Nothing left worth searching here.", undefined));
         break;
       }
       consumedLoot = true;
@@ -394,11 +421,11 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         if (itemId) {
           const item = ITEMS[itemId];
           droppedItem = {
-            uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            uid: uid(),
             itemId,
           };
           logs.push(
-            makeLog(
+            log(
               "loot",
               `${verb} ${article} ${container}. ⟦${item?.name ?? itemId}⟧ inside.`,
               itemId,
@@ -406,12 +433,12 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
           );
         } else {
           logs.push(
-            makeLog("flavor", `${verb} ${article} ${container}. Empty.`, undefined),
+            log("flavor", `${verb} ${article} ${container}. Empty.`, undefined),
           );
         }
       } else {
         logs.push(
-          makeLog("flavor", `${verb} ${article} ${container}. Nothing in it.`, undefined),
+          log("flavor", `${verb} ${article} ${container}. Nothing in it.`, undefined),
         );
       }
       break;
@@ -419,13 +446,13 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
     case "stay": {
       heatDelta = -8;
       energyDelta = -2;
-      logs.push(makeLog("flavor", "Holding position. Listening.", undefined));
+      logs.push(log("flavor", "Holding position. Listening.", undefined));
       break;
     }
     case "breach_locked": {
       const target = currentTile?.lockedContainers[0];
       if (!target) {
-        logs.push(makeLog("flavor", "Nothing locked here.", undefined));
+        logs.push(log("flavor", "Nothing locked here.", undefined));
         break;
       }
       // Effects baked in: -2 ammo, +14 heat. Loot rolled 30% empty / 50%
@@ -437,7 +464,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
       const r = rand();
       if (r < 0.3) {
         logs.push(
-          makeLog("flavor", `Blasted the ${target.name}. Empty inside.`, undefined),
+          log("flavor", `Blasted the ${target.name}. Empty inside.`, undefined),
         );
       } else {
         const isRare = r >= 0.8;
@@ -448,11 +475,11 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         if (itemId) {
           const item = ITEMS[itemId];
           droppedItem = {
-            uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            uid: uid(),
             itemId,
           };
           logs.push(
-            makeLog(
+            log(
               "loot",
               `Blasted the ${target.name}. ⟦${item?.name ?? itemId}⟧ inside.`,
               itemId,
@@ -460,7 +487,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
           );
         } else {
           logs.push(
-            makeLog("flavor", `Blasted the ${target.name}. Empty inside.`, undefined),
+            log("flavor", `Blasted the ${target.name}. Empty inside.`, undefined),
           );
         }
       }
@@ -480,12 +507,12 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         return {
           logs: [
             heatRoll
-              ? makeLog(
+              ? log(
                   "flavor",
                   "Caught up to. They tracked the noise.",
                   undefined,
                 )
-              : makeLog(
+              : log(
                   "flavor",
                   "Hostiles between me and extract. Holding.",
                   undefined,
@@ -500,7 +527,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
           movement: "none",
           consumedLoot: false,
           breachedLocked: false,
-          pendingChoice: patrolPendingChoice(),
+          pendingChoice: patrolPendingChoice(now),
         };
       }
       movement = "backward";
@@ -524,18 +551,18 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         if (itemId) {
           const item = ITEMS[itemId];
           droppedItem = {
-            uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            uid: uid(),
             itemId,
           };
           logs.push(
-            makeLog(
+            log(
               "combat_resolved",
               `Target down. Looted ⟦${item?.name ?? itemId}⟧ off them.`,
               itemId,
             ),
           );
         } else {
-          logs.push(makeLog("combat_resolved", "Target down. Nothing on them.", undefined));
+          logs.push(log("combat_resolved", "Target down. Nothing on them.", undefined));
         }
         heatDelta += 4;
         ammoDelta = -1;
@@ -545,13 +572,13 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         ammoDelta = -2;
         heatDelta += 5;
         if (rand() < 0.25) flagsAdded.push("bleeding_minor");
-        logs.push(makeLog("damage", "Trading shots. Took a glancing hit.", undefined));
+        logs.push(log("damage", "Trading shots. Took a glancing hit.", undefined));
       } else {
         heatDelta += 8;
         ammoDelta = -1;
         flagsRemoved.push("combat_engaged");
         logs.push(
-          makeLog(
+          log(
             "combat_resolved",
             "Target broke contact and ran. Lost them.",
             undefined,
@@ -566,7 +593,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         heatDelta += 6;
         flagsRemoved.push("combat_engaged");
         logs.push(
-          makeLog(
+          log(
             "combat_resolved",
             "Broke contact — clear of the threat for now.",
             undefined,
@@ -577,7 +604,7 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
         ammoDelta = -1;
         if (rand() < 0.2) flagsAdded.push("bleeding_minor");
         logs.push(
-          makeLog(
+          log(
             "damage",
             "Couldn't break clean. Took a round on the way out.",
             undefined,
@@ -600,11 +627,11 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
       const r = rand();
       if (r < 0.6) flagsAdded.push("bleeding_minor");
       else if (r < 0.85) flagsAdded.push("bleeding_major");
-      logs.push(makeLog("damage", "Took fire. Plate held — mostly.", undefined));
+      logs.push(log("damage", "Took fire. Plate held — mostly.", undefined));
     } else {
       // heard_voices flavor
       heatDelta += 3;
-      logs.push(makeLog("flavor", "Voices through the wall. Muffled.", undefined));
+      logs.push(log("flavor", "Voices through the wall. Muffled.", undefined));
     }
   }
 
@@ -623,7 +650,11 @@ export function tickAction(raid: CurrentRaid, rand: () => number): ActionTickRes
   };
 }
 
-export function applyBandage(raid: CurrentRaid): CurrentRaid {
+export function applyBandage(
+  raid: CurrentRaid,
+  now: number,
+  rand: () => number,
+): CurrentRaid {
   const hadMinor = raid.runState.flags.includes("bleeding_minor");
   const hadMajor = raid.runState.flags.includes("bleeding_major");
   if (!hadMinor && !hadMajor) return raid;
@@ -668,7 +699,7 @@ export function applyBandage(raid: CurrentRaid): CurrentRaid {
     runState: { ...raid.runState, flags },
     log: [
       ...raid.log,
-      makeLog(
+      makeLogger(now, rand)(
         "system",
         hadMajor ? "Bandage applied — bleed under control." : "Bandage applied.",
       ),

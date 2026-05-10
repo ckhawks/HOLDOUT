@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useNow } from "@/lib/useNow";
 import {
   ChevronRight,
   Crosshair,
@@ -49,18 +49,7 @@ export function NextActionCard() {
   const recall = useGame((s) => s.recall);
   const cancelRecall = useGame((s) => s.cancelRecall);
   const paused = !!raid?.pausedAt;
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!raid?.active || paused) return;
-    // Sync `now` immediately on (re)start so the bar doesn't snap from a
-    // stale value when unpausing. setInterval's first tick is 100ms out,
-    // and during that window elapsed would be computed off a pre-pause
-    // now against a post-pause actionStartedAt.
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 100);
-    return () => clearInterval(id);
-  }, [raid?.active, paused]);
+  const now = useNow();
 
   if (!raid) return null;
   const queued = raid.queuedAction;

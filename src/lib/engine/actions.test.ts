@@ -88,13 +88,13 @@ describe("autoPickAction", () => {
 describe("tickAction movement", () => {
   it("move_forward returns movement: forward", () => {
     const raid = makeRaid({ queuedAction: "move_forward" });
-    const result = tickAction(raid, makeRng(1));
+    const result = tickAction(raid, makeRng(1), 0);
     expect(result.movement).toBe("forward");
   });
 
   it("stay returns movement: none and reduces heat", () => {
     const raid = makeRaid({ queuedAction: "stay" });
-    const result = tickAction(raid, makeRng(1));
+    const result = tickAction(raid, makeRng(1), 0);
     expect(result.movement).toBe("none");
     expect(result.heatDelta).toBeLessThan(0);
   });
@@ -106,7 +106,7 @@ describe("tickAction movement", () => {
       runState: freshRunState({ heat: 0, flags: ["extracting"], distanceFromExtract: 3 }),
     });
     for (let seed = 1; seed < 50; seed++) {
-      const result = tickAction(raid, makeRng(seed));
+      const result = tickAction(raid, makeRng(seed), 0);
       expect(result.movement).toBe("backward");
     }
   });
@@ -126,7 +126,7 @@ describe("tickAction loot", () => {
     });
     let drops = 0;
     for (let seed = 1; seed < 50; seed++) {
-      const result = tickAction(raid, makeRng(seed));
+      const result = tickAction(raid, makeRng(seed), 0);
       expect(result.consumedLoot).toBe(true);
       if (result.droppedItem) drops++;
     }
@@ -148,7 +148,7 @@ describe("tickAction loot", () => {
       operativePos: { x: target.x, y: target.y },
       queuedAction: "breach_locked",
     });
-    const result = tickAction(raid, makeRng(1));
+    const result = tickAction(raid, makeRng(1), 0);
     expect(result.pendingChoice).toBeUndefined();
     expect(result.breachedLocked).toBe(true);
     expect(result.ammoDelta).toBe(-2);
@@ -167,7 +167,7 @@ describe("tickAction loot", () => {
       operativePos: { x: target.x, y: target.y },
       queuedAction: "loot",
     });
-    const result = tickAction(raid, makeRng(1));
+    const result = tickAction(raid, makeRng(1), 0);
     expect(result.consumedLoot).toBe(false);
     expect(result.droppedItem).toBeUndefined();
   });
@@ -190,7 +190,7 @@ describe("combat sub-mode", () => {
     let firefights = 0;
     let fleds = 0;
     for (let seed = 1; seed < 200; seed++) {
-      const result = tickAction(raid, makeRng(seed));
+      const result = tickAction(raid, makeRng(seed), 0);
       const cleared = result.flagsRemoved.includes("combat_engaged");
       if (cleared && result.droppedItem) downs++;
       else if (cleared) fleds++;
@@ -210,7 +210,7 @@ describe("combat sub-mode", () => {
     let breaks = 0;
     let fails = 0;
     for (let seed = 1; seed < 200; seed++) {
-      const result = tickAction(raid, makeRng(seed));
+      const result = tickAction(raid, makeRng(seed), 0);
       if (result.flagsRemoved.includes("combat_engaged")) breaks++;
       else fails++;
     }
@@ -232,7 +232,7 @@ describe("combat sub-mode", () => {
       nextStep: dest,
       queuedAction: "move_forward",
     });
-    const result = tickAction(raid, makeRng(1));
+    const result = tickAction(raid, makeRng(1), 0);
     expect(result.pendingChoice).toBeDefined();
     expect(result.movement).toBe("none");
     const ids = result.pendingChoice!.options.map((o) => o.id);
@@ -258,7 +258,7 @@ describe("combat sub-mode", () => {
     // ambushes.
     let ambushes = 0;
     for (let seed = 1; seed < 200; seed++) {
-      const result = tickAction(raid, makeRng(seed));
+      const result = tickAction(raid, makeRng(seed), 0);
       if (result.pendingChoice) ambushes++;
     }
     expect(ambushes).toBeGreaterThan(20);
@@ -281,7 +281,7 @@ describe("combat sub-mode", () => {
     // Run many seeds — none should raise pendingChoice on a clean dest at
     // heat=0 (heat-driven ambush probability is 0).
     for (let seed = 1; seed < 50; seed++) {
-      const result = tickAction(raid, makeRng(seed));
+      const result = tickAction(raid, makeRng(seed), 0);
       expect(result.pendingChoice).toBeUndefined();
       expect(result.movement).toBe("forward");
     }

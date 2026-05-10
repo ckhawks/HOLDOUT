@@ -86,6 +86,6 @@ export function generateShopOffers(rand: () => number): ShopOffer[] {
   return offers;
 }
 
-export function refreshShop(rand: () => number): ShopState {
-  return { offers: generateShopOffers(rand), lastRefreshAt: Date.now() };
+export function refreshShop(rand: () => number, now: number): ShopState {
+  return { offers: generateShopOffers(rand), lastRefreshAt: now };
 }

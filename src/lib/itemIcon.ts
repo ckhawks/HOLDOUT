@@ -1,3 +1,4 @@
+import { createElement, type ReactNode } from "react";
 import {
   Atom,
   Backpack,
@@ -29,4 +30,12 @@ export function categoryIconFor(itemId: string | undefined): LucideIcon | null {
   if (!itemId) return null;
   const cat = ITEMS[itemId]?.category;
   return cat ? CATEGORY_ICON[cat] : null;
+}
+
+// React Compiler ESLint flags `const Icon = categoryIconFor(...)` then `<Icon/>`
+// as "component created during render." Use this helper at sites where the rule
+// trips to render the icon via createElement instead.
+export function renderCategoryIcon(itemId: string | undefined, className: string): ReactNode {
+  const Icon = categoryIconFor(itemId);
+  return Icon ? createElement(Icon, { className }) : null;
 }

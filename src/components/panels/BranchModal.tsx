@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useGame } from "@/store/game";
+import { useNow } from "@/lib/useNow";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
@@ -54,24 +55,18 @@ export function BranchModal() {
   const choice = useGame((s) => s.currentRaid?.pendingChoice ?? null);
   const paused = useGame((s) => s.currentRaid?.pausedAt ?? null);
   const resolve = useGame((s) => s.resolvePendingChoice);
-  const [now, setNow] = useState(() => Date.now());
+  // Wall-clock subscription via useSyncExternalStore — fresh on every render,
+  // no stale state to chase on unpause. Auto-resolve fires from a render-time
+  // check rather than a separate `now`-dep effect.
+  const wallNow = useNow();
+  const now = paused ?? wallNow;
 
   useEffect(() => {
-    if (!choice) return;
-    if (paused) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 100);
-    return () => clearInterval(t);
-  }, [choice, paused]);
-
-  useEffect(() => {
-    if (!choice) return;
-    if (paused) return;
-    const remaining = choice.startedAt + choice.timerMs - now;
-    if (remaining <= 0) {
+    if (!choice || paused) return;
+    if (wallNow >= choice.startedAt + choice.timerMs) {
       resolve(choice.defaultId);
     }
-  }, [choice, paused, now, resolve]);
+  }, [choice, paused, wallNow, resolve]);
 
   if (!choice) return null;
 

@@ -211,7 +211,7 @@ export const useGame = create<GameState>((set, get) => ({
     };
     set({
       stash: nextStash,
-      currentRaid: startRaid(locationId, equipment, mapRand),
+      currentRaid: startRaid(locationId, equipment, mapRand, Date.now()),
       operative: { ...operative, state: "raiding" },
       activePanel: "feed",
     });
@@ -224,7 +224,8 @@ export const useGame = create<GameState>((set, get) => ({
     if (currentRaid.pausedAt) return;
 
     const rand = makeRng(rngSeed + currentRaid.log.length);
-    const t = tickAction(currentRaid, rand);
+    const tickNow = Date.now();
+    const t = tickAction(currentRaid, rand, tickNow);
 
     // If the action raised a forced-choice (e.g. patrol encounter), set
     // pendingChoice on the raid and bail. The action's other effects already
@@ -272,9 +273,9 @@ export const useGame = create<GameState>((set, get) => ({
           arrivedTileNow.lootRemaining > 0 ||
           arrivedTileNow.contents.length > 0;
         if (!isExtracting && wasFirstVisit) {
-          entrance = entranceLog(arrivedTileNow);
+          entrance = entranceLog(arrivedTileNow, tickNow, rand);
         } else if (isExtracting && hasInterest) {
-          entrance = entranceLog(arrivedTileNow);
+          entrance = entranceLog(arrivedTileNow, tickNow, rand);
         }
       }
     }
@@ -343,7 +344,7 @@ export const useGame = create<GameState>((set, get) => ({
         ...raid,
         log: [
           ...raid.log,
-          makeLog("system", "Vital signs flat. Operative is down."),
+          makeLog("system", "Vital signs flat. Operative is down.", undefined, tickNow, rand),
         ],
         active: false,
       };
@@ -362,7 +363,7 @@ export const useGame = create<GameState>((set, get) => ({
         ...raid,
         log: [
           ...raid.log,
-          makeLog("system", "At the extract point. Pulling out."),
+          makeLog("system", "At the extract point. Pulling out.", undefined, tickNow, rand),
         ],
         active: false,
       };
@@ -447,7 +448,9 @@ export const useGame = create<GameState>((set, get) => ({
       }
     }
 
-    const choiceLogs: LogEntry[] = [makeLog("choice_result", choice.label, undefined)];
+    const choiceLogs: LogEntry[] = [
+      makeLog("choice_result", choice.label, undefined, Date.now(), Math.random),
+    ];
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, ...choiceLogs],
@@ -517,7 +520,7 @@ export const useGame = create<GameState>((set, get) => ({
   useBandage: () => {
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
-    const next = applyBandage(currentRaid);
+    const next = applyBandage(currentRaid, Date.now(), Math.random);
     if (next === currentRaid) return;
     set({ currentRaid: next });
   },
@@ -527,7 +530,7 @@ export const useGame = create<GameState>((set, get) => ({
     if (!currentRaid || !currentRaid.active) return;
     if (!currentRaid.runState.flags.includes("extracting")) return;
     const flags = currentRaid.runState.flags.filter((f) => f !== "extracting");
-    const log = makeLog("system", "Recall canceled. Resuming raid.");
+    const log = makeLog("system", "Recall canceled. Resuming raid.", undefined, Date.now(), Math.random);
     // Re-pick a non-extract next step from current pos (forward).
     const nextStep = stepForward(currentRaid.map, currentRaid.operativePos, makeRng(Date.now()));
     set({
@@ -550,6 +553,9 @@ export const useGame = create<GameState>((set, get) => ({
     const log: LogEntry = makeLog(
       "system",
       `RECALL acknowledged. Backtracking to extract — about ${currentRaid.runState.distanceFromExtract} rooms away.`,
+      undefined,
+      Date.now(),
+      Math.random,
     );
     const flags = Array.from(new Set([...currentRaid.runState.flags, "extracting"]));
     // Switch the preview to the extract direction immediately.
@@ -623,7 +629,7 @@ export const useGame = create<GameState>((set, get) => ({
     }
     // Marketplace restocks every time the operative comes home.
     const { rngSeed } = get();
-    const shop = refreshShop(makeRng(rngSeed + Date.now()));
+    const shop = refreshShop(makeRng(rngSeed + Date.now()), Date.now());
     set({
       currentRaid: null,
       unlocks: nextUnlocks,
@@ -928,7 +934,7 @@ export const useGame = create<GameState>((set, get) => ({
       unlocks: { workbench: false, medbay: false, biolab: false },
       upgrades: initialUpgrades,
       currentRaid: null,
-      shop: refreshShop(makeRng(Math.floor(Math.random() * 0xffffffff))),
+      shop: refreshShop(makeRng(Math.floor(Math.random() * 0xffffffff)), Date.now()),
       activePanel: "ops",
       rngSeed: Math.floor(Math.random() * 0xffffffff),
       raidOutcome: null,
@@ -944,7 +950,7 @@ export const useGame = create<GameState>((set, get) => ({
       const seed = Math.floor(Math.random() * 0xffffffff);
       const loadedShop = loaded.shop ?? { offers: [], lastRefreshAt: 0 };
       const shop = loadedShop.offers.length === 0
-        ? refreshShop(makeRng(seed))
+        ? refreshShop(makeRng(seed), Date.now())
         : loadedShop;
       set({
         cash: loaded.cash,
@@ -963,7 +969,7 @@ export const useGame = create<GameState>((set, get) => ({
     } else {
       // Fresh game — populate shop immediately so player has something to buy.
       const seed = Math.floor(Math.random() * 0xffffffff);
-      set({ hydrated: true, shop: refreshShop(makeRng(seed)) });
+      set({ hydrated: true, shop: refreshShop(makeRng(seed), Date.now()) });
     }
   },
 }));

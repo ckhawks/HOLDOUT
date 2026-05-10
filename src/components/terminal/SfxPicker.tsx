@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { SFX_FILES, type SfxId, getActiveSfx, initSfx, playSfx, setActiveSfx, setSfxVolume } from "@/lib/sfx";
 
 export function SfxPicker() {
-  const [active, setActive] = useState<SfxId | "">("");
+  // Run initSfx() before useState's lazy initializers so getActiveSfx() can
+  // return the persisted choice. Safe to call repeatedly — initSfx is idempotent
+  // (pool-length guard) and SSR-skipped.
+  if (typeof window !== "undefined") initSfx();
+  const [active, setActive] = useState<SfxId | "">(() => getActiveSfx() ?? "");
   const [vol, setVol] = useState(0.5);
 
   useEffect(() => {
-    initSfx();
-    setActive(getActiveSfx() ?? "");
     setSfxVolume(0.5);
   }, []);
 

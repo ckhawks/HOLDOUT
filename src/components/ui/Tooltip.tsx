@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ITEMS } from "@/lib/data/items";
 import { tierColorFor, tileBgFor } from "@/lib/itemDisplay";
-import { categoryIconFor } from "@/lib/itemIcon";
+import { renderCategoryIcon } from "@/lib/itemIcon";
 import { shapeBounds, shapeFor } from "@/lib/engine/shapes";
 
 // Tracks whether the user is currently pressing the mouse anywhere on the
@@ -126,7 +126,7 @@ export function ItemTooltip({
   const cellPx = 10;
   const cells = shapeFor(itemId, 0);
   const bounds = shapeBounds(cells);
-  const Icon = categoryIconFor(itemId);
+  const iconNode = renderCategoryIcon(itemId, "size-3");
   const text = (
     <div className="flex items-start gap-2">
       <div
@@ -143,7 +143,7 @@ export function ItemTooltip({
       </div>
       <div className="flex flex-col">
         <div className={cn("flex items-center gap-1 font-semibold", fg)}>
-          {Icon && <Icon className="size-3" />}
+          {iconNode}
           {item.name}
         </div>
         <div className="text-muted-foreground">
