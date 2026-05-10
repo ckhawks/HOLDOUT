@@ -63,7 +63,7 @@ import {
 } from "@/lib/engine/save";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 
-export type PanelId = "hideout" | "stash" | "ops" | "feed" | "shop" | "manual" | "settings";
+export type PanelId = "hideout" | "stash" | "ops" | "feed" | "shop" | "manual" | "data" | "settings";
 
 export interface RaidOutcome {
   type: "death" | "extracted";

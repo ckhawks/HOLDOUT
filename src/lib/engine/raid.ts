@@ -217,8 +217,11 @@ const LOOT_VERBS: Record<string, string[]> = {
 // ---- Action-driven tick ----
 
 export const ACTION_TIMER_MS = 6000;
-const INTERRUPT_CHANCE = 0.22;
-const PATROL_TIMER_MS = 10000;
+export const INTERRUPT_CHANCE = 0.22;
+export const PATROL_TIMER_MS = 10000;
+// Heat → ambush probability per move tick: heat / HEAT_AMBUSH_DIVISOR.
+// At heat 100 → 25% ambush per move with the default 400.
+export const HEAT_AMBUSH_DIVISOR = 400;
 
 // A patrol encounter — fired as a forced-choice modal when the operative
 // runs into hostiles while pushing forward.
@@ -329,7 +332,7 @@ export function tickAction(
         ? raid.map.tiles[dest.y * raid.map.width + dest.x]
         : undefined;
       const heatRoll =
-        !destTile?.threat && rand() < (raid.runState.heat ?? 0) / 400;
+        !destTile?.threat && rand() < (raid.runState.heat ?? 0) / HEAT_AMBUSH_DIVISOR;
       if ((destTile && destTile.threat) || heatRoll) {
         return {
           logs: [
@@ -462,7 +465,7 @@ export function tickAction(
         ? raid.map.tiles[dest.y * raid.map.width + dest.x]
         : undefined;
       const heatRoll =
-        !destTile?.threat && rand() < (raid.runState.heat ?? 0) / 400;
+        !destTile?.threat && rand() < (raid.runState.heat ?? 0) / HEAT_AMBUSH_DIVISOR;
       if ((destTile && destTile.threat) || heatRoll) {
         return {
           logs: [

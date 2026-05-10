@@ -131,6 +131,7 @@ Make "scrounge / push / lay low" real instead of theatre.
 
 - [ ] First-run intro modal.
 - [ ] Tick-rate / action-timer debug slider in Settings.
+- [ ] Gate the Data panel behind an admin/debug flag (currently visible to everyone — fine for now, but eventually it leaks the loot tables and threat math to players).
 - [ ] More item variety pass — target ≥40 items, currently 32.
 - [ ] More room-type narrative variety: room-type-specific event templates (instead of just bias multipliers).
 - [ ] More context-eligible actions for the action card's bottom section (lockpick-on-locked, use-key-on-locked, examine-corpse, etc.).

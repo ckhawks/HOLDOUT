@@ -11,6 +11,7 @@ import { FeedPanel } from "@/components/panels/FeedPanel";
 import { ShopPanel } from "@/components/panels/ShopPanel";
 import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { ManualPanel } from "@/components/panels/ManualPanel";
+import { DataPanel } from "@/components/panels/DataPanel";
 import { RaidOutcomeModal } from "@/components/panels/RaidOutcomeModal";
 import { useRaidLoop } from "@/components/terminal/useRaidLoop";
 import { initSfx, playSfx } from "@/lib/sfx";
@@ -124,6 +125,7 @@ export function TerminalShell() {
           {panel === "feed" && <FeedPanel />}
           {panel === "shop" && <ShopPanel />}
           {panel === "manual" && <ManualPanel />}
+          {panel === "data" && <DataPanel />}
           {panel === "settings" && <SettingsPanel />}
         </main>
       </div>

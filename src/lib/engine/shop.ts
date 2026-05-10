@@ -3,15 +3,16 @@ import { ITEMS } from "@/lib/data/items";
 
 // Buy markup over sell value. Tightens the loop without making buying free
 // arbitrage. ¤6 bandage → ¤18 buy.
-const BUY_MARKUP = 3;
-const MIN_PRICE = 5;
+export const BUY_MARKUP = 3;
+export const MIN_PRICE = 5;
 
 // Item pools the shop draws from. The shop NEVER carries unsellable items
 // (sellValue 0 = unique key items / schematics). bandage_pack is pulled out
 // of the random chem pool because it's guaranteed every refresh.
-const CHEM_POOL = ["antiseptic_vial", "med_syrette"];
-const FOOD_POOL = ["ration_pack", "water_bulb", "coffee_can"];
-const AMMO_POOL = ["rifle_round", "pistol_mag"];
+export const CHEM_POOL = ["antiseptic_vial", "med_syrette"];
+export const FOOD_POOL = ["ration_pack", "water_bulb", "coffee_can"];
+export const AMMO_POOL = ["rifle_round", "pistol_mag"];
+export const BAG_POOL = ["canvas_satchel", "tactical_pack", "raider_rucksack"];
 
 export function priceFor(itemId: string): number {
   const item = ITEMS[itemId];

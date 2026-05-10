@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Home, Package, Radio, Send, Settings, Store } from "lucide-react";
+import { BookOpen, Database, Home, Package, Radio, Send, Settings, Store } from "lucide-react";
 import { useGame, type PanelId } from "@/store/game";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,7 @@ const NAV: { id: PanelId; label: string; Icon: typeof Home }[] = [
 
 const FOOTER_NAV: { id: PanelId; label: string; Icon: typeof Home }[] = [
   { id: "manual", label: "Manual", Icon: BookOpen },
+  { id: "data", label: "Data", Icon: Database },
   { id: "settings", label: "Settings", Icon: Settings },
 ];
 
