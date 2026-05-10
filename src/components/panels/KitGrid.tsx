@@ -3,6 +3,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { Backpack } from "lucide-react";
 import { ITEMS } from "@/lib/data/items";
+import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
+import { ItemEffectChips } from "@/components/ui/ItemEffectChips";
 import { shapeBounds, shapeFor } from "@/lib/engine/shapes";
 import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { categoryIconFor } from "@/lib/itemIcon";
@@ -141,6 +143,7 @@ function ItemTiles({
   const tier = ITEMS[itemId]?.tier ?? "common";
   const sellValue = ITEMS[itemId]?.sellValue ?? 0;
   const Icon = categoryIconFor(itemId);
+  const isConsumable = !!CONSUMABLE_EFFECTS[itemId];
 
   useLayoutEffect(() => {
     const el = tooltipRef.current;
@@ -220,6 +223,11 @@ function ItemTiles({
             {tier}
             {sellValue > 0 && ` · ¤${sellValue}`}
           </div>
+          {isConsumable && (
+            <div className="mt-0.5">
+              <ItemEffectChips itemId={itemId} />
+            </div>
+          )}
         </div>
       )}
     </>

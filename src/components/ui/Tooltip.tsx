@@ -6,6 +6,7 @@ import { ITEMS } from "@/lib/data/items";
 import { tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { renderCategoryIcon } from "@/lib/itemIcon";
 import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
+import { ItemEffectChips } from "./ItemEffectChips";
 import { shapeBounds, shapeFor } from "@/lib/engine/shapes";
 
 // Tracks whether the user is currently pressing the mouse anywhere on the
@@ -151,19 +152,11 @@ export function ItemTooltip({
           {item.category} · {item.tier}
           {item.sellValue > 0 && ` · ¤${item.sellValue}`}
         </div>
-        {(() => {
-          const eff = CONSUMABLE_EFFECTS[itemId];
-          if (!eff) return null;
-          const parts: string[] = [];
-          if (eff.hp) parts.push(`+${eff.hp} HP`);
-          if (eff.energy) parts.push(`+${eff.energy} energy`);
-          if (eff.clearBleed) parts.push("clears bleed");
-          return (
-            <div className="text-emerald-300/90">
-              consumable · {parts.join(" · ")}
-            </div>
-          );
-        })()}
+        {CONSUMABLE_EFFECTS[itemId] && (
+          <div className="mt-0.5">
+            <ItemEffectChips itemId={itemId} />
+          </div>
+        )}
         {item.bagGrid && (
           <div className="text-muted-foreground">
             {item.bagGrid.width}×{item.bagGrid.height} inventory · {item.bagGrid.width * item.bagGrid.height} cells
