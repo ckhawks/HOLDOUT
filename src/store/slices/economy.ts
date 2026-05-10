@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { Item, StashItem, Upgrades } from "@/lib/types";
 import { ITEMS } from "@/lib/data/items";
-import { isConsumable } from "@/lib/engine/raid";
+import { isConsumable } from "@/lib/engine/consumables";
 import { stashCapacity, stashUpgradeCost } from "@/lib/engine/upgrades";
 import type { GameState } from "../game";
 

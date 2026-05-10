@@ -9,14 +9,13 @@ import type {
 } from "@/lib/types";
 import {
   ACTION_TIMER_MS,
-  applyBandage,
-  applyConsumable,
-  entranceLog,
-  makeLog,
   makeRng,
   startRaid,
   tickAction,
 } from "@/lib/engine/raid";
+import { applyBandage, applyConsumable } from "@/lib/engine/consumables";
+import { entranceLog } from "@/lib/engine/flavor";
+import { makeLog } from "@/lib/engine/logging";
 import { autoPickAction } from "@/lib/engine/actions";
 import { refreshShop } from "@/lib/engine/shop";
 import { pocketsDimensions } from "@/lib/engine/upgrades";

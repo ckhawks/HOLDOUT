@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ACTIONS, autoPickAction } from "./actions";
 import { generateMap } from "./map";
-import { applyConsumable, makeRng, tickAction } from "./raid";
+import { makeRng, tickAction } from "./raid";
+import { applyConsumable } from "./consumables";
 import type { CurrentRaid, MapTile, PackPlacement, RunState } from "@/lib/types";
 
 function freshRunState(over: Partial<RunState> = {}): RunState {

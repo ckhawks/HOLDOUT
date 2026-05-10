@@ -10,7 +10,6 @@ import {
   ACTION_TIMER_MS,
   BLEED_MAJOR_DRAIN,
   BLEED_MINOR_DRAIN,
-  CONSUMABLE_EFFECTS,
   ENERGY_BASE_DRAIN,
   EXHAUSTION_DRAIN,
   HEAT_AMBUSH_DIVISOR,
@@ -19,6 +18,7 @@ import {
   TICK_MAX_MS,
   TICK_MIN_MS,
 } from "@/lib/engine/raid";
+import { CONSUMABLE_EFFECTS } from "@/lib/engine/consumables";
 import {
   BLOCKED_TILE_RATIO,
   DIFFICULTY_MULTIPLIER,

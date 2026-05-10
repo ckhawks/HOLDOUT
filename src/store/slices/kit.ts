@@ -13,7 +13,7 @@ import {
   removeFromKit,
   unequipItem,
 } from "@/lib/engine/equipment";
-import { applyConsumableToOperative } from "@/lib/engine/raid";
+import { applyConsumableToOperative } from "@/lib/engine/consumables";
 import {
   addToTileContents,
   removeFromTileContents,

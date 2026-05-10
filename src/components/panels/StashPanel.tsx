@@ -9,7 +9,7 @@ import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { categoryIconFor } from "@/lib/itemIcon";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Backpack, Coins, Crosshair, FolderTree, Heart, PackageOpen, PillBottle, Shirt, Zap } from "lucide-react";
-import { isConsumable } from "@/lib/engine/raid";
+import { isConsumable } from "@/lib/engine/consumables";
 import { isJunk } from "@/store/slices/economy";
 import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
 import { findFit } from "@/lib/engine/equipment";

@@ -133,11 +133,10 @@ Make "scrounge / push / lay low" real instead of theatre.
 
 ## Tech debt / refactor (from arch review 2026-05-09)
 
-Items #1, #2, #6, #7, #9 (partial) shipped 2026-05-09 — see Changelog. Remaining:
+Items #1, #2, #4, #6, #7, #9 (partial) shipped — see Changelog. Remaining:
 
-4. **`lib/engine/raid.ts` (~675 lines)** — `tickAction` is a ~315-line switch with nested branching, mixed with RNG setup, log flavor (`makeLog`, `entranceLog`, `lootVerb`), branch/choice factories, and bleed/recall helpers. Decompose into `branches.ts`, `flavor.ts`, per-action handlers.
 5. **`PackTetris.tsx` (~488 lines)** — drag state machine, grid math, validation, and rendering all in one component. Grid math overlaps with `engine/shapes.ts` but isn't reused consistently. Extract `usePackDrag` hook, lean on `shapes.ts` for placement validation. (Partially addressed by the `KitGrid` extraction in commit `86ce488`.)
-6. **Remaining test coverage gaps**: UI components untested (acceptable v1). Engine + store now covered by 149 tests across 9 files; the deepest gap left is `tickAction`'s combat sub-mode + locked-container branches, which would benefit from targeted scenario tests if #4 lands.
+6. **Remaining test coverage gaps**: UI components untested (acceptable v1). Engine + store now covered by 163 tests across 9 files; the deepest gap left is `tickAction`'s combat sub-mode + locked-container branches.
 
 ---
 
@@ -233,6 +232,7 @@ Shipped work, newest phases last. Acts as a record of what landed when.
 
 ## Tech debt / refactor (from arch review 2026-05-09)
 
+- ✅ **#4 raid.ts decomposition (2026-05-10)** — `tickAction`'s 315-line switch was already broken into per-action handlers (`handleMoveForward` / `handleStay` / `handleLootAction` / `handleBreachLocked` / `handleFight` / `handleFlee` / `handleExtractStep`) earlier; this finishes the split by extracting flavor and consumables into their own modules. New files: `src/lib/engine/flavor.ts` (entranceLog + lootVerb + container enumeration / pluralization), `src/lib/engine/logging.ts` (makeUid / makeLog / makeLogger), `src/lib/engine/consumables.ts` (CONSUMABLE_EFFECTS + applyConsumable + applyBandage + applyConsumableToOperative + isConsumable). `raid.ts` is now ~440 lines, focused on tick mechanics + per-action handlers. All 11 import sites (store slices, UI components, tests) updated to import from the new modules — no re-export shim. 163 tests still pass.
 - ✅ **#3 Store god-file split** — extracted into 3 Zustand slices in `src/store/slices/`: `raid.ts` (raid lifecycle + currentRaid/raidOutcome state, ~546 lines), `kit.ts` (12 kit/equipment actions, ~246 lines), `economy.ts` (sell + buy + stash upgrade, ~86 lines). `store/game.ts` is now 193 lines (was 1003): state init, slice composition, hydrate/persist. GameState extends each slice interface so the store API is unchanged for consumers.
 - ✅ **#1 Engine purity** — `Date.now()` and `Math.random()` no longer read inside `lib/engine/`. New `makeUid(now, rand)` and `makeLogger(now, rand)` helpers in `raid.ts`; `tickAction`, `startRaid`, `applyBandage`, `entranceLog`, and pending-choice factories all take `now` as a trailing param. Store wraps with `Date.now()` / `Math.random()` at call sites only. Restores the seedable invariant DESIGN.md promises.
 - ✅ **#2 Tick loop ownership** — death/extract `setTimeout` chain in the store moved onto raid state as `pendingEnd: { at, success } | null`. `useRaidLoop` now owns all raid timers (action timer + pending end). Save schema bumped to v24.

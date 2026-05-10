@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Backpack, Pill, Shirt } from "lucide-react";
 import { useGame, type KitSlot } from "@/store/game";
-import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
+import { CONSUMABLE_EFFECTS } from "@/lib/engine/consumables";
 import type { EquipSlot, PocketsState, BagState, Rotation } from "@/lib/types";
 import { EquippedColumn, SLOT_ORDER, type SlotHover, type SlotRefMap } from "./EquippedColumn";
 import { KitDragGhost, KitGrid, KIT_CELL } from "./KitGrid";

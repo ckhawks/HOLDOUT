@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ITEMS } from "@/lib/data/items";
 import { tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { renderCategoryIcon } from "@/lib/itemIcon";
-import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
+import { CONSUMABLE_EFFECTS } from "@/lib/engine/consumables";
 import { ItemEffectChips } from "./ItemEffectChips";
 import { shapeBounds, shapeFor } from "@/lib/engine/shapes";
 

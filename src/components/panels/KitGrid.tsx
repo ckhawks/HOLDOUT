@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { Backpack } from "lucide-react";
 import { ITEMS } from "@/lib/data/items";
-import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
+import { CONSUMABLE_EFFECTS } from "@/lib/engine/consumables";
 import { ItemEffectChips } from "@/components/ui/ItemEffectChips";
 import { shapeBounds, shapeFor } from "@/lib/engine/shapes";
 import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";

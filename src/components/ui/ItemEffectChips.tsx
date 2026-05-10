@@ -1,5 +1,5 @@
 import { Droplet, Heart, Zap } from "lucide-react";
-import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
+import { CONSUMABLE_EFFECTS } from "@/lib/engine/consumables";
 import { cn } from "@/lib/utils";
 
 // Consumable effect chips, styled to match the per-action chips in
