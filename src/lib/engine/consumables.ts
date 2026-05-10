@@ -17,7 +17,7 @@ export interface ConsumableEffect {
 }
 
 export const CONSUMABLE_EFFECTS: Record<string, ConsumableEffect> = {
-  bandage_pack: { clearBleed: true, log: "Bandage applied — bleed under control." },
+  bandage_pack: { clearBleed: true, log: "Bandage on. Bleed clamped." },
   antiseptic_vial: { hp: 10, log: "Patched up. +10 HP." },
   med_syrette: { hp: 30, log: "Med syrette injected. +30 HP." },
   nano_clot: { hp: 60, clearBleed: true, log: "Nano-clot fired. +60 HP, bleed clamped." },
@@ -162,7 +162,7 @@ export function applyBandage(
       ...raid.log,
       makeLogger(now, rand)(
         "system",
-        hadMajor ? "Bandage applied — bleed under control." : "Bandage applied.",
+        hadMajor ? "Bandage on. Bleed clamped." : "Bandage on.",
       ),
     ],
   };

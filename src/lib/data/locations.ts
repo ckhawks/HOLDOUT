@@ -29,7 +29,7 @@ export const LOCATIONS: Location[] = [
     id: "subway",
     name: "Subway",
     description:
-      "Flooded transit tunnels under the old downtown grid. Damp, dark, and full of forgotten stashes. Higher chance of medical and fuel finds. Rare intel surfaces from old maintenance lockers.",
+      "Flooded transit tunnels under the old downtown grid. Damp, dark, full of forgotten stashes. Higher chance of medical and fuel finds. Rare intel surfaces from old maintenance lockers.",
     tier: 2,
     difficulty: "mid",
     categoryWeights: {
@@ -107,7 +107,7 @@ export const LOCATIONS: Location[] = [
     id: "biolab",
     name: "Biolab",
     description:
-      "Triton-Saxon R&D site, abandoned mid-experiment. The chems are unstable, the schematics are valuable. Coordinates required to find it; once located, stays unlocked.",
+      "Triton-Saxon R&D site, abandoned mid-experiment. Unstable chems, valuable schematics. Coordinates required to find it; once located, stays unlocked.",
     tier: 3,
     difficulty: "high",
     categoryWeights: {

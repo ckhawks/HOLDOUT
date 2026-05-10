@@ -61,7 +61,7 @@ export function HideoutPanel() {
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
-      <PanelHeader title="Hideout" subtitle="Your concealed position. Modules expand the loop." />
+      <PanelHeader title="Hideout" subtitle="Your concealed position. Where the kit gets built." />
       <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto px-6 py-6 md:grid-cols-2 xl:grid-cols-3">
         <ModuleCard
           Icon={Package}

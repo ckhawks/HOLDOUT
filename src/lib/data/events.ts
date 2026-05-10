@@ -67,7 +67,7 @@ export const EVENTS: RaidEventDef[] = [
     kind: "choice",
     templates: [
       "{npc} sweeping the {location}. They haven't seen me yet.",
-      "{npc} two corridors over. {condition}. Decision?",
+      "{npc} two corridors over. {condition}.",
       "Patrol moving through the {location}. Need to call it.",
     ],
     branches: [
@@ -129,18 +129,21 @@ export const EVENTS: RaidEventDef[] = [
     weight: 10,
     kind: "damage",
     templates: [
-      "Took fire from the {location}. Glanced off the plate.",
       "Snagged a tripwire. Cut on the leg.",
-      "Slipped on debris in the {location}. Limping.",
-      "Frag round near-miss. Shrapnel in the side.",
-      "Caught a ricochet. Plate held.",
+      "Slipped on debris in the {location}. Twisted ankle.",
+      "Walked into a low pipe in the dark. Head ringing.",
+      "Caught a jagged edge. Bleeding.",
+      "Old wiring shorted as I passed. Burn on the arm.",
+      "Floor gave under me in the {location}. Came down hard.",
+      "Stepped on something sharp. Through the boot sole.",
     ],
-    passiveEffects: { healthDelta: -10, energyDelta: -4 },
-    // Not every hit causes a bleed. ~40% no bleed, ~42% minor, ~18% major.
+    passiveEffects: { healthDelta: -8, energyDelta: -4 },
+    // Environmental hazards bleed less often than gunfire — ~55% no bleed,
+    // ~35% minor (cuts), ~10% major (deep gash).
     postconditions: (rand) => {
       const r = rand();
-      if (r < 0.4) return [];
-      if (r < 0.82) return ["bleeding_minor"];
+      if (r < 0.55) return [];
+      if (r < 0.9) return ["bleeding_minor"];
       return ["bleeding_major"];
     },
   },

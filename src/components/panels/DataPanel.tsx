@@ -47,7 +47,7 @@ export function DataPanel() {
     <div className="flex min-h-0 flex-1 flex-col">
       <PanelHeader
         title="Data"
-        subtitle="Operator-debug view. Live values from the engine — useful for tuning, sanity-checking, or just seeing what's under the hood."
+        subtitle="Operator-debug view. Live engine values for tuning and sanity checks."
       />
       <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6 text-sm">
         <Section title="Save & runtime">

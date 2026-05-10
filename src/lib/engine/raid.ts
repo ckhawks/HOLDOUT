@@ -44,6 +44,7 @@ export function startRaid(
   // immediately around them on insertion).
   const map = revealFrom({ ...baseMap, tiles }, baseMap.entry.x, baseMap.entry.y);
   const log = makeLogger(now, rand);
+  const locName = LOCATIONS_BY_ID[locationId]?.name ?? locationId;
   return {
     locationId,
     startedAt: now,
@@ -56,7 +57,7 @@ export function startRaid(
       distanceFromExtract: 0,
       flags: [],
     },
-    log: [log("system", `Operative inserted at ${locationId}. Comms green.`)],
+    log: [log("system", `Operative inserted at ${locName}. Comms green.`)],
     equipment,
     startingEquipment: equipment,
     tally: {
@@ -157,6 +158,115 @@ function patrolPendingChoice(now: number): PendingChoice {
 // below; tickAction itself is a thin dispatcher that builds a context, calls
 // the handler, and merges the result.
 
+function pick<T>(rand: () => number, pool: readonly T[]): T {
+  return pool[Math.floor(rand() * pool.length)];
+}
+
+// Flavor pools for repeated log lines. Each pool gets sampled per tick so
+// players don't see the same string back-to-back. Keep entries terse and in
+// the field-report register — short, present-tense, no editorialising.
+const STAY_LINES = [
+  "Holding position. Listening.",
+  "Tucked in. Listening.",
+  "Holding. Watching the corridor.",
+  "Crouched down. Eyes up.",
+] as const;
+
+const MOVE_FORWARD_THREAT_LINES = [
+  "Hostiles in the next room. Holding.",
+  "Bodies up ahead. Holding.",
+  "Movement in the next room. Stopped short.",
+] as const;
+
+const MOVE_FORWARD_HEAT_LINES = [
+  "Footsteps closing in — they heard me.",
+  "Boots in the corridor. They heard me.",
+  "Voices coming up fast. Heard me.",
+] as const;
+
+const EXTRACT_THREAT_LINES = [
+  "Hostiles between me and extract. Holding.",
+  "Patrol on the extract route. Holding.",
+  "Bodies in the way out. Stopped short.",
+] as const;
+
+const EXTRACT_HEAT_LINES = [
+  "They're on me. Tracked the noise.",
+  "They caught up. Following the noise.",
+  "Tail picked me up on the way out.",
+] as const;
+
+const EMPTY_LOOT_LINES = [
+  "Nothing left worth searching here.",
+  "Already cleared this room.",
+  "Picked clean.",
+] as const;
+
+const NO_LOCKED_LINES = [
+  "Nothing locked here.",
+  "No locks on this tile.",
+  "Nothing to breach.",
+] as const;
+
+// Random environmental damage flavor — fires from the post-action interrupt
+// layer. No gunfire here: the operative isn't in combat, so a stray round
+// would break the fiction. Hazards are limited to what's plausible while
+// pushing through an abandoned facility.
+const ENV_DAMAGE_LINES = [
+  "Snagged a tripwire. Cut on the leg.",
+  "Slipped on debris. Twisted ankle.",
+  "Walked into a low pipe in the dark. Head ringing.",
+  "Caught a jagged edge. Bleeding.",
+  "Old wiring shorted as I passed. Burn on the arm.",
+  "Stepped on something sharp. Through the boot sole.",
+  "Glass under the boots. Cut deep.",
+  "Floor gave under me. Came down hard.",
+  "Loose grating shifted. Banged the shin.",
+] as const;
+
+const HEARD_VOICES_LINES = [
+  "Voices through the wall. Muffled.",
+  "Chatter on the other side of the wall.",
+  "Someone talking. Can't make it out.",
+  "Two of them. Couple of corridors over.",
+] as const;
+
+const COMBAT_TARGET_DOWN_EMPTY_LINES = [
+  "Target down. Nothing on them.",
+  "Dropped them. Empty pockets.",
+  "Down. Nothing worth taking.",
+] as const;
+
+const COMBAT_TRADE_LINES = [
+  "Trading shots. Took a glancing hit.",
+  "Trading fire. Caught a graze.",
+  "Pinned. Took a hit but held.",
+] as const;
+
+const COMBAT_FLED_LINES = [
+  "Target broke contact and ran. Lost them.",
+  "They bolted. Lost the angle.",
+  "Ran for it. Lost them in the next room.",
+] as const;
+
+const FLEE_BREAK_LINES = [
+  "Broke contact — clear of the threat for now.",
+  "Slipped them. Clear for now.",
+  "Out of sight. Clear.",
+] as const;
+
+const FLEE_HIT_LINES = [
+  "Couldn't break clean. Took a round on the way out.",
+  "Bad break. Caught one running.",
+  "Couldn't shake them. Took a hit.",
+] as const;
+
+const EXHAUSTION_LINES = [
+  "Running on empty — body's eating itself.",
+  "Tank's empty. Burning muscle now.",
+  "Empty inside. Body's chewing itself up.",
+] as const;
+
 type TickLogger = ReturnType<typeof makeLogger>;
 
 interface TickCtx {
@@ -198,7 +308,7 @@ export type CombatOutcome =
 function tryPatrolInterrupt(
   ctx: TickCtx,
   bleed: number,
-  modeText: { heat: string; threat: string },
+  pools: { heat: readonly string[]; threat: readonly string[] },
 ): ActionTickResult | null {
   const { raid, rand, now, log } = ctx;
   const dest = raid.nextStep;
@@ -207,7 +317,7 @@ function tryPatrolInterrupt(
     !destTile?.threat && rand() < (raid.runState.heat ?? 0) / HEAT_AMBUSH_DIVISOR;
   if (!(destTile && destTile.threat) && !heatRoll) return null;
   return {
-    logs: [log("flavor", heatRoll ? modeText.heat : modeText.threat, undefined)],
+    logs: [log("flavor", pick(rand, heatRoll ? pools.heat : pools.threat), undefined)],
     heatDelta: 0,
     healthDelta: -bleed,
     energyDelta: 0,
@@ -238,8 +348,8 @@ function rollLoot(ctx: TickCtx, isRare: boolean): { itemId: string; uid: string 
 
 function handleMoveForward(ctx: TickCtx, d: DeltaAccum, bleed: number): ActionTickResult | void {
   const interrupt = tryPatrolInterrupt(ctx, bleed, {
-    heat: "Footsteps closing in — they heard me.",
-    threat: "Hostiles in the next room. Holding.",
+    heat: MOVE_FORWARD_HEAT_LINES,
+    threat: MOVE_FORWARD_THREAT_LINES,
   });
   if (interrupt) return interrupt;
   d.movement = "forward";
@@ -247,23 +357,23 @@ function handleMoveForward(ctx: TickCtx, d: DeltaAccum, bleed: number): ActionTi
 
 function handleExtractStep(ctx: TickCtx, d: DeltaAccum, bleed: number): ActionTickResult | void {
   const interrupt = tryPatrolInterrupt(ctx, bleed, {
-    heat: "Caught up to. They tracked the noise.",
-    threat: "Hostiles between me and extract. Holding.",
+    heat: EXTRACT_HEAT_LINES,
+    threat: EXTRACT_THREAT_LINES,
   });
   if (interrupt) return interrupt;
   d.movement = "backward";
 }
 
-function handleStay(_ctx: TickCtx, d: DeltaAccum): void {
+function handleStay(ctx: TickCtx, d: DeltaAccum): void {
   d.heatDelta = -8;
   d.energyDelta = -2;
-  d.logs.push(_ctx.log("flavor", "Holding position. Listening.", undefined));
+  d.logs.push(ctx.log("flavor", pick(ctx.rand, STAY_LINES), undefined));
 }
 
 function handleLootAction(ctx: TickCtx, d: DeltaAccum): void {
   const { currentTile, log, rand } = ctx;
   if (!currentTile || currentTile.lootRemaining <= 0) {
-    d.logs.push(log("flavor", "Nothing left worth searching here.", undefined));
+    d.logs.push(log("flavor", pick(rand, EMPTY_LOOT_LINES), undefined));
     return;
   }
   d.consumedLoot = true;
@@ -294,7 +404,7 @@ function handleBreachLocked(ctx: TickCtx, d: DeltaAccum): void {
   const { currentTile, log, rand } = ctx;
   const target = currentTile?.lockedContainers[0];
   if (!target) {
-    d.logs.push(log("flavor", "Nothing locked here.", undefined));
+    d.logs.push(log("flavor", pick(rand, NO_LOCKED_LINES), undefined));
     return;
   }
   // Effects baked in: -2 ammo, +14 heat. Loot rolled 30% empty / 50% common
@@ -337,7 +447,7 @@ function handleFight(ctx: TickCtx, d: DeltaAccum): void {
         log("combat_resolved", `Target down. Looted ⟦${item?.name ?? drop.itemId}⟧ off them.`, drop.itemId),
       );
     } else {
-      d.logs.push(log("combat_resolved", "Target down. Nothing on them.", undefined));
+      d.logs.push(log("combat_resolved", pick(rand, COMBAT_TARGET_DOWN_EMPTY_LINES), undefined));
     }
     d.heatDelta += 4;
     d.ammoDelta = -1;
@@ -348,13 +458,13 @@ function handleFight(ctx: TickCtx, d: DeltaAccum): void {
     d.ammoDelta = -2;
     d.heatDelta += 5;
     if (rand() < 0.25) d.flagsAdded.push("bleeding_minor");
-    d.logs.push(log("damage", "Trading shots. Took a glancing hit.", undefined));
+    d.logs.push(log("damage", pick(rand, COMBAT_TRADE_LINES), undefined));
     d.combatOutcome = "trade_shots";
   } else {
     d.heatDelta += 8;
     d.ammoDelta = -1;
     d.flagsRemoved.push("combat_engaged");
-    d.logs.push(log("combat_resolved", "Target broke contact and ran. Lost them.", undefined));
+    d.logs.push(log("combat_resolved", pick(rand, COMBAT_FLED_LINES), undefined));
     d.combatOutcome = "target_fled";
   }
 }
@@ -365,35 +475,40 @@ function handleFlee(ctx: TickCtx, d: DeltaAccum): void {
   if (rand() < 0.6) {
     d.heatDelta += 6;
     d.flagsRemoved.push("combat_engaged");
-    d.logs.push(log("combat_resolved", "Broke contact — clear of the threat for now.", undefined));
+    d.logs.push(log("combat_resolved", pick(rand, FLEE_BREAK_LINES), undefined));
     d.combatOutcome = "broke_contact";
   } else {
     d.healthDelta -= 5;
     d.ammoDelta = -1;
     if (rand() < 0.2) d.flagsAdded.push("bleeding_minor");
-    d.logs.push(log("damage", "Couldn't break clean. Took a round on the way out.", undefined));
+    d.logs.push(log("damage", pick(rand, FLEE_HIT_LINES), undefined));
     d.combatOutcome = "trade_shots";
   }
 }
 
-// Post-action interrupt layer: small chance of a hazard. Suppressed during
-// extract and combat — those have their own resolution pools.
+// Post-action interrupt layer: small chance of an environmental hazard or
+// ambient flavor tick. Suppressed during extract and combat — those have
+// their own resolution pools. Damage events are environmental only (slips,
+// cuts, low pipes, debris) — no random gunfire outside combat, since the
+// operative isn't in a firefight.
 function maybeInterrupt(ctx: TickCtx, d: DeltaAccum, action: ActionId): void {
   const inSubMode = action === "extract_step" || action === "fight" || action === "flee";
   if (inSubMode) return;
   if (ctx.rand() >= INTERRUPT_CHANCE) return;
   if (ctx.rand() < 0.45) {
-    // took_damage
-    d.healthDelta -= 8;
+    // environmental damage
+    d.healthDelta -= 6;
     d.energyDelta -= 2;
+    // Lower bleed odds than a firefight: most slips/bumps just hurt. ~35%
+    // minor bleed, ~10% major (a deep cut from glass or a tripwire).
     const r = ctx.rand();
-    if (r < 0.6) d.flagsAdded.push("bleeding_minor");
-    else if (r < 0.85) d.flagsAdded.push("bleeding_major");
-    d.logs.push(ctx.log("damage", "Took fire. Plate held — mostly.", undefined));
+    if (r < 0.35) d.flagsAdded.push("bleeding_minor");
+    else if (r < 0.45) d.flagsAdded.push("bleeding_major");
+    d.logs.push(ctx.log("damage", pick(ctx.rand, ENV_DAMAGE_LINES), undefined));
   } else {
     // heard_voices flavor
     d.heatDelta += 3;
-    d.logs.push(ctx.log("flavor", "Voices through the wall. Muffled.", undefined));
+    d.logs.push(ctx.log("flavor", pick(ctx.rand, HEARD_VOICES_LINES), undefined));
   }
 }
 
@@ -449,7 +564,7 @@ export function tickAction(
   };
 
   const d: DeltaAccum = {
-    logs: exhausted ? [ctx.log("damage", "Running on empty — body's eating itself.", undefined)] : [],
+    logs: exhausted ? [ctx.log("damage", pick(rand, EXHAUSTION_LINES), undefined)] : [],
     heatDelta: 0,
     healthDelta: -bleed - (exhausted ? EXHAUSTION_DRAIN : 0),
     energyDelta: -ENERGY_BASE_DRAIN,

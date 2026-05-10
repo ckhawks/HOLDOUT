@@ -189,7 +189,7 @@ export function RaidOutcomeModal() {
                 <Stat label="Targets down" value={outcome.combatTargetsDown} mono />
                 <Stat label="Got away" value={outcome.combatTargetsFled} mono />
                 <Stat label="Broke contact" value={outcome.combatBrokeContact} mono />
-                <Stat label="Trade shots" value={outcome.combatTradedShots} mono />
+                <Stat label="Shots traded" value={outcome.combatTradedShots} mono />
               </div>
             </Section>
           )}
