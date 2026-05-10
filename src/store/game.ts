@@ -25,12 +25,10 @@ import {
   makeRng,
 } from "@/lib/engine/raid";
 import { autoPickAction } from "@/lib/engine/actions";
-import { ITEMS } from "@/lib/data/items";
 import { refreshShop } from "@/lib/engine/shop";
 import {
   pocketsDimensions,
   stashCapacity,
-  stashUpgradeCost,
 } from "@/lib/engine/upgrades";
 import {
   addToTileContents,
@@ -46,6 +44,7 @@ import {
   tileAt,
 } from "@/lib/engine/map";
 import { createKitSlice, type KitSlice } from "./slices/kit";
+import { createEconomySlice, type EconomySlice } from "./slices/economy";
 import {
   loadGame,
   saveGame,
@@ -64,7 +63,7 @@ export interface RaidOutcome {
 
 // State + non-slice actions. Slice interfaces (KitSlice, etc.) are merged in
 // via interface extension so the Zustand store sees one combined shape.
-export interface GameState extends KitSlice {
+export interface GameState extends KitSlice, EconomySlice {
   cash: number;
   stash: StashItem[];
   operative: Operative;
@@ -91,10 +90,6 @@ export interface GameState extends KitSlice {
   cancelRecall: () => void;
   endRaid: (extracted: boolean) => void;
   dismissRaidOutcome: () => void;
-  sellItem: (uid: string) => void;
-  sellAllJunk: () => void;
-  buyOffer: (offerId: string) => boolean;
-  buyStashUpgrade: () => void;
   resetGame: () => void;
   hydrate: () => void;
 }
@@ -632,76 +627,7 @@ export const useGame = create<GameState>((set, get, store) => ({
   },
 
   ...createKitSlice(set, get, store),
-
-  sellItem: (uid) => {
-    const { stash, cash } = get();
-    const idx = stash.findIndex((i) => i.uid === uid);
-    if (idx === -1) return;
-    const value = ITEMS[stash[idx].itemId]?.sellValue ?? 0;
-    if (value <= 0) return;
-    const next = [...stash];
-    next.splice(idx, 1);
-    set({ stash: next, cash: cash + value });
-  },
-
-  sellAllJunk: () => {
-    const { stash, cash } = get();
-    let earned = 0;
-    const keep: StashItem[] = [];
-    for (const si of stash) {
-      const item = ITEMS[si.itemId];
-      if (item && item.tier === "common" && item.sellValue > 0) {
-        earned += item.sellValue;
-      } else {
-        keep.push(si);
-      }
-    }
-    if (earned === 0) return;
-    set({ stash: keep, cash: cash + earned });
-  },
-
-  buyOffer: (offerId) => {
-    const { shop, cash, stash, hideout } = get();
-    const idx = shop.offers.findIndex((o) => o.offerId === offerId);
-    if (idx === -1) return false;
-    const offer = shop.offers[idx];
-    if (offer.stock <= 0) return false;
-    if (cash < offer.price) return false;
-    const cap = hideout.modules.stash.capacity ?? Infinity;
-    if (stash.length >= cap) return false;
-    const newItem: StashItem = {
-      uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      itemId: offer.itemId,
-    };
-    const nextStock = offer.stock - 1;
-    const nextOffers = nextStock <= 0
-      ? [...shop.offers.slice(0, idx), ...shop.offers.slice(idx + 1)]
-      : shop.offers.map((o) => (o.offerId === offerId ? { ...o, stock: nextStock } : o));
-    set({
-      cash: cash - offer.price,
-      stash: [...stash, newItem],
-      shop: { ...shop, offers: nextOffers },
-    });
-    return true;
-  },
-
-  buyStashUpgrade: () => {
-    const { cash, upgrades, hideout } = get();
-    const cost = stashUpgradeCost(upgrades);
-    if (cash < cost) return;
-    const next: Upgrades = { ...upgrades, stashLevel: upgrades.stashLevel + 1 };
-    set({
-      cash: cash - cost,
-      upgrades: next,
-      hideout: {
-        ...hideout,
-        modules: {
-          ...hideout.modules,
-          stash: { ...hideout.modules.stash, capacity: stashCapacity(next) },
-        },
-      },
-    });
-  },
+  ...createEconomySlice(set, get, store),
 
   resetGame: () => {
     clearSave();
