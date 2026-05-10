@@ -120,7 +120,7 @@ export interface BagState {
 export interface Equipment {
   pockets: PocketsState;
   bag: BagState | null;
-  // Reserved slots — no stat effects yet. Persisted so future sprints can
+  // Reserved slots — no stat effects yet. Persisted so future phases can
   // wire them in without another migration.
   weapon: SlotItem | null;
   armor: SlotItem | null;

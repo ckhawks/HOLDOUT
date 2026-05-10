@@ -16,61 +16,88 @@ export const ITEMS: Record<string, Item> = {
   // mechanical
   scrap_metal:      { id: "scrap_metal",      name: "Scrap Metal",       tier: "common",       category: "mechanical",  sellValue: 8,   weight: 2, shape: S.one },
   rusted_bolt:      { id: "rusted_bolt",      name: "Rusted Bolt",       tier: "common",       category: "mechanical",  sellValue: 4,   weight: 1, shape: S.one },
+  ball_bearing:     { id: "ball_bearing",     name: "Ball Bearing",      tier: "common",       category: "mechanical",  sellValue: 5,   weight: 1, shape: S.one },
+  valve_handle:     { id: "valve_handle",     name: "Valve Handle",      tier: "common",       category: "mechanical",  sellValue: 7,   weight: 1, shape: S.one },
   copper_wire:      { id: "copper_wire",      name: "Copper Wire Spool", tier: "common",       category: "mechanical",  sellValue: 14,  weight: 1, shape: S.l3 },
   spring_coil:      { id: "spring_coil",      name: "Spring Coil",       tier: "common",       category: "mechanical",  sellValue: 6,   weight: 1, shape: S.one },
   rail_clamp:       { id: "rail_clamp",       name: "Rail Clamp",        tier: "uncommon",     category: "mechanical",  sellValue: 32,  weight: 2, shape: S.horiz2 },
   hydraulic_piston: { id: "hydraulic_piston", name: "Hydraulic Piston",  tier: "uncommon",     category: "mechanical",  sellValue: 55,  weight: 3, shape: S.i3 },
+  precision_gear:   { id: "precision_gear",   name: "Precision Gear",    tier: "uncommon",     category: "mechanical",  sellValue: 42,  weight: 1, shape: S.one },
   exo_servo:        { id: "exo_servo",        name: "Exo Servo",         tier: "rare",         category: "mechanical",  sellValue: 260, weight: 2, shape: S.j4 },
   tungsten_gear:    { id: "tungsten_gear",    name: "Tungsten Gear",     tier: "rare",         category: "mechanical",  sellValue: 165, weight: 3, shape: S.square2 },
+  powered_actuator: { id: "powered_actuator", name: "Powered Actuator",  tier: "rare",         category: "mechanical",  sellValue: 210, weight: 3, shape: S.horiz2 },
 
   // electronics
   cracked_battery:  { id: "cracked_battery",  name: "Cracked Battery",   tier: "common",       category: "electronics", sellValue: 12,  weight: 1, shape: S.vert2 },
+  microchip:        { id: "microchip",        name: "Microchip",         tier: "common",       category: "electronics", sellValue: 18,  weight: 1, shape: S.one },
   optic_lens:       { id: "optic_lens",       name: "Optic Lens",        tier: "uncommon",     category: "electronics", sellValue: 45,  weight: 1, shape: S.one },
   capacitor_bank:   { id: "capacitor_bank",   name: "Capacitor Bank",    tier: "uncommon",     category: "electronics", sellValue: 48,  weight: 1, shape: S.vert2 },
   signal_jammer:    { id: "signal_jammer",    name: "Signal Jammer",     tier: "uncommon",     category: "electronics", sellValue: 70,  weight: 1, shape: S.horiz2 },
+  coolant_loop:     { id: "coolant_loop",     name: "Coolant Loop",      tier: "uncommon",     category: "electronics", sellValue: 58,  weight: 2, shape: S.horiz2 },
   holo_display:     { id: "holo_display",     name: "Holo Display",      tier: "rare",         category: "electronics", sellValue: 155, weight: 1, shape: S.i3 },
+  quantum_capacitor:{ id: "quantum_capacitor",name: "Quantum Capacitor", tier: "rare",         category: "electronics", sellValue: 240, weight: 1, shape: S.vert2 },
 
   // medical
   bandage_pack:     { id: "bandage_pack",     name: "Bandage Pack",      tier: "common",       category: "medical",       sellValue: 6,   weight: 1, shape: S.one },
   antiseptic_vial:  { id: "antiseptic_vial",  name: "Antiseptic Vial",   tier: "common",       category: "medical",       sellValue: 9,   weight: 1, shape: S.one },
+  gauze_roll:       { id: "gauze_roll",       name: "Gauze Roll",        tier: "common",       category: "medical",       sellValue: 8,   weight: 1, shape: S.one },
+  iodine_packet:    { id: "iodine_packet",    name: "Iodine Packet",     tier: "common",       category: "medical",       sellValue: 7,   weight: 1, shape: S.one },
   med_syrette:      { id: "med_syrette",      name: "Med Syrette",       tier: "uncommon",     category: "medical",       sellValue: 35,  weight: 1, shape: S.one },
   combat_stim:      { id: "combat_stim",      name: "Combat Stim",       tier: "uncommon",     category: "medical",       sellValue: 50,  weight: 1, shape: S.vert2 },
+  vitamin_shot:     { id: "vitamin_shot",     name: "Vitamin Shot",      tier: "uncommon",     category: "medical",       sellValue: 32,  weight: 1, shape: S.one },
   nano_clot:        { id: "nano_clot",        name: "Nano-Clot Syringe", tier: "rare",         category: "medical",       sellValue: 130, weight: 1, shape: S.one },
 
   // consumables
   ration_pack:      { id: "ration_pack",      name: "Ration Pack",       tier: "common",       category: "consumables", sellValue: 10,  weight: 1, shape: S.horiz2 },
   water_bulb:       { id: "water_bulb",       name: "Water Bulb",        tier: "common",       category: "consumables", sellValue: 5,   weight: 1, shape: S.one },
   coffee_can:       { id: "coffee_can",       name: "Coffee Can",        tier: "common",       category: "consumables", sellValue: 12,  weight: 1, shape: S.vert2 },
+  protein_bar:      { id: "protein_bar",      name: "Protein Bar",       tier: "common",       category: "consumables", sellValue: 14,  weight: 1, shape: S.one },
+  tea_brick:        { id: "tea_brick",        name: "Tea Brick",         tier: "common",       category: "consumables", sellValue: 9,   weight: 1, shape: S.one },
+  electrolyte_pouch:{ id: "electrolyte_pouch",name: "Electrolyte Pouch", tier: "uncommon",     category: "consumables", sellValue: 38,  weight: 1, shape: S.vert2 },
+  // fuel_cell: industrial salvage — sells well, no consumable use (we don't
+  // run on batteries). Lives in electronics since that's what it is.
   fuel_cell:        { id: "fuel_cell",        name: "Fuel Cell",         tier: "uncommon",     category: "electronics", sellValue: 38,  weight: 2, shape: S.vert2 },
 
   // valuables
   silver_chain:     { id: "silver_chain",     name: "Silver Chain",      tier: "common",       category: "valuables",   sellValue: 22,  weight: 1, shape: S.one },
+  copper_coin_stack:{ id: "copper_coin_stack",name: "Copper Coin Stack", tier: "common",       category: "valuables",   sellValue: 18,  weight: 1, shape: S.one },
+  vintage_zippo:    { id: "vintage_zippo",    name: "Vintage Zippo",     tier: "common",       category: "valuables",   sellValue: 25,  weight: 1, shape: S.one },
   gold_tooth:       { id: "gold_tooth",       name: "Gold Tooth",        tier: "uncommon",     category: "valuables",   sellValue: 60,  weight: 1, shape: S.one },
+  tarnished_pendant:{ id: "tarnished_pendant",name: "Tarnished Pendant", tier: "uncommon",     category: "valuables",   sellValue: 75,  weight: 1, shape: S.one },
   swiss_watch:      { id: "swiss_watch",      name: "Swiss Watch",       tier: "rare",         category: "valuables",   sellValue: 210, weight: 1, shape: S.one },
   micro_diamond:    { id: "micro_diamond",    name: "Micro Diamond",     tier: "rare",         category: "valuables",   sellValue: 290, weight: 1, shape: S.one },
   art_chip:         { id: "art_chip",         name: "Corp Art Chip",     tier: "rare",         category: "valuables",   sellValue: 245, weight: 1, shape: S.horiz2 },
+  collector_pin:    { id: "collector_pin",    name: "Collector Pin",     tier: "rare",         category: "valuables",   sellValue: 180, weight: 1, shape: S.one },
+  platinum_band:    { id: "platinum_band",    name: "Platinum Band",     tier: "rare",         category: "valuables",   sellValue: 320, weight: 1, shape: S.one },
 
   // intel
   data_card:        { id: "data_card",        name: "Data Card",         tier: "common",       category: "intel",       sellValue: 16,  weight: 1, shape: S.one },
+  shipping_manifest:{ id: "shipping_manifest",name: "Shipping Manifest", tier: "common",       category: "intel",       sellValue: 14,  weight: 1, shape: S.horiz2 },
   corp_id:          { id: "corp_id",          name: "Corp ID Badge",     tier: "uncommon",     category: "intel",       sellValue: 38,  weight: 1, shape: S.one },
   redacted_dossier: { id: "redacted_dossier", name: "Redacted Dossier",  tier: "uncommon",     category: "intel",       sellValue: 55,  weight: 1, shape: S.horiz2 },
   encrypted_drive:  { id: "encrypted_drive",  name: "Encrypted Drive",   tier: "rare",         category: "intel",       sellValue: 140, weight: 1, shape: S.horiz2 },
+  patrol_schedule:  { id: "patrol_schedule",  name: "Patrol Schedule",   tier: "rare",         category: "intel",       sellValue: 130, weight: 1, shape: S.horiz2 },
   datacenter_keycard:{ id: "datacenter_keycard", name: "Keycard: Datacenter", tier: "rare",     category: "intel",       sellValue: 0,   weight: 1, shape: S.horiz2 },
   biolab_coords:    { id: "biolab_coords",    name: "Biolab Coordinates", tier: "experimental", category: "intel",      sellValue: 0,   weight: 1, shape: S.one },
 
   // military
   rifle_round:      { id: "rifle_round",      name: "Rifle Round",       tier: "common",       category: "military",    sellValue: 7,   weight: 1, shape: S.one },
+  spent_casing:     { id: "spent_casing",     name: "Spent Shell Casing",tier: "common",       category: "military",    sellValue: 3,   weight: 1, shape: S.one },
+  combat_knife:     { id: "combat_knife",     name: "Combat Knife",      tier: "common",       category: "military",    sellValue: 22,  weight: 1, shape: S.vert2 },
   pistol_mag:       { id: "pistol_mag",       name: "Pistol Magazine",   tier: "uncommon",     category: "military",    sellValue: 28,  weight: 1, shape: S.vert2 },
   ceramic_plate:    { id: "ceramic_plate",    name: "Ceramic Plate",     tier: "uncommon",     category: "military",    sellValue: 60,  weight: 3, shape: S.square2 },
   frag_grenade:     { id: "frag_grenade",     name: "Frag Grenade",      tier: "uncommon",     category: "military",    sellValue: 65,  weight: 1, shape: S.one },
+  camo_strip:       { id: "camo_strip",       name: "Camo Strip",        tier: "uncommon",     category: "military",    sellValue: 42,  weight: 1, shape: S.horiz2 },
   mil_optic:        { id: "mil_optic",        name: "Military Optic",    tier: "rare",         category: "military",    sellValue: 180, weight: 1, shape: S.i3 },
   suppressor_tube:  { id: "suppressor_tube",  name: "Suppressor Tube",   tier: "rare",         category: "military",    sellValue: 170, weight: 1, shape: S.horiz2 },
 
   // experimental
   prototype_chip:   { id: "prototype_chip",   name: "Prototype Chip",    tier: "rare",         category: "experimental", sellValue: 220, weight: 1, shape: S.one },
   exotic_alloy:     { id: "exotic_alloy",     name: "Exotic Alloy Slab", tier: "rare",         category: "experimental", sellValue: 320, weight: 3, shape: S.square2 },
+  corrupted_data_slug:{ id: "corrupted_data_slug", name: "Corrupted Data Slug", tier: "rare", category: "experimental", sellValue: 235, weight: 1, shape: S.one },
   prototype_lens:   { id: "prototype_lens",   name: "Prototype Lens",    tier: "experimental", category: "experimental", sellValue: 450, weight: 1, shape: S.one },
   black_box:        { id: "black_box",        name: "Black Box",         tier: "experimental", category: "experimental", sellValue: 500, weight: 2, shape: S.t4 },
+  bio_synth_sample: { id: "bio_synth_sample", name: "Bio-Synth Sample",  tier: "experimental", category: "experimental", sellValue: 380, weight: 1, shape: S.vert2 },
   workbench_schematic:{ id: "workbench_schematic", name: "Schematic: Workbench", tier: "experimental", category: "experimental", sellValue: 0, weight: 1, shape: S.s4 },
 
   // bags — equippable. Provides a secondary grid alongside built-in pockets.
@@ -152,6 +179,13 @@ const UNLOCK_TOKEN_DROPS: Record<string, string> = {
 };
 const UNLOCK_TOKEN_CHANCE = 0.04; // ~4% of rare-event drops in eligible locations
 
+// Wildcard drops: small probability that a location-weighted roll bypasses
+// its categoryWeights and picks from the generic pool instead. Gives every
+// location a slim chance of producing surprises (a stray medkit in the
+// Datacenter, a frag grenade in the Warehouse). Keep this small — the whole
+// point of category weights is location flavor.
+const WILDCARD_CHANCE = 0.06;
+
 export function pickItemForLocation(
   rand: () => number,
   location: Location,
@@ -167,6 +201,12 @@ export function pickItemForLocation(
 
   const weights = location.categoryWeights;
   if (!weights || Object.keys(weights).length === 0) {
+    return isRare ? pickRareItemId(rand) : pickCommonItemId(rand, depth);
+  }
+  // Wildcard: rare bypass of location weighting. Pulls from the unweighted
+  // generic pool, so even hyper-specialized locations occasionally drop
+  // off-category surprises.
+  if (rand() < WILDCARD_CHANCE) {
     return isRare ? pickRareItemId(rand) : pickCommonItemId(rand, depth);
   }
   const entries = Object.entries(weights) as Array<[ItemCategory, number]>;

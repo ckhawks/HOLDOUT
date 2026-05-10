@@ -8,7 +8,7 @@ This is a **prototype log**, not a spec. If the engine is lifted into HOLDOUT pr
 
 ## Why this exists
 
-`BRAINSTORM.md` raises a loot-identity pillar (line 397, "Item identity (instances, not types)") and a weapons + modding deep-dive (line 273) that together imply each firearm should be a unique instance with brand, condition, history, mods, and a name. HOLDOUT's current `lib/data/items.ts` is hand-authored — fine for Sprint 1, doesn't scale to "the Mk-IV 'Brickeye'" being a different individual from the Mk-IV 'Plumline'.
+`BRAINSTORM.md` raises a loot-identity pillar (line 397, "Item identity (instances, not types)") and a weapons + modding deep-dive (line 273) that together imply each firearm should be a unique instance with brand, condition, history, mods, and a name. HOLDOUT's current `lib/data/items.ts` is hand-authored — fine for Phase 1, doesn't scale to "the Mk-IV 'Brickeye'" being a different individual from the Mk-IV 'Plumline'.
 
 `firearm-gen` is a single-file proof that a procedural generator can produce that texture from data alone.
 

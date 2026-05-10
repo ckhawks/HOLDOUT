@@ -9,7 +9,7 @@ Layout:
 - **AI ideas / proposals** — open work originating from AI suggestions
 - **Risks** — current concerns that should shape prioritization
 - **Explicitly deferred** — known "not now" decisions
-- **Changelog** — shipped, organized by source (player wishlist vs sprint phase)
+- **Changelog** — shipped, organized by source (player wishlist vs phase)
 
 Companion docs: `DESIGN.md` (canonical design + locked constraints + UI pins), `BRAINSTORM.md` (blue-sky idea pool), `archive/RISKS.md` (older risk snapshot).
 
@@ -55,6 +55,7 @@ Context, only shown when eligible (under a divider in the action card):
 
 Open wishlist from the player. DONE items have been moved to the Changelog at the bottom.
 
+- allow player to override movement direction
 - food consumed during raid to keep energy up
 - need item that can restore HP (over time?) — see also AI medical-ladder proposal below
 - need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
@@ -87,15 +88,15 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 
 # AI ideas / proposals
 
-## Sprint follow-ups (next sprint, from Sprint J)
+## Phase follow-ups (next phase, from Phase J)
 
 - **Bags in loot pool / shop** — shipped partially: bags now appear in the loot pool. Shop module selling `canvas_satchel`/`tactical_pack` + bandages + food still TODO.
 - **Loadout presets** — save 2-3 named kit configurations (e.g. "scrounge run", "combat run") so it's not re-clicking every raid.
 - **Run-summary on extract** — silent extracts feel weird now that the player has to manually unload. A small banner ("extracted N items · ¤K kit value") confirms the haul.
 
-## Next sprints
+## Next phases
 
-### Sprint I — Operator preferences
+### Phase I — Operator preferences
 
 Make "scrounge / push / lay low" real instead of theatre.
 
@@ -104,16 +105,16 @@ Make "scrounge / push / lay low" real instead of theatre.
   - **Scrounge**: heavily favors `loot` when current tile has loot.
   - **Push**: skips loot more often, gets to deep tiles faster.
   - **Lay low**: more frequent `stay` (cools heat), cautious about `move_forward` when heat is high.
-- [ ] Save preference per-operative (hooks into Sprint J kit/loadout).
+- [ ] Save preference per-operative (hooks into Phase J kit/loadout).
 
-### Sprint L — Reload + ammo realism
+### Phase L — Reload + ammo realism
 
 - [ ] Magazines as discrete pack items (size 1–2 cells).
 - [ ] During lulls (no event firing), drag rounds from a "loose ammo" pile into mags.
 - [ ] Combat outcomes consume rounds from loaded mag; empty mag during combat = forced auto-reload that costs an action tick.
 - [ ] Weapon `reloadComplexity` controls rounds-per-drag-tick.
 
-### Sprint M — Lockpicks + key items
+### Phase M — Lockpicks + key items
 
 - [ ] Lockpicks as a consumable pack item — slow/quiet alternative to Blast. Each pick has a chance to break.
 - [ ] Key/keycard/ID-badge items: matching `keyType` on a `LockedContainer` lets you open it cleanly (no ammo cost, no heat).
@@ -121,11 +122,10 @@ Make "scrounge / push / lay low" real instead of theatre.
 
 ## Smaller follow-ups (any order)
 
-- [ ] **After-raid report — pass 2: map replay.** Pass 1 (2026-05-10) shipped the report modal with loot diff / vitals / combat / choices / consumables. Pass 2 adds the map-replay section: render the same 12×5 strip with visited tiles dimmed and the operative's path drawn in order. Needs new state on `CurrentRaid` (`pathVisited: Array<{x,y,tick}>` updated each move in `doTick`) since fog only tells us *which* tiles, not *when*. Optional polish: scrubber, or static end-state with arrows.
+- [ ] **After-raid report — pass 2: map replay.** Pass 1 (2026-05-10) shipped the report modal with loot diff / vitals / combat / choices / consumables. Pass 2 adds the map-replay section: render the same 12×5 strip with visited tiles dimmed and the operative's path drawn in order. Needs new state on `CurrentRaid` (`pathVisited: Array<{x,y,tick}>` updated each move in `doTick`) since fog only tells us _which_ tiles, not _when_. Optional polish: scrubber, or static end-state with arrows.
 - [ ] First-run intro modal.
 - [ ] Tick-rate / action-timer debug slider in Settings.
 - [ ] Gate the Data panel behind an admin/debug flag (currently visible to everyone — fine for now, but eventually it leaks the loot tables and threat math to players).
-- [ ] More item variety pass — target ≥40 items, currently 32.
 - [ ] More room-type narrative variety: room-type-specific event templates (instead of just bias multipliers).
 - [ ] More context-eligible actions for the action card's bottom section (lockpick-on-locked, use-key-on-locked, examine-corpse, etc.).
 - [ ] Item flavor: per-stash-item adjective so each loot has individual identity (carried over from older IDEAS.md — partially shipped via room/container vocab, but not per-item adjectives yet).
@@ -143,10 +143,10 @@ Items #1, #2, #6, #7, #9 (partial) shipped 2026-05-09 — see Changelog. Remaini
 
 # Risks (current as of 2026-05-09)
 
-- **Auto-picker is too predictable.** With seven actions but only three ever in the primary slot, players will stop reading the next-action card after a few raids. Sprint I (preferences) helps, but the real fix is more _kinds_ of actions — sub-mode variety, environmental interactions, opportunistic tile features.
-- **Ammo is consumed but never gates.** Sprint L (mag/reload realism) is the fix. Energy now punishes at 0 (Sprint K shipped 2026-05-09 — see Changelog).
+- **Auto-picker is too predictable.** With seven actions but only three ever in the primary slot, players will stop reading the next-action card after a few raids. Phase I (preferences) helps, but the real fix is more _kinds_ of actions — sub-mode variety, environmental interactions, opportunistic tile features.
+- **Ammo is consumed but never gates.** Phase L (mag/reload realism) is the fix. Energy now punishes at 0 (Phase K shipped 2026-05-09 — see Changelog).
 - **Combat outcome distribution is fixed.** `fight` always rolls the same 55/30/15 — opponent quality (the user's wishlist item) would make this dynamic.
-- **No long-term meta progression beyond cash.** Once stash and pack are upgraded a few times, there's nothing to chase. Sprint J + workbench crafting need to land before mid-game has shape.
+- **No long-term meta progression beyond cash.** Once stash and pack are upgraded a few times, there's nothing to chase. Phase J + workbench crafting need to land before mid-game has shape.
 
 For the older showstopper-tier risks (was the loop fun to watch? motivation cliff at hour 2? etc.), see `archive/RISKS.md` — most have been substantially addressed by the action-driven raid pivot.
 
@@ -156,24 +156,29 @@ For the older showstopper-tier risks (was the loop fun to watch? motivation clif
 
 Known "not now" decisions. Pull from this list when the active work needs depth.
 
-- Top-down map view in the actual sense (zoomed multi-floor world map) — sprint 6+.
-- Skill XP per use — separate sprint.
-- Crafting at the Workbench — sprint after Sprint J. Schematic drop unlocks the icon, real crafting comes later.
+- Top-down map view in the actual sense (zoomed multi-floor world map) — phase 6+.
+- Skill XP per use — separate phase.
+- Crafting at the Workbench — phase after Phase J. Schematic drop unlocks the icon, real crafting comes later.
 - Pre-mission intel-buy mechanic — depends on a currency/economy model not yet decided.
-- Sound mapping pass beyond the 4 kinds — sprint when more event types exist.
+- Sound mapping pass beyond the 4 kinds — phase when more event types exist.
 - Multiplayer — discussed and explicitly deferred. Engine is kept pure / clock-free as insurance (see DESIGN.md "Multiplayer port-readiness" section).
 
 ---
 
 # Changelog
 
-Shipped work, newest sprints last. Acts as a record of what landed when.
+Shipped work, newest phases last. Acts as a record of what landed when.
 
 ## From the older IDEAS.md
 
 - ✅ **Loot categories per location** — each location biases toward certain item categories. Shipped via `location.categoryWeights` in `src/lib/data/locations.ts` (Warehouse → mechanical 5 / consumables 3 / electronics 2; Datacenter → electronics 6 / intel 5; Biolab → medical 5 / experimental 4; etc.) and routed through `pickItemForLocation()` in `src/lib/data/items.ts` — picks a category by weight, then a tier by depth+rarity, then an item from the intersection (with a generic fallback when no weights are set).
 
-## Sprints
+## Phases
+
+### Item pool expansion + fuel_cell de-consumed (2026-05-10)
+
+- Added 22 items in `src/lib/data/items.ts` across mechanical (ball_bearing, valve_handle, precision_gear, powered_actuator), electronics (microchip, coolant_loop, quantum_capacitor), medical (gauze_roll, iodine_packet, vitamin_shot — all sellable scrap, no consumable effects), consumables (protein_bar, tea_brick, electrolyte_pouch — registered in CONSUMABLE_EFFECTS), valuables (copper_coin_stack, vintage_zippo, tarnished_pendant, collector_pin, platinum_band), intel (shipping_manifest, patrol_schedule), military (spent_casing, combat_knife, camo_strip), and experimental (corrupted_data_slug, bio_synth_sample). Total item count now ~67 (was ~45).
+- `fuel_cell` removed from `CONSUMABLE_EFFECTS` — operative isn't a half-android. Stays as electronics-category sellable salvage at the same value/shape.
 
 ### Persistent operative vitals + out-of-raid consumable use (2026-05-10)
 
@@ -184,7 +189,7 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 - New store action `useConsumableOnOperative(uid)` in `src/store/slices/kit.ts` wraps the engine helper.
 - `StashPanel` (`src/components/panels/StashPanel.tsx`) gains a `VitalsStrip` above the items grid showing HP / Energy bars, Ammo readout, and a "drag consumable to use" drop zone. Drag wiring detects when a drag enters the strip; if the dragged item is a consumable, drop fires `useConsumableOnOperative`. Visual feedback: green hover for valid consumable drops, red hover for non-consumables.
 - Save migration v26 backfills 100/100/30 on existing operatives.
-- **Known gap:** ammo replenishment outside of raids is still TODO (no consumable adds ammo, no shop ammo offers). Death now leaves you at 0 ammo with no recovery path until you scrounge in-raid. Sprint L (mag/reload realism) or a shop ammo box would close it.
+- **Known gap:** ammo replenishment outside of raids is still TODO (no consumable adds ammo, no shop ammo offers). Death now leaves you at 0 ammo with no recovery path until you scrounge in-raid. Phase L (mag/reload realism) or a shop ammo box would close it.
 
 ### Stash value in header (2026-05-10)
 
@@ -206,7 +211,7 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 - Save schema bumped to v25 with backfill for in-progress raids missing the new fields.
 - Map-replay (path tracking + visualization) deliberately deferred to pass 2.
 
-### Sprint K — Energy as hunger/thirst + medical ladder (2026-05-09)
+### Phase K — Energy as hunger/thirst + medical ladder (2026-05-09)
 
 - Engine: `tickAction` drains -2 HP/tick when energy is at 0 (`EXHAUSTION_DRAIN`). Logs `damage` line "Running on empty — body's eating itself."
 - Engine: `applyConsumable(raid, uid, now, rand)` parallel to `applyBandage`. Uses a `CONSUMABLE_EFFECTS` table:
@@ -248,7 +253,7 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 - ✅ kit / loadout module: choose what from your stash to bring in
 - ✅ if you die you lose your kit
 
-## Sprint phases (engine + content)
+## Phases (engine + content)
 
 ### Phase A — Engine spine
 
@@ -316,11 +321,11 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 - Different log lines distinguish pre-gen vs heat-ambush ("Hostiles in the next room. Holding." vs "Footsteps closing in — they heard me.").
 - Stay's heat reduction is -8 (was -3 before consumers existed). One Stay cancels a Fight tick + change.
 
-### Sprint J follow-ups
+### Phase J follow-ups
 
 - ✅ **Drag-based loadout in Stash panel** — shipped via shared `KitGrid` component (`src/components/panels/KitGrid.tsx`) and the `useDragDrop` hook (`src/lib/useDragDrop.ts`). `StashPanel.tsx` uses both, with a `DragSource` discriminated union covering stash → kit / kit → stash / kit ↔ kit moves.
 
-### Sprint J — Kit / equipment (partial — slots reserved)
+### Phase J — Kit / equipment (partial — slots reserved)
 
 - `Operative.equipment` shape: `pockets` (built-in 4×4 grid, grows by row with `pocketsLevel`), `bag` (nullable, grid from the equipped item's `bagGrid`), and reserved `weapon`/`armor`/`helmet` slots (no stat effects yet).
 - Item additions: `slot?: EquipSlot` and `bagGrid?: {w,h}` on `Item`. Three bag items (`canvas_satchel` 4×4, `tactical_pack` 5×5, `raider_rucksack` 6×6). Bags now appear in the loot pool as of 2026-05-09.

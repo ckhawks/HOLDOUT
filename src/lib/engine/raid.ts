@@ -121,7 +121,7 @@ export function nextTickDelay(rand: () => number): number {
 }
 
 export const ENERGY_BASE_DRAIN = 3;
-// HP loss per tick when energy is at 0. Sprint K — gives energy real teeth.
+// HP loss per tick when energy is at 0. Phase K — gives energy real teeth.
 export const EXHAUSTION_DRAIN = 2;
 
 // Build a flavor log line for the operative entering a room. Names the
@@ -566,7 +566,7 @@ export function tickAction(
 ): ActionTickResult {
   const action = raid.queuedAction;
   const bleed = bleedDrain(raid.runState.flags);
-  // Sprint K — exhaustion: when energy is already 0 entering this tick, the
+  // Phase K — exhaustion: when energy is already 0 entering this tick, the
   // operative starves down HP. Pairs with consumables (ration / water /
   // coffee / fuel cell / combat stim) so the player has a way out.
   const exhausted = raid.runState.energy <= 0;
@@ -631,7 +631,7 @@ export function tickAction(
 //
 // Per the medical-ladder design in BACKLOG: cheap antiseptic for top-off,
 // med syrette for mid-game, nano-clot for emergencies. Energy items map to
-// Sprint K's hunger/thirst loop.
+// Phase K's hunger/thirst loop.
 export interface ConsumableEffect {
   hp?: number;
   energy?: number;
@@ -651,7 +651,9 @@ export const CONSUMABLE_EFFECTS: Record<string, ConsumableEffect> = {
   ration_pack: { energy: 30, log: "Ration down. +30 energy." },
   water_bulb: { energy: 15, log: "Water down. +15 energy." },
   coffee_can: { energy: 25, log: "Coffee. +25 energy." },
-  fuel_cell: { energy: 40, log: "Fuel cell tapped. +40 energy." },
+  protein_bar: { energy: 20, log: "Protein bar down. +20 energy." },
+  tea_brick: { energy: 18, log: "Hot tea. +18 energy." },
+  electrolyte_pouch: { energy: 40, log: "Electrolytes in. +40 energy." },
   combat_stim: { energy: 30, log: "Combat stim. +30 energy." },
 };
 

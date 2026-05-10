@@ -338,7 +338,7 @@ export function migrateSave(saved: SavedGame): SavedGame {
   }
   // Defensive: shop must exist on the loaded state. A save can land here
   // with the right schemaVersion but a missing field if HMR + auto-save
-  // raced during a sprint that introduced the field.
+  // raced during a phase that introduced the field.
   if (!(s as unknown as { shop?: unknown }).shop) {
     (s as unknown as { shop: ShopState }).shop = { offers: [], lastRefreshAt: 0 };
   }

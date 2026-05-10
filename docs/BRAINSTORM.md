@@ -19,7 +19,7 @@ All ideas here must respect the locked design decisions in `DESIGN.md` (no real-
 - **Lore through item flavor** — Moonlighter-style. Never exposit; "Mk-IV Synthex Coolant Loop, leaks slow, smells like burnt almonds" does the worldbuilding.
 - **Intel prep** — pre-raid mini-loop where you spend time/cash to reduce unknowns or unlock event subtables. Adds depth without becoming a quest.
 - **Operative skills that grow per use** — Wurm angle. Lockpicking improves by picking. No XP screen, just stat drift in tooltips.
-- **Behavior modes** — already on the Sprint 2 radar. Pair with per-event-type rules ("on patrol spotted: hide / engage / flee").
+- **Behavior modes** — already on the Phase 2 radar. Pair with per-event-type rules ("on patrol spotted: hide / engage / flee").
 - **Item condition + mods** — Tarkov tension: keep this scuffed rifle or sell? Mod slots become a long-tail crafting hook.
 - **Vendor moods** — today's buyer is interested in X. Flavor-driven price spikes. Keeps the stash dynamic and gives daily texture.
 - **Item tooltips that enrich with use** — the more you find a thing, the more its tooltip reveals about it. Discovery system that has no checklist.

@@ -1,6 +1,6 @@
 # HOLDOUT — Design
 
-The canonical design doc. Combines the original brainstorm notes (concept, constraints, sprint plan from 2026-05-05) with the load-bearing constraints, principles, and UI pins consolidated from the now-retired PLAN.md (2026-05-06 → 2026-05-09).
+The canonical design doc. Combines the original brainstorm notes (concept, constraints, phase plan from 2026-05-05) with the load-bearing constraints, principles, and UI pins consolidated from the now-retired PLAN.md (2026-05-06 → 2026-05-09).
 
 For active backlog and shipped changelog, see `BACKLOG.md`. For wide blue-sky ideas, see `BRAINSTORM.md`.
 
@@ -19,7 +19,7 @@ The name **HOLDOUT** carries three layers:
 
 A persistent-base game where you actively manage a hideout in the foreground while a single operative auto-resolves missions in the background, with live event interrupts and a recall option. Auto-battle is OK; the player is always doing meta-game work (crafting, organizing, kit prep, hideout upgrades) and reacting to mission events as they fire. Events are texture-rich, Tarkov-flavored ("Pried open a Triton-brand medical locker — 3x morphine and a photo of someone's kid"), not templated.
 
-Decomposes into 1-3 week sprints, each adding one module. Setting flexible; user leans near-future corporate-military (~2090) but not locked.
+Decomposes into 1-3 week phases, each adding one module. Setting flexible; user leans near-future corporate-military (~2090) but not locked.
 
 ## Constraints honored
 - No real-time skill PvP as core loop
@@ -31,7 +31,7 @@ Decomposes into 1-3 week sprints, each adding one module. Setting flexible; user
 - Not tactical squad turn-based (no XCOM, no Door Kickers)
 - Not run-based progression (Balatro-style); long playthroughs preferred
 - 2D / web-UI medium; pixel art aspirational, optional
-- Each sprint shippable in 2-3 weeks
+- Each phase shippable in 2-3 weeks
 - **No mobile-game energy/waiting mechanics.** The game progresses only while the player is actively playing. Close the game → everything pauses. No real-world-clock timers gating engagement. No "come back in 4 hours" FOMO. No recovery timers, no construction timers, no energy refills.
 
 ## Core loop
@@ -48,7 +48,7 @@ Multiple missions parallel later when more operatives unlock.
 The hideout is the gameplay surface. Missions are events on top of it. There is always something to fiddle with at the hideout (organize, craft, design, upgrade). Mission interrupts pull attention back periodically. Recall button means active risk-management decisions during a mission. **The game pauses when you walk away** — nothing real-world-clock-gates engagement.
 
 ### During-raid active engagement (v1)
-For sprint 1, active engagement during a raid comes from: responding to interrupt events (Pick / Blast / Skip with short in-session timers), deciding when to call Recall (with extract risk), and watching the event feed for changes that affect those decisions. Not idle, but lighter than tetris would be. The active surface is interrupts + recall, not real-time inventory management.
+For phase 1, active engagement during a raid comes from: responding to interrupt events (Pick / Blast / Skip with short in-session timers), deciding when to call Recall (with extract risk), and watching the event feed for changes that affect those decisions. Not idle, but lighter than tetris would be. The active surface is interrupts + recall, not real-time inventory management.
 
 If v1 feels too passive in playtest, the next-best engagement levers are: increase interrupt frequency, add more interrupt-decision types, or pull tetris forward from the deferred list.
 
@@ -56,7 +56,7 @@ If v1 feels too passive in playtest, the next-best engagement levers are: increa
 
 1. **Live run-state visible** during the mission. Tracked variables (alertness, stamina, ammo, noise) tick with events. This connects events causally and makes outcomes feel earned. v1: 3 vars only (alertness, stamina, ammo).
 
-2. **Specificity over templates.** Events reference procedural details (named brands, named NPCs, named locations, specific items). Mad-libs-style assembly from rich vocabulary tables. *"Looted a container"* is dead; *"Pried open a Triton-brand medical locker behind a vending machine in the East Atrium — 3x morphine, 1x field bandage, a photo of someone's kid"* is alive. Cheap to add once the engine exists; perfect content-sprint work.
+2. **Specificity over templates.** Events reference procedural details (named brands, named NPCs, named locations, specific items). Mad-libs-style assembly from rich vocabulary tables. *"Looted a container"* is dead; *"Pried open a Triton-brand medical locker behind a vending machine in the East Atrium — 3x morphine, 1x field bandage, a photo of someone's kid"* is alive. Cheap to add once the engine exists; perfect content-phase work.
 
 3. **Causal event chains, not isolated rolls.** Triggering an alarm scales reinforcements; quiet success unlocks deeper rooms; high noise raises Recall pressure. Player feels decisions and run-state mattering. (User flagged this as cool but unsure technically — implementation note: an event has preconditions + postconditions + effects on state vars; the next event is drawn from the pool whose preconditions are met. Common rules engine pattern.)
 
@@ -86,9 +86,9 @@ User confirmed which to keep:
 
 The **performance-penalty model** is the way (not a recovery timer). Player chooses: send them out hurt for income, or stash-fund the medical supplies and heal up first. Active decision, no mobile-game waiting.
 
-Roster of multiple operatives (Model C) is a sprint 5+ expansion; v1 is one operative.
+Roster of multiple operatives (Model C) is a phase 5+ expansion; v1 is one operative.
 
-## v1 sprint scope (2-3 weeks)
+## v1 phase scope (2-3 weeks)
 - Hideout shell with **stash**, **1 workbench**, **1 mission desk** (no decoration, no NPCs yet)
 - 1 operative, 3 starting skills: sneak, shoot, scrounge
 - 1 mission type ("warehouse run") with ~6 event types, drawn from vocabulary tables
@@ -98,9 +98,9 @@ Roster of multiple operatives (Model C) is a sprint 5+ expansion; v1 is one oper
 - Death = Model A (return injured, lose loadout)
 - No cards, no traits, no pre-mission prep, no hideout upgrades, no shop, no second operative
 
-## Sprint 2-N expansion lanes
+## Phase 2-N expansion lanes
 
-Each is a ~1-3 week sprint. Order is flexible.
+Each is a ~1-3 week phase. Order is flexible.
 
 - Skill growth system (skills level by use)
 - 2 more mission types with distinct location flavor and gear demands (speed/risk variety)
@@ -127,7 +127,7 @@ Endless, no endpoint, **escalating sequence of unlocks**. Power-fantasy maximali
 Most items play 1-2 of these:
 1. **Equip** — weapons, armor, mods, consumables. Direct power.
 2. **Sell** — convert to cash. Default fallback for any item.
-3. **Craft material** — combine at workbench into better gear (sprint 3+).
+3. **Craft material** — combine at workbench into better gear (phase 3+).
 4. **Upgrade currency** — rare components/schematics required for specific hideout/location unlocks.
 5. **Display / hoard** — aesthetic stash flex, eventually shareable async-multi.
 
@@ -151,21 +151,21 @@ Most items play 1-2 of these:
 5. Upgrade → next tier of content opens
 6. Repeat with bigger bag, better gear, harder location
 
-### v1 motivation hooks (concrete, in Sprint 1 or Sprint 2)
+### v1 motivation hooks (concrete, in Phase 1 or Phase 2)
 The minimum to avoid the "empty-state stall" pattern that killed prior repos:
 
-- **Cash currency.** Earned by selling items at hideout (Sprint 1: simple "Sell" button on each stash item, no shop UI yet).
+- **Cash currency.** Earned by selling items at hideout (Phase 1: simple "Sell" button on each stash item, no shop UI yet).
 - **Two visible spending targets** so the player has *choice* about saving:
     - Backpack +2 slots (price: ~500 cash) — direct loop improvement
     - Stash expansion (price: ~800 cash) — hoarding feel
 - **One non-cash unlock target** so it's not pure money game:
-    - Workbench access — unlocked by finding a "Workbench Schematic" in raids (drops from rare event). Sprint 1 only "unlocks the lit-up icon"; actual crafting comes in Sprint 3. The reward is *seeing the next feature appear.*
+    - Workbench access — unlocked by finding a "Workbench Schematic" in raids (drops from rare event). Phase 1 only "unlocks the lit-up icon"; actual crafting comes in Phase 3. The reward is *seeing the next feature appear.*
 - **Visible "next thing coming" cue** in UI: greyed-out hideout modules with hover tooltips ("Workbench — unlock by finding schematic"). Even when locked, the player sees what's possible.
 
-This gives Sprint 1 a real motivation arc: loot → sell or save → upgrade backpack/stash → bigger raids → eventually find schematic → see new feature lit. Sprint 2 builds on it; Sprint 3 makes the workbench real.
+This gives Phase 1 a real motivation arc: loot → sell or save → upgrade backpack/stash → bigger raids → eventually find schematic → see new feature lit. Phase 2 builds on it; Phase 3 makes the workbench real.
 
 ### Anti-pattern to avoid
-Per `IDEAS_ORIGINS.md` patterns, three prior projects (trackers, MemeCache, games-list) stalled at "v0 shipped, empty state, now what." The motivation arc above is the explicit antidote — sprint 1 must end with the player able to see at least one upgrade they're working toward, AND a teaser of the next feature locked behind a non-cash gate.
+Per `IDEAS_ORIGINS.md` patterns, three prior projects (trackers, MemeCache, games-list) stalled at "v0 shipped, empty state, now what." The motivation arc above is the explicit antidote — phase 1 must end with the player able to see at least one upgrade they're working toward, AND a teaser of the next feature locked behind a non-cash gate.
 
 ## Recall friction (decided 2026-05-05)
 
@@ -187,10 +187,10 @@ This transforms Recall from "free out" to "I'm calling the extract — they have
 - Crafting = Workbench Menu
 - Shop (post-v1) = Black Market Terminal
 
-shadcn / vercel aesthetic, lucide icons, monochrome accents. References: Lifeline, Replica, Beholder, A Dark Room, Hypnospace Outlaw, Universal Paperclips. Pixel-art ambient elements possible later (sprint 5+) but never mandatory.
+shadcn / vercel aesthetic, lucide icons, monochrome accents. References: Lifeline, Replica, Beholder, A Dark Room, Hypnospace Outlaw, Universal Paperclips. Pixel-art ambient elements possible later (phase 5+) but never mandatory.
 
 ### Deferred visual: top-down map view
-User noted (2026-05-05) an alternate idea: *a top-down 2D vector / procedural / abstract map of the operative's current mission, where the player plots paths between visible loot hotzones and extract points; encounters fire along the path.* User wants v1 to be **1D text-based** (event log only, no map), but flagged the map idea as worth keeping. Possible sprint 6+ expansion: add a map view that complements the event log without replacing it.
+User noted (2026-05-05) an alternate idea: *a top-down 2D vector / procedural / abstract map of the operative's current mission, where the player plots paths between visible loot hotzones and extract points; encounters fire along the path.* User wants v1 to be **1D text-based** (event log only, no map), but flagged the map idea as worth keeping. Possible phase 6+ expansion: add a map view that complements the event log without replacing it.
 
 ## Twists adopted / rejected (decided 2026-05-05)
 
@@ -233,16 +233,16 @@ This rules out: questlines, fetch quests, contract objectives with binary succes
 - **No game engine.** It's a UI app pretending to be a tactical terminal. No Phaser, no Pixi, no Unity. Just React + components + state.
 - **Deploy:** Vercel. One-click. Zero ops.
 
-### Sprint plan
-Each sprint ends with something **playable end-to-end**, even if shallow. No sprint produces "infrastructure that's not yet useful." This is the AuDHD-respecting shape.
+### Phase plan
+Each phase ends with something **playable end-to-end**, even if shallow. No phase produces "infrastructure that's not yet useful." This is the AuDHD-respecting shape.
 
-**Sprint 1 (2-3 weeks) — the working raid loop with a motivation arc.** Goal: a real but tiny game. Boot, raid, respond to interrupts, recall when hot, get loot, sell or stash, save up for the first upgrade. Player sees a path forward.
+**Phase 1 (2-3 weeks) — the working raid loop with a motivation arc.** Goal: a real but tiny game. Boot, raid, respond to interrupts, recall when hot, get loot, sell or stash, save up for the first upgrade. Player sees a path forward.
 - Next.js scaffold + shadcn baseline + tactical-terminal layout (sidebar nav, panel content)
 - "Stash" panel: grid of items, sort/filter, hover tooltips. **Each item has a "Sell" button → adds cash.**
-- "Ops Console" panel: pick a location (1 location: "Decommissioned Warehouse"), single default behavior mode (Balanced — modes deferred to sprint 2), Send button
+- "Ops Console" panel: pick a location (1 location: "Decommissioned Warehouse"), single default behavior mode (Balanced — modes deferred to phase 2), Send button
 - "Live Comms Feed" panel: event log streams ticks while raid runs; events drawn from vocabulary tables for specificity
 - Operative backpack as a simple list with capacity cap (12 slots starting). If full, oldest-low-value auto-drops. Spatial tetris deferred.
-- **Hideout panel:** at least 3 modules visible, with locked/unlocked state. v1 has Stash (active), Backpack (active), Workbench (locked — find Workbench Schematic to unlock), Medbay (locked, sprint 4+).
+- **Hideout panel:** at least 3 modules visible, with locked/unlocked state. v1 has Stash (active), Backpack (active), Workbench (locked — find Workbench Schematic to unlock), Medbay (locked, phase 4+).
 - **Cash currency** displayed on terminal header.
 - **Two purchasable upgrades visible in v1:** Backpack +2 slots (~500 cash), Stash +N slots (~800 cash). Player saves up.
 - **One non-cash unlock teaser:** Workbench Schematic drops from rare event in raids; finding it unlocks the Workbench icon (greyed → lit). No crafting yet — just visible progression.
@@ -256,7 +256,7 @@ Each sprint ends with something **playable end-to-end**, even if shallow. No spr
 - localStorage save/load with schema version field
 - **Definition of done:** you can play 30 minutes, hit at least one upgrade, see the path to the next, and the loop reads as a real game with direction.
 
-**Sprint 2 (2 weeks) — variety + behavior depth.**
+**Phase 2 (2 weeks) — variety + behavior depth.**
 - 2 more raid locations with distinct risk/gear profiles (e.g., "Corp Server Farm" wants stealth + hacking; "Outdoor Cache" wants speed + endurance)
 - 3 more behavior modes (Greedy, Quick, Hold)
 - 6 more event types
@@ -264,37 +264,37 @@ Each sprint ends with something **playable end-to-end**, even if shallow. No spr
 - Skills grow per-use (3 skills: Sneak, Shoot, Scrounge)
 - Skill UI displaying levels and recent gains
 
-**Sprint 3 (2 weeks) — workbench + blueprints.**
+**Phase 3 (2 weeks) — workbench + blueprints.**
 - "Workbench" panel for crafting
 - 5 craft recipes (mostly gear: weapon mods, armor patches, medkits)
 - Blueprint drops (Twist 3): some recipes only available after looting a blueprint item
 - Item tier system (common / uncommon / rare / experimental)
 - Loadout slot system: equip items pre-raid; only equipped items contribute stats
 
-**Sprint 4 (1-2 weeks) — pre-raid prep.**
+**Phase 4 (1-2 weeks) — pre-raid prep.**
 - Intel buying: spend resources before a raid to reveal enemy types, hotzones, hazards at a location
 - Medical supplies as crafted item; spend to clear injury penalty
 - Resource economy tightening (what currencies + drop rates)
 
-**Sprint 5+ — content + expansion lanes.**
-Each is a 1-2 week sprint. Pick by mood/energy.
-- New raid location (template: 1 location = 1 sprint with new events, vocab, loot)
+**Phase 5+ — content + expansion lanes.**
+Each is a 1-2 week phase. Pick by mood/energy.
+- New raid location (template: 1 location = 1 phase with new events, vocab, loot)
 - New event types
 - Causal event chain engine (precondition → postcondition → next event pool)
 - Hideout module upgrades
 - Vocabulary expansion / event-flavor pass
-- Map view (deferred to here at earliest — sprint 6+ realistic)
+- Map view (deferred to here at earliest — phase 6+ realistic)
 - Cards / synergies (if depth wants more)
 - Second operative + roster
 - Shop layer (sell to NPCs)
 - Async-multi (visible friends' hideouts, marketplace)
 - Pixel-art ambient hideout flavor
 
-### Deferred mechanics (parking lot for later sprints)
+### Deferred mechanics (parking lot for later phases)
 
-Ideas that are good but explicitly NOT in the v1 sprint plan. Pull from this list when the core loop is stable and the next sprint needs a depth-add.
+Ideas that are good but explicitly NOT in the v1 phase plan. Pull from this list when the core loop is stable and the next phase needs a depth-add.
 
-- **Spatial inventory tetris.** Backpack as 4x4+ grid; items have shapes (1x1, 2x1, 2x2, etc.); drag-drop placement with rotation; pending-pickup slot with placement timer; drop-mid-raid. Adds visceral active engagement during raids and makes Recall extract risk emotionally weighty (heavy valuable bag = nervous extract). Tarkov / Backpack Hero / RE4-attaché flavor. **Sprint 5+ at earliest.**
+- **Spatial inventory tetris.** Backpack as 4x4+ grid; items have shapes (1x1, 2x1, 2x2, etc.); drag-drop placement with rotation; pending-pickup slot with placement timer; drop-mid-raid. Adds visceral active engagement during raids and makes Recall extract risk emotionally weighty (heavy valuable bag = nervous extract). Tarkov / Backpack Hero / RE4-attaché flavor. **Phase 5+ at earliest.**
 - **Item rarity + random rolled stats.** Items aren't fixed templates; each instance has a base type plus rolled modifiers (e.g., "Scavenged Optic" base + "+10% accuracy in low light" + "weight -1"). Some items roll into epic tiers with multiple modifiers. Inspect-on-hover panel shows full stat sheet. Diablo / PoE / Tarkov flavor. Adds depth without growing item-table count linearly.
 - **Appraisal / unidentified items.** When loot returns from a raid, valuable items come back as "Uncategorized" or "Needs Appraisal." Player can't see full stats or sell value until appraised. Appraisal happens at the hideout via:
     - Skill check (operative scrounge skill auto-appraises common stuff)
@@ -311,10 +311,10 @@ Ideas that are good but explicitly NOT in the v1 sprint plan. Pull from this lis
 - **Pixel-art ambient hideout flavor.** When user wants to practice pixel art, this is where it slots in.
 
 ### Risk callouts
-- **Vocabulary content is the long tail.** Sprint 1 needs only 5 small tables; sprints 5+ need to keep adding flavor or events feel repetitive. This is content work, not engineering — fine because it's the per-sprint constellation pattern, but plan to spend creative time on flavor passes regularly.
-- **Causal event chains are the engineering challenge.** Random event rolls are easy; rules-engine causality is harder. Punt to sprint 5+. v1-4 use simple weighted random.
-- **The "make raids feel different by location" promise is load-bearing.** Sprint 2 is the test of whether the location-variety + gear-profile concept lands. If raids feel samey there, fix before sprint 3.
-- **Save format will change.** Plan for it: localStorage schema versioning from sprint 1, write a tiny migration shim so future schema changes don't wipe playtest saves.
+- **Vocabulary content is the long tail.** Phase 1 needs only 5 small tables; phases 5+ need to keep adding flavor or events feel repetitive. This is content work, not engineering — fine because it's the per-phase constellation pattern, but plan to spend creative time on flavor passes regularly.
+- **Causal event chains are the engineering challenge.** Random event rolls are easy; rules-engine causality is harder. Punt to phase 5+. v1-4 use simple weighted random.
+- **The "make raids feel different by location" promise is load-bearing.** Phase 2 is the test of whether the location-variety + gear-profile concept lands. If raids feel samey there, fix before phase 3.
+- **Save format will change.** Plan for it: localStorage schema versioning from phase 1, write a tiny migration shim so future schema changes don't wipe playtest saves.
 
 ### What to do *this week* if you want to start
 1. Decide: setting flavor (corp-2090 leans best, but lock it now so the vocabulary tables can be written in voice).
@@ -324,18 +324,18 @@ Ideas that are good but explicitly NOT in the v1 sprint plan. Pull from this lis
 5. Write the first vocabulary tables (location names, brand names) — this is also setting-design work.
 
 ### Honest friction warnings (per IDEAS_ORIGINS.md patterns)
-- **Where similar projects stalled before:** game-shape projects with deep ambition (foothold, sandbox, industrial-synthesis) all stalled when the hard core mechanic surfaced. The likely "hard mechanic" here is the **event engine + run-state + extract logic** — front-load that in sprint 1 so it can't ambush a later sprint. If sprint 1 doesn't deliver a playable raid, the project is in a stall state and needs a re-scope, not more sprints.
-- **Trackers / MemeCache / games-list pattern:** stalled at "v0 shipped, empty-state, now what." Avoid here by ensuring sprint 2+ adds *content visible to the player* (new locations, new events) not just plumbing. The hideout shouldn't feel emptier in sprint 3 than it did in sprint 2.
+- **Where similar projects stalled before:** game-shape projects with deep ambition (foothold, sandbox, industrial-synthesis) all stalled when the hard core mechanic surfaced. The likely "hard mechanic" here is the **event engine + run-state + extract logic** — front-load that in phase 1 so it can't ambush a later phase. If phase 1 doesn't deliver a playable raid, the project is in a stall state and needs a re-scope, not more phases.
+- **Trackers / MemeCache / games-list pattern:** stalled at "v0 shipped, empty-state, now what." Avoid here by ensuring phase 2+ adds *content visible to the player* (new locations, new events) not just plumbing. The hideout shouldn't feel emptier in phase 3 than it did in phase 2.
 
 ## Reference games (positive signals)
 - **Loop Hero** — auto-runs while player actively places tiles. Cleanest precedent for active-foreground/auto-background structure.
 - **Path of Achra** — auto-battle character, you build them actively.
 - **Cult of the Lamb** — hub-vs-crusade split.
 - **Tarkov** — hideout + lossy runs + kit + texture-rich item flavor.
-- **Moonlighter** — run-loot-then-sell loop (deferred to optional shop sprint).
+- **Moonlighter** — run-loot-then-sell loop (deferred to optional shop phase).
 - **RimWorld** — Death Model A is RimWorld-flavor "downed colonist" handling.
 - **Wurm Unlimited** — skill-grows-by-use progression.
-- **Balatro** — collection-synergy feel (deferred to optional cards sprint).
+- **Balatro** — collection-synergy feel (deferred to optional cards phase).
 
 ---
 

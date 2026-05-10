@@ -318,7 +318,7 @@ describe("ACTIONS eligibility", () => {
   });
 });
 
-describe("exhaustion (Sprint K)", () => {
+describe("exhaustion (Phase K)", () => {
   it("at energy 0, tickAction drains HP via the exhaustion penalty", () => {
     const raid = makeRaid({
       runState: freshRunState({ energy: 0 }),

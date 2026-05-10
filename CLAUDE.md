@@ -138,9 +138,9 @@ The pure slot algebra is in `engine/equipment.ts`. Adding a new equip-time valid
 Keep these docs current as you work — they're how the next session reorients fast.
 
 - **`docs/BACKLOG.md`** is the working backlog. When you ship something:
-  - Move the item from its open section (Human ideas / AI Sprint follow-ups / Tech debt) to the Changelog at the bottom.
+  - Move the item from its open section (Human ideas / AI Phase follow-ups / Tech debt) to the Changelog at the bottom.
   - Add a one-line "what + where" note (file path or pointer to the commit).
-  - If the item came from the older IDEAS.md or POST_SAD wishlist, preserve attribution by putting it under the right Changelog subsection ("From the player wishlist", "From the older IDEAS.md", "Sprint phases", etc.).
+  - If the item came from the older IDEAS.md or POST_SAD wishlist, preserve attribution by putting it under the right Changelog subsection ("From the player wishlist", "From the older IDEAS.md", "Phases", etc.).
 - **`docs/DESIGN.md`** captures load-bearing decisions. Update when:
   - A locked design constraint changes or gets revisited.
   - A new pinned UI/feel decision lands (matches an existing pin's level of permanence).
