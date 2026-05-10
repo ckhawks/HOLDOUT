@@ -85,10 +85,15 @@ export interface GameState extends KitSlice, EconomySlice, RaidSlice {
   activePanel: PanelId;
   rngSeed: number;
   hydrated: boolean;
+  // When on, the Data panel becomes visible in the sidebar and debug-only
+  // controls (shop reset, future debug actions) appear in their host panels.
+  // Persisted in the save so it survives reloads.
+  debugMode: boolean;
 
   setPanel: (p: PanelId) => void;
   resetGame: () => void;
   hydrate: () => void;
+  setDebugMode: (on: boolean) => void;
 }
 
 // KitSlot is now defined in @/lib/types — re-export so existing imports
@@ -144,8 +149,18 @@ export const useGame = create<GameState>((set, get, store) => ({
   activePanel: "ops",
   rngSeed: Math.floor(Math.random() * 0xffffffff),
   hydrated: false,
+  debugMode: false,
 
   setPanel: (p) => set({ activePanel: p }),
+  setDebugMode: (on) => {
+    // If the player is currently on the Data panel and flips debug off,
+    // bounce them back to Settings so they aren't stranded on a hidden tab.
+    const { activePanel } = get();
+    set({
+      debugMode: on,
+      ...(on || activePanel !== "data" ? {} : { activePanel: "settings" as PanelId }),
+    });
+  },
 
   ...createRaidSlice(set, get, store),
   ...createKitSlice(set, get, store),
@@ -165,6 +180,7 @@ export const useGame = create<GameState>((set, get, store) => ({
       activePanel: "ops",
       rngSeed: Math.floor(Math.random() * 0xffffffff),
       raidOutcome: null,
+      debugMode: false,
     });
   },
 
@@ -191,6 +207,7 @@ export const useGame = create<GameState>((set, get, store) => ({
         // If a raid is in progress, return the player to the comms feed
         // (HMR / page reload otherwise drops them on the Ops panel).
         activePanel: loaded.currentRaid ? "feed" : get().activePanel,
+        debugMode: !!loaded.debugMode,
         hydrated: true,
       });
     } else {
@@ -218,7 +235,8 @@ if (typeof window !== "undefined") {
       state.unlocks === prev.unlocks &&
       state.upgrades === prev.upgrades &&
       state.currentRaid === prev.currentRaid &&
-      state.shop === prev.shop
+      state.shop === prev.shop &&
+      state.debugMode === prev.debugMode
     ) {
       return;
     }
@@ -231,6 +249,7 @@ if (typeof window !== "undefined") {
       upgrades: state.upgrades,
       currentRaid: state.currentRaid,
       shop: state.shop,
+      debugMode: state.debugMode,
     });
   });
 }

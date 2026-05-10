@@ -22,6 +22,10 @@ export function Sidebar() {
   const active = useGame((s) => s.activePanel);
   const setPanel = useGame((s) => s.setPanel);
   const raidActive = useGame((s) => !!s.currentRaid?.active);
+  const debugMode = useGame((s) => s.debugMode);
+  // Data panel is debug-only — hide it from the sidebar unless the player
+  // has flipped on debug mode in Settings. Manual + Settings always show.
+  const footer = FOOTER_NAV.filter((n) => n.id !== "data" || debugMode);
 
   return (
     <nav className="flex w-20 flex-col items-stretch border-r border-border/60 bg-background py-2">
@@ -37,7 +41,7 @@ export function Sidebar() {
         />
       ))}
       <div className="mt-auto">
-        {FOOTER_NAV.map(({ id, label, Icon }) => (
+        {footer.map(({ id, label, Icon }) => (
           <NavBtn key={id} id={id} label={label} Icon={Icon} active={active} setPanel={setPanel} />
         ))}
       </div>

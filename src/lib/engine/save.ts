@@ -9,7 +9,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 export interface PersistedState {
   cash: number;
@@ -20,6 +20,7 @@ export interface PersistedState {
   upgrades: Upgrades;
   currentRaid: CurrentRaid | null;
   shop: ShopState;
+  debugMode: boolean;
 }
 
 export interface SavedGame {
@@ -351,6 +352,13 @@ export function migrateSave(saved: SavedGame): SavedGame {
     if (typeof op.health !== "number" || Number.isNaN(op.health)) op.health = 100;
     if (typeof op.energy !== "number" || Number.isNaN(op.energy)) op.energy = 100;
     if (typeof op.ammo !== "number" || Number.isNaN(op.ammo)) op.ammo = 30;
+  }
+  // v27: debug-mode toggle. New field, default off — existing saves don't
+  // carry one and shouldn't suddenly reveal the Data panel.
+  if (saved.schemaVersion < 27) {
+    if (typeof (s as unknown as { debugMode?: unknown }).debugMode !== "boolean") {
+      (s as unknown as { debugMode: boolean }).debugMode = false;
+    }
   }
   // Defensive shape check, version-independent: a save can end up with the
   // new schema version but old container data if HMR + auto-save raced
