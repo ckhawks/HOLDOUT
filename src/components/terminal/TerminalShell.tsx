@@ -32,19 +32,16 @@ export function TerminalShell() {
         dump: () => {
           const raid = useGame.getState().currentRaid;
           if (!raid) {
-            // eslint-disable-next-line no-console
-            console.log("no active raid");
+              console.log("no active raid");
             return;
           }
-          // eslint-disable-next-line no-console
           console.log(dumpRaid(raid));
         },
         tail: (n = 20) => {
           const raid = useGame.getState().currentRaid;
           if (!raid) return;
           for (const e of raid.log.slice(-n)) {
-            // eslint-disable-next-line no-console
-            console.log(`[${e.kind}] ${e.text}`);
+              console.log(`[${e.kind}] ${e.text}`);
           }
         },
         state: () => useGame.getState(),
@@ -52,7 +49,6 @@ export function TerminalShell() {
       (window as unknown as { __h: typeof h; holdout: typeof h }).__h = h;
       // Also expose as `holdout` in case `__h` shadows in devtools.
       (window as unknown as { __h: typeof h; holdout: typeof h }).holdout = h;
-      // eslint-disable-next-line no-console
       console.log(
         "[holdout] debug helpers ready: __h.dump(), __h.tail(), __h.state()",
       );

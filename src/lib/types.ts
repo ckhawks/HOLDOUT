@@ -56,6 +56,11 @@ export interface PendingItem extends StashItem {
 }
 
 export interface RunState {
+  // Suspicion / world-attention level. Increases on loud actions (combat,
+  // breach_locked, engaging patrols) and on movement; decreases on `stay`.
+  // The only current consumer: per move tick, a `heat / 400` chance fires a
+  // patrol-ambush modal in addition to pre-gen threat tiles. Renamed from
+  // `alertness` in save schema v19. Range is loosely 0–100 but uncapped.
   heat: number;
   health: number;
   energy: number;

@@ -118,8 +118,8 @@ const STATIC_CHIPS: Record<ActionId, ActionChip[]> = {
 // Static chips for the row. Per-raid counts (number of lootable containers,
 // number of locked containers) are surfaced as a small "Nx" badge in the
 // row's top-right instead — see countFor.
-export function chipsFor(_id: ActionId, _raid: CurrentRaid): ActionChip[] {
-  return STATIC_CHIPS[_id];
+export function chipsFor(id: ActionId): ActionChip[] {
+  return STATIC_CHIPS[id];
 }
 
 // Optional count badge in the top-right of an action row. Returns null for

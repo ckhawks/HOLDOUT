@@ -42,11 +42,6 @@ import {
   unequipItem,
 } from "@/lib/engine/equipment";
 import {
-  buildOccupancy,
-  canPlace,
-  shapeFor,
-} from "@/lib/engine/shapes";
-import {
   addToTileContents,
   clearTileThreat,
   consumeLockedFromTile,

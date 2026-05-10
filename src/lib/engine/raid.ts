@@ -3,24 +3,16 @@ import type {
   Equipment,
   LogEntry,
   PendingChoice,
-  RunState,
   StashItem,
 } from "@/lib/types";
-import { rollEvent } from "@/lib/engine/events";
 import { ITEMS, pickItemForLocation } from "@/lib/data/items";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 import { generateMap, revealFrom, stepForward } from "@/lib/engine/map";
 
 export const TICK_MIN_MS = 3000;
 export const TICK_MAX_MS = 8000;
-export const PENDING_EXPIRY_MS = 15000;
-export const BRANCH_TIMER_MS = 10000;
 export const BLEED_MINOR_DRAIN = 1;
 export const BLEED_MAJOR_DRAIN = 4;
-
-// pushPending / prunePending retired in the room-contents pivot. Items now
-// land directly in the operative's current MapTile.contents and persist
-// across visits. See addToTileContents / removeFromTileContents in map.ts.
 
 export function makeRng(seed: number): () => number {
   let s = seed >>> 0 || 1;
@@ -114,11 +106,6 @@ export function nextTickDelay(rand: () => number): number {
 }
 
 export const ENERGY_BASE_DRAIN = 3;
-
-// tickRaid (legacy random event tick) and resolveBranch retired in the
-// action-driven pivot. The store now drives ticks via tickAction, and
-// branching modals are dormant until phase 2 reintroduces forced-choice
-// interrupts.
 
 // Build a flavor log line for the operative entering a room. Names the
 // specific containers and any loose items on the floor so subsequent Loot
@@ -232,34 +219,6 @@ const LOOT_VERBS: Record<string, string[]> = {
 export const ACTION_TIMER_MS = 6000;
 const INTERRUPT_CHANCE = 0.22;
 const PATROL_TIMER_MS = 10000;
-
-// Force-locked encounter — fired when the player queues force_locked on a
-// tile with a locked container. Blast / Skip for now (Key path TODO once we
-// add key items to the pack).
-function lockedCratePendingChoice(containerName: string, now: number): PendingChoice {
-  return {
-    eventId: "locked_door",
-    prompt: `${capitalize(containerName)}. How do I crack it?`,
-    defaultId: "skip",
-    startedAt: now,
-    timerMs: 10000,
-    options: [
-      {
-        id: "blast",
-        label: "Blast",
-        description: "Loud, costs ammo.",
-        effects: { ammoDelta: -2, heatDelta: 14 },
-      },
-      {
-        id: "skip",
-        label: "Skip",
-        description: "Leave it for now.",
-        effects: {},
-        isDefault: true,
-      },
-    ],
-  };
-}
 
 // A patrol encounter — fired as a forced-choice modal when the operative
 // runs into hostiles while pushing forward.
@@ -708,17 +667,3 @@ export function applyBandage(
   };
 }
 
-function clamp(n: number): number {
-  return Math.max(0, Math.min(100, n));
-}
-
-function applyFlags(
-  current: ReadonlyArray<string>,
-  add?: ReadonlyArray<string>,
-  remove?: ReadonlyArray<string>,
-): string[] {
-  const set = new Set(current);
-  if (add) for (const f of add) set.add(f);
-  if (remove) for (const f of remove) set.delete(f);
-  return Array.from(set);
-}

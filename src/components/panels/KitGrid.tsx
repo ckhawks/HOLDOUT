@@ -25,7 +25,7 @@ export type KitDragHint = {
 };
 
 export function KitGrid({
-  slot,
+  slot: _slot,
   label,
   Icon,
   grid,

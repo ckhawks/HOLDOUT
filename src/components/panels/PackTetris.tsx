@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Backpack, Shirt, Trash2 } from "lucide-react";
 import { useGame, type KitSlot } from "@/store/game";
 import type { EquipSlot, PocketsState, BagState, Rotation } from "@/lib/types";

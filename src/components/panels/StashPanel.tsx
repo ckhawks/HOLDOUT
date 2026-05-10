@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useGame } from "@/store/game";
 import { ITEMS } from "@/lib/data/items";
 import { PanelHeader } from "./PanelHeader";
@@ -30,7 +30,6 @@ export function StashPanel() {
   const kitFromStash = useGame((s) => s.kitFromStash);
   const stashFromKit = useGame((s) => s.stashFromKit);
   const moveKitItem = useGame((s) => s.moveKitItem);
-  const trashFromKit = useGame((s) => s.trashFromKit);
   const equipFromStash = useGame((s) => s.equipFromStash);
   const unequipToStash = useGame((s) => s.unequipToStash);
   const emptyKit = useGame((s) => s.emptyKitToStash);

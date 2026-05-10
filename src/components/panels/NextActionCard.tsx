@@ -178,7 +178,7 @@ function ActionRow({
   const a = ACTIONS[id];
   const eligible = a.isEligible(raid);
   const isQueued = id === queued;
-  const chips = chipsFor(id, raid);
+  const chips = chipsFor(id);
   const count = countFor(id, raid);
   return (
     <button
