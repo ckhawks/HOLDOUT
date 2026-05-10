@@ -39,6 +39,7 @@ function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
     pausedAt: null,
     queuedAction: "move_forward",
     actionStartedAt: 0,
+    pendingEnd: null,
     ...over,
   };
 }

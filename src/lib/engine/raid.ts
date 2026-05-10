@@ -72,6 +72,7 @@ export function startRaid(
     // entry tile has no loot, so move_forward is the natural start.
     queuedAction: "move_forward",
     actionStartedAt: now,
+    pendingEnd: null,
   };
 }
 

@@ -338,7 +338,8 @@ export const useGame = create<GameState>((set, get) => ({
       },
     };
 
-    // Death check.
+    // Death check. Schedule end via pendingEnd state — useRaidLoop owns the
+    // timer so the store doesn't need to chain a setTimeout here.
     if (raid.runState.health <= 0) {
       raid = {
         ...raid,
@@ -347,9 +348,9 @@ export const useGame = create<GameState>((set, get) => ({
           makeLog("system", "Vital signs flat. Operative is down.", undefined, tickNow, rand),
         ],
         active: false,
+        pendingEnd: { at: tickNow + 800, success: false },
       };
       set({ currentRaid: raid });
-      setTimeout(() => get().endRaid(false), 800);
       return;
     }
 
@@ -366,9 +367,9 @@ export const useGame = create<GameState>((set, get) => ({
           makeLog("system", "At the extract point. Pulling out.", undefined, tickNow, rand),
         ],
         active: false,
+        pendingEnd: { at: tickNow + 600, success: true },
       };
       set({ currentRaid: raid });
-      setTimeout(() => get().endRaid(true), 600);
       return;
     }
 

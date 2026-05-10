@@ -108,6 +108,7 @@ describe("save round-trip", () => {
       pausedAt: null,
       queuedAction: "move_forward",
       actionStartedAt: 0,
+      pendingEnd: null,
     };
     saveGame(s);
     const loaded = loadGame();

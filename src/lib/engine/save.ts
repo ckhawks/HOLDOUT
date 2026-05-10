@@ -9,7 +9,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 export interface PersistedState {
   cash: number;
@@ -283,6 +283,20 @@ export function migrateSave(saved: SavedGame): SavedGame {
   if (saved.schemaVersion < 23) {
     if ((s as unknown as { shop?: ShopState }).shop) {
       (s as unknown as { shop: ShopState }).shop = { offers: [], lastRefreshAt: 0 };
+    }
+  }
+  // v24: pendingEnd added to CurrentRaid — moves the death/extract setTimeout
+  // chain out of the store and onto raid state. Backfill null on existing raids;
+  // if the old raid was mid-pendingEnd-equivalent (active=false but no end fired
+  // yet), it's safest to drop it since the store's chained setTimeout was lost.
+  if (saved.schemaVersion < 24) {
+    if (s.currentRaid && !("pendingEnd" in s.currentRaid)) {
+      const cr = s.currentRaid as unknown as { active: boolean; pendingEnd: null };
+      if (!cr.active) {
+        s.currentRaid = null;
+      } else {
+        cr.pendingEnd = null;
+      }
     }
   }
   // Defensive: shop must exist on the loaded state. A save can land here

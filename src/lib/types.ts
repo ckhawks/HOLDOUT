@@ -325,6 +325,11 @@ export interface CurrentRaid {
   // Wall-clock when the current action timer started — drives the countdown
   // bar on the action card. Shifts forward on resume after pause.
   actionStartedAt: number;
+  // When set, the raid is in its terminal "ending" phase: active=false,
+  // showing the final log line, waiting for the hook to fire endRaid() at
+  // `at`. Replaces the chained setTimeout-in-store pattern so the tick loop
+  // owns all scheduling. Cleared back to null by endRaid.
+  pendingEnd: { at: number; success: boolean } | null;
 }
 
 export type ActionId =
