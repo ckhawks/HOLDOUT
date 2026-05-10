@@ -19,6 +19,8 @@ import {
   removeFromTileContents,
   tileAt,
 } from "@/lib/engine/map";
+import { ITEMS } from "@/lib/data/items";
+import { isJunk } from "./economy";
 import type { GameState } from "../game";
 
 // Kit / equipment slice. All actions are thin wrappers over the pure
@@ -38,6 +40,10 @@ export interface KitSlice {
   equipFromFloor: (uid: string) => boolean;
   unequipToFloor: (slot: EquipSlot) => boolean;
   emptyKitToStash: () => void;
+  // Move only the junk items (no slot, not consumable) from pockets+bag into
+  // stash. Useful pre-redeploy to clear loot without dropping equipped/utility
+  // items. Stops on capacity, just like emptyKitToStash.
+  emptyJunkToStash: () => void;
   // Apply a consumable (by uid, found anywhere in pockets / bag / stash) to
   // the operative's persisted vitals. Idle-only — in-raid use goes through
   // useConsumable on the raid slice. Returns true if the item was consumed.
@@ -255,6 +261,37 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
     };
     pockets = { ...pockets, items: drain(pockets.items) };
     if (bag) bag = { ...bag, items: drain(bag.items) };
+    set({
+      stash: nextStash,
+      operative: { ...operative, equipment: { ...operative.equipment, pockets, bag } },
+    });
+  },
+
+  emptyJunkToStash: () => {
+    const { currentRaid, operative, stash, hideout } = get();
+    if (currentRaid) return;
+    const cap = hideout.modules.stash.capacity ?? Infinity;
+    const nextStash = [...stash];
+    const now = Date.now();
+    let pockets = operative.equipment.pockets;
+    let bag = operative.equipment.bag;
+    const drainJunk = (items: PackPlacement[]) => {
+      const remaining: PackPlacement[] = [];
+      for (const p of items) {
+        if (!isJunk(ITEMS[p.itemId])) {
+          remaining.push(p);
+          continue;
+        }
+        if (nextStash.length >= cap) {
+          remaining.push(p);
+          continue;
+        }
+        nextStash.push({ uid: p.uid, itemId: p.itemId, flavor: p.flavor, acquiredAt: now });
+      }
+      return remaining;
+    };
+    pockets = { ...pockets, items: drainJunk(pockets.items) };
+    if (bag) bag = { ...bag, items: drainJunk(bag.items) };
     set({
       stash: nextStash,
       operative: { ...operative, equipment: { ...operative.equipment, pockets, bag } },

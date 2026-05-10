@@ -37,6 +37,7 @@ export function StashPanel() {
   const equipFromStash = useGame((s) => s.equipFromStash);
   const unequipToStash = useGame((s) => s.unequipToStash);
   const emptyKit = useGame((s) => s.emptyKitToStash);
+  const emptyJunk = useGame((s) => s.emptyJunkToStash);
   const consumeOnOperative = useGame((s) => s.useConsumableOnOperative);
 
   // Drag state covering all stash-side interactions:
@@ -221,6 +222,10 @@ export function StashPanel() {
   const kitItemCount =
     equipment.pockets.items.length + (equipment.bag?.items.length ?? 0);
   const canEmptyAll = !inRaid && kitItemCount > 0;
+  const kitJunkCount =
+    equipment.pockets.items.filter((p) => isJunk(ITEMS[p.itemId])).length +
+    (equipment.bag?.items.filter((p) => isJunk(ITEMS[p.itemId])).length ?? 0);
+  const canEmptyJunk = !inRaid && kitJunkCount > 0;
 
   const sortedStash = useMemo(() => {
     const sorter =
@@ -383,6 +388,26 @@ export function StashPanel() {
             )}
             <Tooltip
               text={
+                !canEmptyJunk
+                  ? "No junk in kit"
+                  : stashFull
+                    ? "Stash full — some items may not transfer"
+                    : `Move ${kitJunkCount} junk ${kitJunkCount === 1 ? "item" : "items"} to stash`
+              }
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => emptyJunk()}
+                disabled={!canEmptyJunk}
+                className="rounded-sm"
+              >
+                <PackageOpen className="size-3.5" />
+                Empty loot
+              </Button>
+            </Tooltip>
+            <Tooltip
+              text={
                 !canEmptyAll
                   ? "Nothing to empty"
                   : stashFull
@@ -398,7 +423,7 @@ export function StashPanel() {
                 className="rounded-sm"
               >
                 <PackageOpen className="size-3.5" />
-                Empty kit
+                Empty everything
               </Button>
             </Tooltip>
           </aside>

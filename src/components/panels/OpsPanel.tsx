@@ -5,11 +5,12 @@ import { LOCATIONS } from "@/lib/data/locations";
 import { useGame } from "@/store/game";
 import { Button } from "@/components/ui/button";
 import { PanelHeader } from "./PanelHeader";
-import { ArrowRight, Backpack, Lock, Shirt, Skull } from "lucide-react";
+import { AlertTriangle, ArrowRight, Backpack, Lock, Shirt, Skull } from "lucide-react";
 import { ITEMS } from "@/lib/data/items";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
-import type { Location, StashItem, Unlocks } from "@/lib/types";
+import type { Location, PackPlacement, StashItem, Unlocks } from "@/lib/types";
+import { isJunk } from "@/store/slices/economy";
 
 interface AccessState {
   accessible: boolean;
@@ -82,6 +83,17 @@ export function OpsPanel() {
   const kitValue =
     eq.pockets.items.reduce((s, p) => s + (ITEMS[p.itemId]?.sellValue ?? 0), 0) +
     (eq.bag?.items.reduce((s, p) => s + (ITEMS[p.itemId]?.sellValue ?? 0), 0) ?? 0);
+  // Junk left on the operative — implies they came back from a raid with
+  // unsold loot still on them. Surface as a yellow warning so the player
+  // doesn't burn pocket / bag space heading back out.
+  const kitJunk: PackPlacement[] = [
+    ...eq.pockets.items.filter((p) => isJunk(ITEMS[p.itemId])),
+    ...(eq.bag?.items.filter((p) => isJunk(ITEMS[p.itemId])) ?? []),
+  ];
+  const kitJunkValue = kitJunk.reduce(
+    (s, p) => s + (ITEMS[p.itemId]?.sellValue ?? 0),
+    0,
+  );
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -183,6 +195,22 @@ export function OpsPanel() {
                 )}
                 <span className="opacity-50">·</span>
                 <span className="tabular-nums text-foreground/80">¤{kitValue.toLocaleString()}</span>
+              </span>
+            </Tooltip>
+          )}
+          {!operativeBusy && kitJunk.length > 0 && (
+            <Tooltip
+              text={`${kitJunk.length} junk ${
+                kitJunk.length === 1 ? "item" : "items"
+              } still on the operative.`}
+            >
+              <span className="inline-flex items-center gap-1.5 rounded-sm border border-amber-500/50 bg-amber-950/30 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-amber-200">
+                <AlertTriangle className="size-3" />
+                <span>
+                  Junk on operative ·{" "}
+                  <span className="tabular-nums">{kitJunk.length}</span>
+                  <span className="ml-1 opacity-70">¤{kitJunkValue.toLocaleString()}</span>
+                </span>
               </span>
             </Tooltip>
           )}
