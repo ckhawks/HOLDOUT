@@ -61,10 +61,18 @@ src/lib/engine/       Pure game logic. No DOM, no React, no store, no Date.now,
                       the only allowed caller of these from runtime; tests
                       call them directly with seeded RNG and fixed `now`.
 
-src/store/game.ts     Zustand store. Single source of truth for game state.
-                      Wraps engine fns, supplies Date.now()/Math.random(),
-                      handles persistence subscription. Components call store
-                      actions; components don't touch the engine directly.
+src/store/game.ts     Zustand store entry point. Composes slices, owns base
+                      state (cash, stash, operative, hideout, etc.), and the
+                      persistence subscription. Wraps engine fns, supplies
+                      Date.now()/Math.random(). Components call store actions
+                      via useGame((s) => s.action); they don't touch the
+                      engine directly.
+
+src/store/slices/     Zustand slice files: raid.ts (raid lifecycle + currentRaid /
+                      raidOutcome state), kit.ts (kit/equipment slot routing),
+                      economy.ts (sell/buy/stash upgrade). New actions go in
+                      the slice that matches their concern; cross-slice access
+                      via the typed `get()` returns the full GameState.
 
 src/components/       UI. Subscribes to store slices via useGame((s) => ...).
                       No game logic — anything that smells like "compute next

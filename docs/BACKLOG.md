@@ -135,7 +135,6 @@ Make "scrounge / push / lay low" real instead of theatre.
 
 Items #1, #2, #6, #7, #9 (partial) shipped 2026-05-09 — see Changelog. Remaining:
 
-3. **`store/game.ts` is a 1000+ line god-file.** Raid actions, kit slot routing, persistence subscription, and shop refresh all live in one file. The kit slot algebra has now been pushed fully into `lib/engine/equipment.ts` (good), but the store actions themselves still cluster. Best next move: split into Zustand slices — `store/raidActions.ts`, `store/kitActions.ts`, `store/persist.ts` — composed in `store/game.ts`.
 4. **`lib/engine/raid.ts` (~675 lines)** — `tickAction` is a ~315-line switch with nested branching, mixed with RNG setup, log flavor (`makeLog`, `entranceLog`, `lootVerb`), branch/choice factories, and bleed/recall helpers. Decompose into `branches.ts`, `flavor.ts`, per-action handlers.
 5. **`PackTetris.tsx` (~488 lines)** — drag state machine, grid math, validation, and rendering all in one component. Grid math overlaps with `engine/shapes.ts` but isn't reused consistently. Extract `usePackDrag` hook, lean on `shapes.ts` for placement validation. (Partially addressed by the `KitGrid` extraction in commit `86ce488`.)
 9. **Remaining test coverage gaps**: UI components untested (acceptable v1). Engine + store now covered by 149 tests across 9 files; the deepest gap left is `tickAction`'s combat sub-mode + locked-container branches, which would benefit from targeted scenario tests if #4 lands.
@@ -198,6 +197,7 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 
 ## Tech debt / refactor (from arch review 2026-05-09)
 
+- ✅ **#3 Store god-file split** — extracted into 3 Zustand slices in `src/store/slices/`: `raid.ts` (raid lifecycle + currentRaid/raidOutcome state, ~546 lines), `kit.ts` (12 kit/equipment actions, ~246 lines), `economy.ts` (sell + buy + stash upgrade, ~86 lines). `store/game.ts` is now 193 lines (was 1003): state init, slice composition, hydrate/persist. GameState extends each slice interface so the store API is unchanged for consumers.
 - ✅ **#1 Engine purity** — `Date.now()` and `Math.random()` no longer read inside `lib/engine/`. New `makeUid(now, rand)` and `makeLogger(now, rand)` helpers in `raid.ts`; `tickAction`, `startRaid`, `applyBandage`, `entranceLog`, and pending-choice factories all take `now` as a trailing param. Store wraps with `Date.now()` / `Math.random()` at call sites only. Restores the seedable invariant DESIGN.md promises.
 - ✅ **#2 Tick loop ownership** — death/extract `setTimeout` chain in the store moved onto raid state as `pendingEnd: { at, success } | null`. `useRaidLoop` now owns all raid timers (action timer + pending end). Save schema bumped to v24.
 - ✅ **#6 Stale comments** — dead `lockedCratePendingChoice`, `clamp`, `applyFlags`, retired-tickRaid comment, unused PENDING_EXPIRY_MS / BRANCH_TIMER_MS / RunState / rollEvent imports all removed from `raid.ts`. Dropped unused imports (`buildOccupancy`, `canPlace`, `shapeFor`) from `store/game.ts` since `engine/equipment.ts` is the single consumer now.
