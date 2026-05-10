@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Backpack, Shirt, Trash2 } from "lucide-react";
+import { Backpack, Pill, Shirt, Trash2 } from "lucide-react";
 import { useGame, type KitSlot } from "@/store/game";
+import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
 import type { EquipSlot, PocketsState, BagState, Rotation } from "@/lib/types";
 import { EquippedColumn, SLOT_ORDER, type SlotHover, type SlotRefMap } from "./EquippedColumn";
 import { KitDragGhost, KitGrid, KIT_CELL } from "./KitGrid";
@@ -50,10 +51,14 @@ export function PackTetris() {
   const trashFromKit = useGame((s) => s.trashFromKit);
   const equipFromFloor = useGame((s) => s.equipFromFloor);
   const unequipToFloor = useGame((s) => s.unequipToFloor);
+  // Aliased away from `useConsumable` — the `use` prefix would trigger
+  // react-hooks/rules-of-hooks if called inside a callback.
+  const consume = useGame((s) => s.useConsumable);
 
   const pocketsRef = useRef<HTMLDivElement>(null);
   const bagRef = useRef<HTMLDivElement>(null);
   const trashRef = useRef<HTMLDivElement>(null);
+  const consumeZoneRef = useRef<HTMLDivElement>(null);
   const floorRef = useRef<HTMLDivElement>(null);
   // Stable refs (declared individually) so the hook count never changes
   // across renders / HMR — bundling useRef() into an object literal can
@@ -181,6 +186,13 @@ export function PackTetris() {
         const slot = d.source.slice(5) as EquipSlot;
         if (unequipToFloor(slot)) played = true;
       }
+    } else if (isInside(consumeZoneRef.current, e.clientX, e.clientY)) {
+      // Use-zone: only consumables in pockets/bag with a CONSUMABLE_EFFECTS
+      // entry. Other items dropped here just fall back to drag-cancel.
+      if ((d.source === "pockets" || d.source === "bag") && CONSUMABLE_EFFECTS[d.itemId]) {
+        consume(d.uid);
+        played = true;
+      }
     } else if (isInside(floorRef.current, e.clientX, e.clientY)) {
       if (d.source === "pockets" || d.source === "bag") {
         dropToFloor(d.uid);
@@ -208,7 +220,7 @@ export function PackTetris() {
     setDrag(null);
     setHover(null);
     setSlotHover(null);
-  }, [pockets, bag, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, trashFromFloor, trashFromKit, equipFromFloor, unequipToFloor]);
+  }, [pockets, bag, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, trashFromFloor, trashFromKit, equipFromFloor, unequipToFloor, consume]);
 
   const rotateInPlace = useCallback(() => {
     setDrag((d) => {
@@ -301,15 +313,30 @@ export function PackTetris() {
             </div>
           </div>
 
-          <div
-            ref={trashRef}
-            className={cn(
-              "flex items-center justify-center gap-2 rounded-sm border border-dashed border-border/60 bg-background/30 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors",
-              drag && "border-red-500/70 bg-red-950/30 text-red-300",
-            )}
-          >
-            <Trash2 className="size-3.5" />
-            <span>Discard</span>
+          <div className="grid grid-cols-2 gap-2">
+            <div
+              ref={consumeZoneRef}
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-sm border border-dashed border-border/60 bg-background/30 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors",
+                // Light up green only when a consumable is being dragged.
+                drag && CONSUMABLE_EFFECTS[drag.itemId] && (drag.source === "pockets" || drag.source === "bag") &&
+                  "border-emerald-500/70 bg-emerald-950/30 text-emerald-300",
+              )}
+              title="Drag a consumable here to use it"
+            >
+              <Pill className="size-3.5" />
+              <span>Use</span>
+            </div>
+            <div
+              ref={trashRef}
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-sm border border-dashed border-border/60 bg-background/30 py-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors",
+                drag && "border-red-500/70 bg-red-950/30 text-red-300",
+              )}
+            >
+              <Trash2 className="size-3.5" />
+              <span>Discard</span>
+            </div>
           </div>
         </div>
 

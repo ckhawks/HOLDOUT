@@ -12,7 +12,6 @@ import {
   Flame,
   Footprints,
   Heart,
-  Pill,
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -22,36 +21,10 @@ import { BranchModal } from "./BranchModal";
 import { NextActionCard } from "./NextActionCard";
 import { RaidMap } from "./RaidMap";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
-import { CONSUMABLE_EFFECTS } from "@/lib/engine/raid";
-import { ITEMS } from "@/lib/data/items";
-import type { Equipment } from "@/lib/types";
-
-// Group equipment-side consumables by itemId so a stack of 4 bandages shows
-// as a single button with ×4 instead of four buttons. Click consumes the
-// first uid of that group.
-function listConsumables(eq: Equipment): { uid: string; itemId: string; count: number }[] {
-  const all = [...eq.pockets.items, ...(eq.bag?.items ?? [])];
-  const groups = new Map<string, { uid: string; count: number }>();
-  for (const p of all) {
-    if (!CONSUMABLE_EFFECTS[p.itemId]) continue;
-    const cur = groups.get(p.itemId);
-    if (cur) cur.count += 1;
-    else groups.set(p.itemId, { uid: p.uid, count: 1 });
-  }
-  return Array.from(groups.entries()).map(([itemId, { uid, count }]) => ({
-    itemId,
-    uid,
-    count,
-  }));
-}
 
 export function FeedPanel() {
   const raid = useGame((s) => s.currentRaid);
   const useBandage = useGame((s) => s.useBandage);
-  // Aliased away from `useConsumable` because react-hooks/rules-of-hooks
-  // treats any `useX(...)` inside a callback as a misplaced hook call. This
-  // is a Zustand action, not a hook.
-  const consume = useGame((s) => s.useConsumable);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -79,7 +52,6 @@ export function FeedPanel() {
     raid.equipment.pockets.items.some((p) => p.itemId === "bandage_pack") ||
     !!raid.equipment.bag?.items.some((p) => p.itemId === "bandage_pack");
   const extracting = rs.flags.includes("extracting");
-  const consumables = listConsumables(raid.equipment);
   const exhausted = rs.energy <= 0;
 
   const locationName = LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId;
@@ -136,38 +108,6 @@ export function FeedPanel() {
           <span className="text-xs text-muted-foreground">
             HP draining each tick — eat or drink something.
           </span>
-        </div>
-      ) : null}
-      {consumables.length > 0 ? (
-        <div className="flex items-center gap-2 border-b border-border/60 px-6 py-2">
-          <Pill className="size-3 text-muted-foreground" />
-          <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-            Consumables
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {consumables.map(({ uid, itemId, count }) => {
-              const def = ITEMS[itemId];
-              const eff = CONSUMABLE_EFFECTS[itemId];
-              return (
-                <button
-                  key={uid}
-                  onClick={() => consume(uid)}
-                  title={[
-                    def?.name ?? itemId,
-                    eff?.hp ? `+${eff.hp} HP` : null,
-                    eff?.energy ? `+${eff.energy} energy` : null,
-                    eff?.clearBleed ? "clears bleed" : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                  className="cursor-pointer rounded-sm border border-border/60 bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:border-foreground/40 hover:text-foreground"
-                >
-                  {def?.name ?? itemId}
-                  {count > 1 ? <span className="ml-1 opacity-60">×{count}</span> : null}
-                </button>
-              );
-            })}
-          </div>
         </div>
       ) : null}
       <div className="flex min-h-0 flex-1">
