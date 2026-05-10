@@ -17,6 +17,16 @@ export const THREAT_TILE_RATIO = 0.1;
 // breathing room to spot hostiles before they're forced into one.
 const MIN_THREAT_DEPTH = 2;
 
+// Per-location difficulty multiplier. Drives BLOCKED_TILE_RATIO and
+// THREAT_TILE_RATIO so a single field on Location can say "this place is
+// 40% harder" without per-knob overrides. Locations that need finer control
+// can still set blockedTileRatio explicitly to override the derived value.
+export const DIFFICULTY_MULTIPLIER: Record<"low" | "mid" | "high", number> = {
+  low: 0.7,
+  mid: 1.0,
+  high: 1.4,
+};
+
 const DEFAULT_ROOM_WEIGHTS: Record<RoomType, number> = {
   corridor: 5,
   storage: 3,
@@ -249,7 +259,8 @@ export function generateMap(
       // connectivity.
       const adjacentToEntry = x === entry.x + 1 && y === entry.y;
       const protectedTile = adjacentToEntry || onCorridor(x, y);
-      const blockRatio = location?.blockedTileRatio ?? BLOCKED_TILE_RATIO;
+      const mult = location ? DIFFICULTY_MULTIPLIER[location.difficulty] : 1;
+      const blockRatio = location?.blockedTileRatio ?? BLOCKED_TILE_RATIO * mult;
       const blocked = !protectedTile && rand() < blockRatio;
       const type: RoomType = blocked ? "locked" : pickWeighted(rand, weights);
       const lootMax = blocked ? 0 : pickLootPotential(rand, type);
@@ -257,7 +268,7 @@ export function generateMap(
       // blocked tiles or the always-walkable forward-of-entry tile.
       const threatEligible =
         !blocked && !adjacentToEntry && x >= MIN_THREAT_DEPTH;
-      const threat = threatEligible && rand() < THREAT_TILE_RATIO;
+      const threat = threatEligible && rand() < THREAT_TILE_RATIO * mult;
       tiles.push({
         x,
         y,
