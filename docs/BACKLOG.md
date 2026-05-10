@@ -3,6 +3,7 @@
 The single source of truth for **what's open** and **what's shipped**. Restructured 2026-05-09 to merge POST_SAD_TASKS, IDEAS, and ARCH_REVIEW into one doc, with completed work archived as a changelog at the bottom.
 
 Layout:
+
 - **Current state** — what the game is right now
 - **Human ideas** — open work originating from the player/designer
 - **AI ideas / proposals** — open work originating from AI suggestions
@@ -54,31 +55,30 @@ Context, only shown when eligible (under a divider in the action card):
 
 Open wishlist from the player. DONE items have been moved to the Changelog at the bottom.
 
-- remove randomly got shot when entered room, replace with just pure environmental things (later todo: make it so like an agility skill could reduce % of this happening)
-- debug button to reset shop stock
-- make it so bags can have split inventory sections, like tarkov rigs/bags (i.e. a 2x3 area and a 3x3 area)
-- increase the rate of rare items in locked crates
-- later: make blasting to get rare loot take some sort of explosives item. maybe we shouldnt say guarantee rare loot
-- add locked doors (edges on map); action in action list to try to keypad/lockpick etc
-- add more items in inventory = more heat gain per turn (very slight, just to counter end-game-y stuff) (because you're louder moving around); maybe this could be based on weight (items get weight separate from cells size?)
-- ability to pin/lock items in stash
-- ability to sort stash (group by kind/category, sort by value, sort by date obtained)
+- food consumed during raid to keep energy up
 - need item that can restore HP (over time?) — see also AI medical-ladder proposal below
 - need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
-- sometimes make the extract point not the starting point (midway in level somewhere)
-- backpack packing like Tarkov for dropped bags (hard)
-- small shop: buy backpack, decent low/mid weapon, ammo
-- food consumed during raid to keep energy up
+- remove randomly got shot when entered room, replace with just pure environmental things (later todo: make it so like an agility skill could reduce % of this happening)
+- debug button to reset shop stock
+- increase the rate of rare items in locked crates
+- later: make blasting to get rare loot take some sort of explosives item. maybe we shouldnt say guarantee rare loot
 - stash sized by # of cells (tetris cells), bigger items = more space, no grid management
+- ability to pin/lock items in stash
+- ability to sort stash (group by kind/category, sort by value, sort by date obtained)
+- sometimes make the extract point not the starting point (midway in level somewhere)
+- small shop: buy backpack, decent low/mid weapon, ammo
 - show inventory value
+- make it so bags can have split inventory sections, like tarkov rigs/bags (i.e. a 2x3 area and a 3x3 area)
+- backpack packing like Tarkov for dropped bags (hard)
 - item value should fluctuate
 - stash should show how long you've had an item for
-- hacking minigame? keypads?
-- warning when pack has more items than stash space
 - hideout: foundry — melt metals down, forge items. Construct foundry first.
 - realistic ammo: magazines, swap mags, reload from pack ammo
 - opponent quality preview ("the big scary guy" vs "the little shrimp" vs "cant tell")
+- add locked doors (edges on map); action in action list to try to keypad/lockpick etc
+- add more items in inventory = more heat gain per turn (very slight, just to counter end-game-y stuff) (because you're louder moving around); maybe this could be based on weight (items get weight separate from cells size?)
 - repair bench, uses wurm-style rotating repair materials/items to increase condition
+- hacking minigame? keypads?
 
 ### From the older IDEAS.md (carried over)
 
@@ -139,17 +139,13 @@ Make "scrounge / push / lay low" real instead of theatre.
 
 ## Tech debt / refactor (from arch review 2026-05-09)
 
-Issues from a structural review of the engine/store/UI boundary. Suggested attack order: 1 → 2 → 3 → 4 → 5.
+Items #1, #2, #6, #7, #9 (partial) shipped 2026-05-09 — see Changelog. Remaining:
 
-1. **Engine purity violations — `Date.now()` / `Math.random()` inside `lib/engine/`.** `src/lib/engine/raid.ts` calls `Date.now()` for log timestamps and item UIDs (`${Date.now()}-${Math.random()...}`), and `Math.random()` rather than the seeded RNG. Breaks the "pure, side-effect-free, seedable" rule in DESIGN.md and the multiplayer-port readiness contract — raids are advertised as deterministic but aren't. **Fix:** thread `now` and `rand` as parameters; let the store stamp wall-clock time, keep the engine seedable.
-2. **Tick loop is half engine / half React, with chained `setTimeout` in the store.** `store/game.ts` schedules `endRaid()` via `setTimeout(..., 800)` after `doTick` flips `active = false` — exactly the chained-setTimeout pattern DESIGN.md forbids. `useRaidLoop.ts` re-arms a timeout each render based on `raid.actionStartedAt`. The "when does the next tick fire" logic is split across the engine, the store, and a hook with no single owner. Pause/HMR/unmount edge cases are fragile. **Fix:** put `nextTickAt` (or a `raidPhase: 'running' | 'ending'`) on state; let the hook observe, not compute.
-3. **`store/game.ts` is a 1000+ line god-file.** Mixes raid actions (beginRaid/doTick/recall/endRaid), kit/equipment slot algebra (placeIntoSlot, moveBetweenSlots, equipItem, removeFromKit), persistence subscription, and shop refresh. The "thin shell over engine" rule is being broken. Split into `store/raidActions.ts`, `store/equipment.ts` (or push the slot algebra fully into `lib/engine/kit.ts`), `store/persist.ts`.
-4. **`lib/engine/raid.ts` (~692 lines)** — `tickAction` is a ~315-line switch with nested branching, mixed with RNG setup, log flavor (`makeLog`, `entranceLog`, `lootVerb`), branch/choice factories, and bleed/recall helpers. Decompose into `branches.ts`, `flavor.ts`, per-action handlers.
+3. **`store/game.ts` is a 1000+ line god-file.** Raid actions, kit slot routing, persistence subscription, and shop refresh all live in one file. The kit slot algebra has now been pushed fully into `lib/engine/equipment.ts` (good), but the store actions themselves still cluster. Best next move: split into Zustand slices — `store/raidActions.ts`, `store/kitActions.ts`, `store/persist.ts` — composed in `store/game.ts`.
+4. **`lib/engine/raid.ts` (~675 lines)** — `tickAction` is a ~315-line switch with nested branching, mixed with RNG setup, log flavor (`makeLog`, `entranceLog`, `lootVerb`), branch/choice factories, and bleed/recall helpers. Decompose into `branches.ts`, `flavor.ts`, per-action handlers.
 5. **`PackTetris.tsx` (~488 lines)** — drag state machine, grid math, validation, and rendering all in one component. Grid math overlaps with `engine/shapes.ts` but isn't reused consistently. Extract `usePackDrag` hook, lean on `shapes.ts` for placement validation. (Partially addressed by the `KitGrid` extraction in commit `86ce488`.)
-6. **Stale "retired" comments without cleanup** — `raid.ts:21-23` references `pushPending/prunePending` retired in a pivot; lines 101-104 mention retired `tickRaid`/`resolveBranch`. Delete or move into a CHANGELOG section.
-7. **Heat / alertness rename leaves cognitive debt** — `save.ts` migrates `alertness → heat` (v18→v19). Mechanical meaning of "heat" isn't documented in `types.ts`. Add a one-line comment defining what increments/decrements it.
 8. **Difficulty knobs are scattered** — `map.ts` uses hardcoded `THREAT_TILE_RATIO`/`BLOCKED_TILE_RATIO`; `events.ts` uses `ROOM_EVENT_BIAS`; locations can't say "25% harder" with one number. Add a `difficulty` field to `Location` and scale both.
-9. **Test coverage gaps** — store actions (the bulk of game logic now), equipment slot helpers (placeIntoSlot/moveBetweenSlots/buildOccupancy), and save round-trip with complex bag/pocket states are untested. UI components are untested (acceptable v1, but the slot algebra isn't UI — it's pure logic that should have tests).
+9. **Remaining test coverage gaps** (after equipment.ts + shop.ts landed): store actions still untested (raid lifecycle integration tests would be highest leverage; the store is now a thin shell over tested engine fns so smoke tests should suffice). UI components untested (acceptable v1).
 
 ## Health system proposal (open question)
 
@@ -169,7 +165,7 @@ UX: all heals follow the bandage pattern — instant, no action-tick, one cell, 
 
 # Risks (current as of 2026-05-09)
 
-- **Auto-picker is too predictable.** With seven actions but only three ever in the primary slot, players will stop reading the next-action card after a few raids. Sprint I (preferences) helps, but the real fix is more *kinds* of actions — sub-mode variety, environmental interactions, opportunistic tile features.
+- **Auto-picker is too predictable.** With seven actions but only three ever in the primary slot, players will stop reading the next-action card after a few raids. Sprint I (preferences) helps, but the real fix is more _kinds_ of actions — sub-mode variety, environmental interactions, opportunistic tile features.
 - **Heat is the only real consumer of player choices right now.** Energy still drains but doesn't punish at 0. Ammo is consumed but never gates. Sprint K and L close those gaps.
 - **Combat outcome distribution is fixed.** `fight` always rolls the same 55/30/15 — opponent quality (the user's wishlist item) would make this dynamic.
 - **No long-term meta progression beyond cash.** Once stash and pack are upgraded a few times, there's nothing to chase. Sprint J + workbench crafting need to land before mid-game has shape.
@@ -198,6 +194,14 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 ## From the older IDEAS.md
 
 - ✅ **Loot categories per location** — each location biases toward certain item categories. Shipped via `location.categoryWeights` in `src/lib/data/locations.ts` (Warehouse → mechanical 5 / consumables 3 / electronics 2; Datacenter → electronics 6 / intel 5; Biolab → medical 5 / experimental 4; etc.) and routed through `pickItemForLocation()` in `src/lib/data/items.ts` — picks a category by weight, then a tier by depth+rarity, then an item from the intersection (with a generic fallback when no weights are set).
+
+## Tech debt / refactor (from arch review 2026-05-09)
+
+- ✅ **#1 Engine purity** — `Date.now()` and `Math.random()` no longer read inside `lib/engine/`. New `makeUid(now, rand)` and `makeLogger(now, rand)` helpers in `raid.ts`; `tickAction`, `startRaid`, `applyBandage`, `entranceLog`, and pending-choice factories all take `now` as a trailing param. Store wraps with `Date.now()` / `Math.random()` at call sites only. Restores the seedable invariant DESIGN.md promises.
+- ✅ **#2 Tick loop ownership** — death/extract `setTimeout` chain in the store moved onto raid state as `pendingEnd: { at, success } | null`. `useRaidLoop` now owns all raid timers (action timer + pending end). Save schema bumped to v24.
+- ✅ **#6 Stale comments** — dead `lockedCratePendingChoice`, `clamp`, `applyFlags`, retired-tickRaid comment, unused PENDING_EXPIRY_MS / BRANCH_TIMER_MS / RunState / rollEvent imports all removed from `raid.ts`. Dropped unused imports (`buildOccupancy`, `canPlace`, `shapeFor`) from `store/game.ts` since `engine/equipment.ts` is the single consumer now.
+- ✅ **#7 Heat semantics** — doc-comment on `RunState.heat` in `types.ts` documents what increments/decrements it and the heat→ambush relationship.
+- ✅ **#9 partial: equipment + shop tests** — 22 tests for `engine/equipment.ts` slot algebra (placeIntoSlot, moveBetweenSlots, equipItem, unequipItem, findFit, removeFromKit). 12 tests for `engine/shop.ts` (deterministic generation, distinct picks per pool, guaranteed bandage, refreshShop). Remaining gap: store actions + UI.
 
 ## From the player wishlist
 
