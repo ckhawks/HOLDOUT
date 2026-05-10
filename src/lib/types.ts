@@ -50,6 +50,11 @@ export interface StashItem {
   // Pinned items are excluded from sellAllJunk and never auto-sold. Doesn't
   // affect equip/kit movement — pin = "don't sell", not "freeze".
   pinned?: boolean;
+  // Per-instance sell-value multiplier rolled at acquisition (raid loot,
+  // shop buy). Range ±15% — two of the same item can have different
+  // sell prices. Effective sell = round(base * (valueMod ?? 1)). Optional
+  // for backwards-compat with pre-v28 stash items (treated as 1).
+  valueMod?: number;
 }
 
 export interface PackPlacement extends StashItem {

@@ -50,6 +50,7 @@ function freshState(): PersistedState {
     upgrades: { pocketsLevel: 1, stashLevel: 2 },
     currentRaid: null,
     shop: { offers: [], lastRefreshAt: 0 },
+    debugMode: false,
   };
 }
 

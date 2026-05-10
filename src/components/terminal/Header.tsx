@@ -5,8 +5,8 @@ import { useGame } from "@/store/game";
 import { Package, Radio } from "lucide-react";
 import { SfxPicker } from "./SfxPicker";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
-import { ITEMS } from "@/lib/data/items";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { effectiveSellValue } from "@/store/slices/economy";
 
 export function Header() {
   const cash = useGame((s) => s.cash);
@@ -18,7 +18,7 @@ export function Header() {
   const status = raid ? `RAIDING · ${locName}` : op.state.toUpperCase();
 
   const stashValue = useMemo(
-    () => stash.reduce((sum, si) => sum + (ITEMS[si.itemId]?.sellValue ?? 0), 0),
+    () => stash.reduce((sum, si) => sum + effectiveSellValue(si), 0),
     [stash],
   );
 

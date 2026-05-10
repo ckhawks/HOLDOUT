@@ -10,7 +10,7 @@ import { categoryIconFor } from "@/lib/itemIcon";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Backpack, Coins, Crosshair, FolderTree, Heart, PackageOpen, Pin, PillBottle, Shirt, Zap } from "lucide-react";
 import { isConsumable } from "@/lib/engine/consumables";
-import { isJunk } from "@/store/slices/economy";
+import { effectiveSellValue, isJunk } from "@/store/slices/economy";
 import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
 import { findFit } from "@/lib/engine/equipment";
 import { gridCellAt, isInside, slotUnder } from "@/lib/dnd";
@@ -213,10 +213,7 @@ export function StashPanel() {
     [stash],
   );
   const junkUidSet = useMemo(() => new Set(junkItems.map((i) => i.uid)), [junkItems]);
-  const junkValue = junkItems.reduce(
-    (sum, si) => sum + (ITEMS[si.itemId]?.sellValue ?? 0),
-    0,
-  );
+  const junkValue = junkItems.reduce((sum, si) => sum + effectiveSellValue(si), 0);
   const junkCount = junkItems.length;
 
   const stashFull = stash.length >= cap;
@@ -231,8 +228,7 @@ export function StashPanel() {
   const sortedStash = useMemo(() => {
     const sorter =
       sortMode === "value"
-        ? (a: StashItem, b: StashItem) =>
-            (ITEMS[b.itemId]?.sellValue ?? 0) - (ITEMS[a.itemId]?.sellValue ?? 0)
+        ? (a: StashItem, b: StashItem) => effectiveSellValue(b) - effectiveSellValue(a)
         : (a: StashItem, b: StashItem) => (b.acquiredAt ?? 0) - (a.acquiredAt ?? 0);
     return [...stash].sort(sorter);
   }, [stash, sortMode]);
@@ -543,7 +539,7 @@ export function StashPanel() {
                             </span>
                             <div className="flex shrink-0 items-center gap-1">
                               <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                                ¤{item.sellValue}
+                                ¤{effectiveSellValue(si)}
                               </span>
                               <Tooltip text={si.pinned ? "Unpin (allow bulk sell)" : "Pin (protect from bulk sell)"}>
                                 <button
@@ -638,10 +634,9 @@ function ConfirmSellJunkDialog({
   const grouped = useMemo(() => {
     const map = new Map<string, { itemId: string; count: number; total: number }>();
     for (const si of items) {
-      const def = ITEMS[si.itemId];
       const cur = map.get(si.itemId) ?? { itemId: si.itemId, count: 0, total: 0 };
       cur.count += 1;
-      cur.total += def?.sellValue ?? 0;
+      cur.total += effectiveSellValue(si);
       map.set(si.itemId, cur);
     }
     // Sort by total desc so the biggest payouts surface first.

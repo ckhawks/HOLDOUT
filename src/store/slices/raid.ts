@@ -667,8 +667,8 @@ function buildRaidReport(
       [...startItems, ...flattenEquipment(raid.equipment).filter((i) => !startUids.has(i.uid))]
         .map(toReportItem);
 
-  const startingValue = startItems.reduce((s, i) => s + sellValueFor(i.itemId), 0);
-  const endingValue = endItems.reduce((s, i) => s + sellValueFor(i.itemId), 0);
+  const startingValue = startItems.reduce((s, i) => s + effectiveValue(i), 0);
+  const endingValue = endItems.reduce((s, i) => s + effectiveValue(i), 0);
 
   // Collapse consumablesUsed by itemId.
   const consumableCounts = new Map<string, number>();
@@ -715,15 +715,16 @@ function buildRaidReport(
 
 function flattenEquipment(eq: import("@/lib/types").Equipment) {
   return [
-    ...eq.pockets.items.map((i) => ({ uid: i.uid, itemId: i.itemId })),
-    ...(eq.bag?.items.map((i) => ({ uid: i.uid, itemId: i.itemId })) ?? []),
+    ...eq.pockets.items.map((i) => ({ uid: i.uid, itemId: i.itemId, valueMod: i.valueMod })),
+    ...(eq.bag?.items.map((i) => ({ uid: i.uid, itemId: i.itemId, valueMod: i.valueMod })) ?? []),
   ];
 }
 
-function toReportItem(i: { uid: string; itemId: string }): RaidReportItem {
-  return { uid: i.uid, itemId: i.itemId, sellValue: sellValueFor(i.itemId) };
+function toReportItem(i: { uid: string; itemId: string; valueMod?: number }): RaidReportItem {
+  return { uid: i.uid, itemId: i.itemId, sellValue: effectiveValue(i) };
 }
 
-function sellValueFor(itemId: string): number {
-  return ITEMS[itemId]?.sellValue ?? 0;
+function effectiveValue(i: { itemId: string; valueMod?: number }): number {
+  const base = ITEMS[i.itemId]?.sellValue ?? 0;
+  return Math.round(base * (i.valueMod ?? 1));
 }

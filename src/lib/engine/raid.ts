@@ -335,12 +335,17 @@ function tryPatrolInterrupt(
 // (caller pushes its own log line wrapping the item name) or null on miss.
 // Centralizes the location-aware tier roll used by loot, breach_locked, and
 // fight target_down.
-function rollLoot(ctx: TickCtx, isRare: boolean): { itemId: string; uid: string } | null {
+function rollLoot(ctx: TickCtx, isRare: boolean): StashItem | null {
   const loc = LOCATIONS_BY_ID[ctx.raid.locationId];
   if (!loc) return null;
   const itemId = pickItemForLocation(ctx.rand, loc, isRare, ctx.raid.runState.depth);
   if (!itemId) return null;
-  return { itemId, uid: ctx.uid() };
+  // Per-instance sell-value multiplier ±15%. Two of the same item from
+  // different rolls will sell for slightly different prices. Mirrors the
+  // VALUE_MOD_MIN/MAX constants in store/slices/economy.ts; kept inline
+  // to avoid an engine→store import.
+  const valueMod = 0.85 + ctx.rand() * 0.3;
+  return { itemId, uid: ctx.uid(), valueMod };
 }
 
 // Per-action handlers. Each mutates the delta accumulator; the patrol-style

@@ -7,6 +7,23 @@ import { refreshShop } from "@/lib/engine/shop";
 import { stashCapacity, stashUpgradeCost } from "@/lib/engine/upgrades";
 import type { GameState } from "../game";
 
+// Per-item sell-value multiplier range. Rolled at acquisition (raid loot,
+// shop buy) and persisted on the StashItem so two of the same item can
+// have different sell prices. Range ±15%.
+export const VALUE_MOD_MIN = 0.85;
+export const VALUE_MOD_MAX = 1.15;
+
+export function rollValueMod(rand: () => number): number {
+  return VALUE_MOD_MIN + rand() * (VALUE_MOD_MAX - VALUE_MOD_MIN);
+}
+
+// Effective sell value for a stash/pack item. Applies the per-instance
+// multiplier (default 1.0 for legacy items without one).
+export function effectiveSellValue(si: { itemId: string; valueMod?: number }): number {
+  const base = ITEMS[si.itemId]?.sellValue ?? 0;
+  return Math.round(base * (si.valueMod ?? 1));
+}
+
 // "Junk" = sellable items with no in-game use. Excludes equippables (have a
 // slot) and consumables (have a CONSUMABLE_EFFECTS entry). Tier doesn't
 // gate this — a rare valuable is still junk if there's nothing to do with
@@ -40,7 +57,7 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
     if (idx === -1) return;
     // Pinned items can still be sold via single-item sell — pin only blocks
     // the bulk sell-all-junk path (where accidental sells matter most).
-    const value = ITEMS[stash[idx].itemId]?.sellValue ?? 0;
+    const value = effectiveSellValue(stash[idx]);
     if (value <= 0) return;
     const next = [...stash];
     next.splice(idx, 1);
@@ -54,7 +71,7 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
     for (const si of stash) {
       const item = ITEMS[si.itemId];
       if (!si.pinned && isJunk(item)) {
-        earned += item!.sellValue;
+        earned += effectiveSellValue(si);
       } else {
         keep.push(si);
       }
@@ -85,6 +102,7 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
       uid: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       itemId: offer.itemId,
       acquiredAt: Date.now(),
+      valueMod: rollValueMod(Math.random),
     };
     const nextStock = offer.stock - 1;
     const nextOffers = nextStock <= 0
