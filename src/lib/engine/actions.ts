@@ -148,9 +148,18 @@ export function currentTile(raid: CurrentRaid): MapTile | undefined {
 // Pick what the operative would do next without player input. Combat
 // sub-mode locks to fight; extract sub-mode locks to extract_step. Otherwise
 // loot if available, else push forward.
+//
+// Extract-while-looting carve-out: if the player manually picked `loot` last
+// tick during extract, keep looting as long as the room still has containers.
+// Without this, the auto-picker would snap back to extract_step after one
+// loot tick, forcing a manual click per container. The opt-in stays — entering
+// a new room mid-extract via extract_step does NOT trigger auto-loot.
 export function autoPickAction(raid: CurrentRaid): ActionId {
   if (raid.runState.flags.includes("combat_engaged")) return "fight";
-  if (raid.runState.flags.includes("extracting")) return "extract_step";
+  if (raid.runState.flags.includes("extracting")) {
+    if (raid.queuedAction === "loot" && ACTIONS.loot.isEligible(raid)) return "loot";
+    return "extract_step";
+  }
   if (ACTIONS.loot.isEligible(raid)) return "loot";
   if (ACTIONS.move_forward.isEligible(raid)) return "move_forward";
   return "stay";

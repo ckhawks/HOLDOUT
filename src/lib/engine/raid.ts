@@ -3,6 +3,7 @@ import type {
   CurrentRaid,
   Equipment,
   LogEntry,
+  Operative,
   PendingChoice,
   StashItem,
 } from "@/lib/types";
@@ -29,6 +30,7 @@ export function makeRng(seed: number): () => number {
 export function startRaid(
   locationId: string,
   equipment: Equipment,
+  vitals: { health: number; energy: number; ammo: number },
   rand: () => number,
   now: number,
 ): CurrentRaid {
@@ -46,9 +48,9 @@ export function startRaid(
     startedAt: now,
     runState: {
       heat: 0,
-      health: 100,
-      energy: 100,
-      ammo: 30,
+      health: vitals.health,
+      energy: vitals.energy,
+      ammo: vitals.ammo,
       depth: 0,
       distanceFromExtract: 0,
       flags: [],
@@ -637,6 +639,10 @@ export interface ConsumableEffect {
   log?: string;
 }
 
+export function isConsumable(itemId: string): boolean {
+  return itemId in CONSUMABLE_EFFECTS;
+}
+
 export const CONSUMABLE_EFFECTS: Record<string, ConsumableEffect> = {
   bandage_pack: { clearBleed: true, log: "Bandage applied — bleed under control." },
   antiseptic_vial: { hp: 10, log: "Patched up. +10 HP." },
@@ -783,3 +789,84 @@ export function applyBandage(
   };
 }
 
+// Out-of-raid consumable use. Mirrors `applyConsumable` but operates on the
+// persisted operative + stash (no raid log, no bleed flags — those only live
+// on a CurrentRaid). Finds the uid in equipment.pockets / equipment.bag /
+// stash, applies the effect's HP and energy deltas to operative vitals, and
+// removes the item from wherever it lived. Returns the original tuple
+// unchanged on no-op (item not found, item not consumable, item wouldn't
+// help current vitals — same would-help guard as the in-raid version).
+export function applyConsumableToOperative(
+  operative: Operative,
+  stash: ReadonlyArray<StashItem>,
+  uid: string,
+): { operative: Operative; stash: StashItem[]; consumed: boolean; itemId: string | null } {
+  const noChange = { operative, stash: [...stash], consumed: false, itemId: null };
+
+  // Locate the item.
+  const eq = operative.equipment;
+  const pocketIdx = eq.pockets.items.findIndex((p) => p.uid === uid);
+  const bagIdx =
+    pocketIdx === -1 && eq.bag ? eq.bag.items.findIndex((p) => p.uid === uid) : -1;
+  const stashIdx =
+    pocketIdx === -1 && bagIdx === -1 ? stash.findIndex((s) => s.uid === uid) : -1;
+  if (pocketIdx === -1 && bagIdx === -1 && stashIdx === -1) return noChange;
+
+  const itemId =
+    pocketIdx !== -1
+      ? eq.pockets.items[pocketIdx].itemId
+      : bagIdx !== -1
+        ? eq.bag!.items[bagIdx].itemId
+        : stash[stashIdx].itemId;
+  const effect = CONSUMABLE_EFFECTS[itemId];
+  if (!effect) return noChange;
+
+  // Would-help guard. Bleed-clear effects are no-ops out of raid (no flags
+  // to clear), so a bandage out here only helps if it also has hp/energy.
+  const hpHelps = (effect.hp ?? 0) > 0 && operative.health < 100;
+  const energyHelps = (effect.energy ?? 0) > 0 && operative.energy < 100;
+  if (!hpHelps && !energyHelps) return noChange;
+
+  // Remove from source.
+  let nextEquipment: Equipment = eq;
+  let nextStash: StashItem[] = [...stash];
+  if (pocketIdx !== -1) {
+    nextEquipment = {
+      ...eq,
+      pockets: {
+        ...eq.pockets,
+        items: [
+          ...eq.pockets.items.slice(0, pocketIdx),
+          ...eq.pockets.items.slice(pocketIdx + 1),
+        ],
+      },
+    };
+  } else if (bagIdx !== -1) {
+    nextEquipment = {
+      ...eq,
+      bag: eq.bag
+        ? {
+            ...eq.bag,
+            items: [
+              ...eq.bag.items.slice(0, bagIdx),
+              ...eq.bag.items.slice(bagIdx + 1),
+            ],
+          }
+        : null,
+    };
+  } else {
+    nextStash = [...stash.slice(0, stashIdx), ...stash.slice(stashIdx + 1)];
+  }
+
+  return {
+    operative: {
+      ...operative,
+      equipment: nextEquipment,
+      health: Math.max(0, Math.min(100, operative.health + (effect.hp ?? 0))),
+      energy: Math.max(0, Math.min(100, operative.energy + (effect.energy ?? 0))),
+    },
+    stash: nextStash,
+    consumed: true,
+    itemId,
+  };
+}

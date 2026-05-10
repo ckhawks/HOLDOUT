@@ -59,7 +59,6 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - need item that can restore HP (over time?) — see also AI medical-ladder proposal below
 - need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
 - remove randomly got shot when entered room, replace with just pure environmental things (later todo: make it so like an agility skill could reduce % of this happening)
-- persist operative health + energy + ammo into stash, allow using consumables in the stash
 - debug button to reset shop stock
 - increase the rate of rare items in locked crates
 - later: make blasting to get rare loot take some sort of explosives item. maybe we shouldnt say guarantee rare loot
@@ -67,7 +66,6 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - ability to pin/lock items in stash
 - sometimes make the extract point not the starting point (midway in level somewhere)
 - small shop: buy backpack, decent low/mid weapon, ammo
-- show inventory value
 - make it so bags can have split inventory sections, like tarkov rigs/bags (i.e. a 2x3 area and a 3x3 area)
 - backpack packing like Tarkov for dropped bags (hard)
 - item value should fluctuate
@@ -176,6 +174,21 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 - ✅ **Loot categories per location** — each location biases toward certain item categories. Shipped via `location.categoryWeights` in `src/lib/data/locations.ts` (Warehouse → mechanical 5 / consumables 3 / electronics 2; Datacenter → electronics 6 / intel 5; Biolab → medical 5 / experimental 4; etc.) and routed through `pickItemForLocation()` in `src/lib/data/items.ts` — picks a category by weight, then a tier by depth+rarity, then an item from the intersection (with a generic fallback when no weights are set).
 
 ## Sprints
+
+### Persistent operative vitals + out-of-raid consumable use (2026-05-10)
+
+- `Operative` (`src/lib/types.ts`) gains persistent `health` / `energy` / `ammo` fields. Defaults 100 / 100 / 30.
+- `startRaid` (`src/lib/engine/raid.ts`) now takes a `vitals` argument and seeds `runState` from it instead of hardcoding 100/100/30. Wired by `beginRaid` in `src/store/slices/raid.ts` to read from `operative`.
+- `endRaid` writes the final raid `runState.health/energy/ammo` back to the operative on extract; on **death** it sets vitals to **50 / 50 / 0** (operative is wounded but not stuck — design decision, not a stuck state).
+- New engine helper `applyConsumableToOperative(operative, stash, uid)` mirrors `applyConsumable` but operates on persisted vitals; finds the uid in pockets / bag / stash, applies HP/energy effects, removes the item. Includes the same would-help guard so dragging a syrette at full HP no-ops instead of wasting it. Bandages out of raid are no-ops (no bleed flags exist outside a raid).
+- New store action `useConsumableOnOperative(uid)` in `src/store/slices/kit.ts` wraps the engine helper.
+- `StashPanel` (`src/components/panels/StashPanel.tsx`) gains a `VitalsStrip` above the items grid showing HP / Energy bars, Ammo readout, and a "drag consumable to use" drop zone. Drag wiring detects when a drag enters the strip; if the dragged item is a consumable, drop fires `useConsumableOnOperative`. Visual feedback: green hover for valid consumable drops, red hover for non-consumables.
+- Save migration v26 backfills 100/100/30 on existing operatives.
+- **Known gap:** ammo replenishment outside of raids is still TODO (no consumable adds ammo, no shop ammo offers). Death now leaves you at 0 ammo with no recovery path until you scrounge in-raid. Sprint L (mag/reload realism) or a shop ammo box would close it.
+
+### Stash value in header (2026-05-10)
+
+- `Header` (`src/components/terminal/Header.tsx`) gains a "¤ N" stash-value chip next to the cash counter, with a Package icon and a tooltip showing the item count. Sums `sellValue` across `stash` via `useMemo`. Always visible — gives players a passive readout of how much hoarded value they're sitting on without opening the panel.
 
 ### Stash sort + group by category (2026-05-10)
 

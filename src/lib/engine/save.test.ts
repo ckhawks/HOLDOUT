@@ -33,6 +33,9 @@ function freshState(): PersistedState {
         armor: null,
         helmet: null,
       },
+      health: 100,
+      energy: 100,
+      ammo: 30,
     },
     hideout: {
       modules: {

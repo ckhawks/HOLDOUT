@@ -112,6 +112,9 @@ function initialOperative(upgrades: Upgrades): Operative {
     injuryDebuff: false,
     skills: { sneak: 1, shoot: 1, scrounge: 1 },
     equipment: initialEquipment(upgrades),
+    health: 100,
+    energy: 100,
+    ammo: 30,
   };
 }
 

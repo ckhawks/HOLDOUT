@@ -91,7 +91,13 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     };
     set({
       stash: nextStash,
-      currentRaid: startRaid(locationId, equipment, mapRand, Date.now()),
+      currentRaid: startRaid(
+        locationId,
+        equipment,
+        { health: operative.health, energy: operative.energy, ammo: operative.ammo },
+        mapRand,
+        Date.now(),
+      ),
       operative: { ...operative, state: "raiding" },
       activePanel: "feed",
     });
@@ -559,10 +565,17 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
         state: "idle",
         injuryDebuff: false,
         equipment: eq,
+        // Persist final vitals so the next raid starts where this one ended.
+        // Player can drag consumables from kit/stash onto the vitals strip
+        // to top up before re-deploying.
+        health: currentRaid.runState.health,
+        energy: currentRaid.runState.energy,
+        ammo: currentRaid.runState.ammo,
       };
     } else {
       // Death: lose all kit contents, strip equipped bag/weapon/armor/helmet.
-      // Pockets grid persists (it's an upgrade level, not loot).
+      // Pockets grid persists (it's an upgrade level, not loot). Vitals snap
+      // to a half-reset (50/50/0) so the operative is wounded but not stuck.
       nextOperative = {
         ...operative,
         state: "idle",
@@ -577,6 +590,9 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
           armor: null,
           helmet: null,
         },
+        health: 50,
+        energy: 50,
+        ammo: 0,
       };
     }
     // Marketplace restocks every time the operative comes home.

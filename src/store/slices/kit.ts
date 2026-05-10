@@ -13,6 +13,7 @@ import {
   removeFromKit,
   unequipItem,
 } from "@/lib/engine/equipment";
+import { applyConsumableToOperative } from "@/lib/engine/raid";
 import {
   addToTileContents,
   removeFromTileContents,
@@ -37,6 +38,10 @@ export interface KitSlice {
   equipFromFloor: (uid: string) => boolean;
   unequipToFloor: (slot: EquipSlot) => boolean;
   emptyKitToStash: () => void;
+  // Apply a consumable (by uid, found anywhere in pockets / bag / stash) to
+  // the operative's persisted vitals. Idle-only — in-raid use goes through
+  // useConsumable on the raid slice. Returns true if the item was consumed.
+  useConsumableOnOperative: (uid: string) => boolean;
 }
 
 export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, get) => ({
@@ -216,6 +221,15 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
       dropped,
     );
     set({ currentRaid: { ...currentRaid, equipment: result.next, map: nextMap } });
+    return true;
+  },
+
+  useConsumableOnOperative: (uid) => {
+    const { currentRaid, operative, stash } = get();
+    if (currentRaid) return false;
+    const result = applyConsumableToOperative(operative, stash, uid);
+    if (!result.consumed) return false;
+    set({ operative: result.operative, stash: result.stash });
     return true;
   },
 

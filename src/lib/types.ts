@@ -133,6 +133,13 @@ export interface Operative {
   injuryDebuff: boolean;
   skills: { sneak: number; shoot: number; scrounge: number };
   equipment: Equipment;
+  // Persistent vitals across raids. startRaid seeds runState from these;
+  // endRaid writes back the final values (or sets 50/50/0 on death). Health
+  // and energy are 0–100; ammo is uncapped (well, gameplay-bounded by what
+  // the player can scrounge or buy).
+  health: number;
+  energy: number;
+  ammo: number;
 }
 
 export interface HideoutModule {

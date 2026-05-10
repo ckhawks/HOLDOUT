@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useMemo, useRef, useState } from "react";
 import { useGame } from "@/store/game";
 import { ITEMS } from "@/lib/data/items";
 import { PanelHeader } from "./PanelHeader";
@@ -8,7 +8,9 @@ import { cn } from "@/lib/utils";
 import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { categoryIconFor } from "@/lib/itemIcon";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Backpack, Coins, FolderTree, PackageOpen, Shirt } from "lucide-react";
+import { ArrowLeft, Backpack, Coins, Crosshair, FolderTree, Heart, PackageOpen, PillBottle, Shirt, Zap } from "lucide-react";
+import { isConsumable } from "@/lib/engine/raid";
+import { isJunk } from "@/store/slices/economy";
 import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
 import { findFit } from "@/lib/engine/equipment";
 import { gridCellAt, isInside, slotUnder } from "@/lib/dnd";
@@ -24,7 +26,8 @@ import { playSfx } from "@/lib/sfx";
 export function StashPanel() {
   const stash = useGame((s) => s.stash);
   const cap = useGame((s) => s.hideout.modules.stash.capacity ?? 0);
-  const equipment = useGame((s) => s.operative.equipment);
+  const operative = useGame((s) => s.operative);
+  const equipment = operative.equipment;
   const inRaid = useGame((s) => !!s.currentRaid);
   const sellItem = useGame((s) => s.sellItem);
   const sellAllJunk = useGame((s) => s.sellAllJunk);
@@ -34,6 +37,7 @@ export function StashPanel() {
   const equipFromStash = useGame((s) => s.equipFromStash);
   const unequipToStash = useGame((s) => s.unequipToStash);
   const emptyKit = useGame((s) => s.emptyKitToStash);
+  const consumeOnOperative = useGame((s) => s.useConsumableOnOperative);
 
   // Drag state covering all stash-side interactions:
   //  - stash row → equipped slot / kit grid
@@ -75,6 +79,8 @@ export function StashPanel() {
   const stashListRef = useRef<HTMLDivElement>(null);
   const pocketsRef = useRef<HTMLDivElement>(null);
   const bagRef = useRef<HTMLDivElement>(null);
+  const vitalsRef = useRef<HTMLDivElement>(null);
+  const [overVitals, setOverVitals] = useState(false);
 
   type Drag = NonNullable<typeof drag>;
 
@@ -129,6 +135,10 @@ export function StashPanel() {
         setOverStash(isInside(stashListRef.current, e.clientX, e.clientY));
       }
     }
+    // Vitals zone is a separate target. It's only meaningful for stash/kit
+    // drags whose item is a consumable; we still set the flag for any drag
+    // (the visual feedback cares about consumable-ness, not the flag itself).
+    setOverVitals(isInside(vitalsRef.current, e.clientX, e.clientY));
     setDrag((cur) => (cur ? { ...cur, mouseX: e.clientX, mouseY: e.clientY } : cur));
   }, [equipment, slotRefs]);
 
@@ -144,6 +154,22 @@ export function StashPanel() {
     const kitTarget: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
     const cell = pCell ?? bCell;
     const onStashList = isInside(stashListRef.current, e.clientX, e.clientY);
+    const onVitals = isInside(vitalsRef.current, e.clientX, e.clientY);
+
+    // Vitals drop-zone takes priority for consumables. Falls through to the
+    // normal drop handling otherwise so dragging a non-consumable over the
+    // strip behaves like any other miss.
+    if (onVitals && (d.kind === "stash" || d.kind === "kit") && isConsumable(d.itemId)) {
+      if (consumeOnOperative(d.uid)) {
+        playSfx("inventory");
+      }
+      setDrag(null);
+      setSlotHover(null);
+      setKitHover(null);
+      setOverStash(false);
+      setOverVitals(false);
+      return;
+    }
 
     if (d.kind === "slot") {
       if (!s) {
@@ -173,16 +199,23 @@ export function StashPanel() {
     setSlotHover(null);
     setKitHover(null);
     setOverStash(false);
-  }, [equipment, equipFromStash, unequipToStash, kitFromStash, stashFromKit, moveKitItem, slotRefs]);
+    setOverVitals(false);
+  }, [equipment, equipFromStash, unequipToStash, kitFromStash, stashFromKit, moveKitItem, consumeOnOperative, slotRefs]);
 
   useDragDrop(drag, { onMove, onUp });
 
-  const junkValue = stash.reduce((sum, si) => {
-    const item = ITEMS[si.itemId];
-    if (!item) return sum;
-    if (item.tier === "common" && item.sellValue > 0) return sum + item.sellValue;
-    return sum;
-  }, 0);
+  const [confirmSellJunk, setConfirmSellJunk] = useState(false);
+  const [hoveringSellJunk, setHoveringSellJunk] = useState(false);
+  const junkItems = useMemo(
+    () => stash.filter((si) => isJunk(ITEMS[si.itemId])),
+    [stash],
+  );
+  const junkUidSet = useMemo(() => new Set(junkItems.map((i) => i.uid)), [junkItems]);
+  const junkValue = junkItems.reduce(
+    (sum, si) => sum + (ITEMS[si.itemId]?.sellValue ?? 0),
+    0,
+  );
+  const junkCount = junkItems.length;
 
   const stashFull = stash.length >= cap;
   const kitItemCount =
@@ -226,7 +259,14 @@ export function StashPanel() {
         subtitle={`${stash.length} of ${cap} slots used${inRaid ? " · operative deployed" : ""}`}
         right={
           junkValue > 0 ? (
-            <Button variant="outline" size="sm" onClick={sellAllJunk} className="rounded-sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmSellJunk(true)}
+              onMouseEnter={() => setHoveringSellJunk(true)}
+              onMouseLeave={() => setHoveringSellJunk(false)}
+              className="rounded-sm"
+            >
               <Coins className="size-3.5" />
               Sell junk · ¤{junkValue.toLocaleString()}
             </Button>
@@ -364,7 +404,23 @@ export function StashPanel() {
           </aside>
         )}
 
-        {/* Stash list */}
+        {/* Stash list + vitals strip */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {!inRaid && (
+            <VitalsStrip
+              ref={vitalsRef}
+              health={operative.health}
+              energy={operative.energy}
+              ammo={operative.ammo}
+              dragging={!!drag}
+              draggingConsumable={
+                !!drag &&
+                (drag.kind === "stash" || drag.kind === "kit") &&
+                isConsumable(drag.itemId)
+              }
+              over={overVitals}
+            />
+          )}
         <div
           ref={stashListRef}
           className={cn(
@@ -447,10 +503,11 @@ export function StashPanel() {
                               }
                             }}
                             className={cn(
-                              "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2",
+                              "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2 transition-opacity",
                               !inRaid && "cursor-grab active:cursor-grabbing",
                               ctrlClickAction && "hover:border-emerald-500/40",
                               beingDragged && "opacity-30",
+                              hoveringSellJunk && !junkUidSet.has(si.uid) && "opacity-25",
                             )}
                           >
                             <span className={cn("flex min-w-0 items-center gap-1.5 text-sm font-semibold", TIER_COLOR[item.tier])}>
@@ -493,6 +550,7 @@ export function StashPanel() {
             </div>
           )}
         </div>
+        </div>
       </div>
       {drag &&
         (drag.kind === "kit" ? (
@@ -507,7 +565,110 @@ export function StashPanel() {
         ) : (
           <StashDragGhost itemId={drag.itemId} mouseX={drag.mouseX} mouseY={drag.mouseY} />
         ))}
+      {confirmSellJunk && (
+        <ConfirmSellJunkDialog
+          items={junkItems}
+          count={junkCount}
+          value={junkValue}
+          onCancel={() => setConfirmSellJunk(false)}
+          onConfirm={() => {
+            sellAllJunk();
+            setConfirmSellJunk(false);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function ConfirmSellJunkDialog({
+  items,
+  count,
+  value,
+  onCancel,
+  onConfirm,
+}: {
+  items: StashItem[];
+  count: number;
+  value: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  // Collapse items by itemId so duplicates show as "Scrap Metal ×4 ¤60".
+  const grouped = useMemo(() => {
+    const map = new Map<string, { itemId: string; count: number; total: number }>();
+    for (const si of items) {
+      const def = ITEMS[si.itemId];
+      const cur = map.get(si.itemId) ?? { itemId: si.itemId, count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += def?.sellValue ?? 0;
+      map.set(si.itemId, cur);
+    }
+    // Sort by total desc so the biggest payouts surface first.
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [items]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="flex max-h-[80vh] w-[min(480px,92%)] flex-col rounded-md border border-border/60 bg-card shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 border-b border-border/60 bg-muted/20 px-5 py-3">
+          <Coins className="size-4 text-amber-300" />
+          <span className="font-mono text-[11px] uppercase tracking-widest text-foreground/90">
+            Sell junk
+          </span>
+        </div>
+        <div className="space-y-2 px-5 py-4 text-sm text-foreground/90">
+          <p>
+            Sell <span className="font-mono tabular-nums">{count}</span>{" "}
+            {count === 1 ? "item" : "items"} for{" "}
+            <span className="font-mono tabular-nums text-emerald-300">
+              ¤{value.toLocaleString()}
+            </span>
+            ?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Skips equippables and consumables.
+          </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto border-y border-border/60 bg-muted/5 px-5 py-3">
+          <ul className="space-y-0.5">
+            {grouped.map((g) => {
+              const def = ITEMS[g.itemId];
+              const tier = def?.tier ?? "common";
+              const name = def?.name ?? g.itemId;
+              return (
+                <li key={g.itemId} className="flex items-center justify-between gap-2 text-sm">
+                  <span className={cn("flex min-w-0 items-center gap-1.5 truncate", TIER_COLOR[tier])}>
+                    <span className="truncate font-medium">{name}</span>
+                    {g.count > 1 && (
+                      <span className="font-mono text-[10px] text-muted-foreground">×{g.count}</span>
+                    )}
+                  </span>
+                  <span className="font-mono text-[11px] text-emerald-300/90 tabular-nums">
+                    ¤{g.total.toLocaleString()}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        <div className="flex justify-end gap-2 px-5 py-3">
+          <Button variant="ghost" size="sm" onClick={onCancel} className="rounded-sm">
+            Cancel
+          </Button>
+          <Button size="sm" onClick={onConfirm} className="rounded-sm">
+            <Coins className="size-3.5" />
+            Sell ¤{value.toLocaleString()}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -585,6 +746,102 @@ function ToolbarToggle({
     >
       {children}
     </button>
+  );
+}
+
+// Vitals strip — shown above the stash list when not in raid. Three bars
+// (HP / Energy / Ammo) plus a use-drop zone. Drag a consumable from
+// stash/pockets/bag onto the zone to apply it via useConsumableOnOperative.
+// Uses forwardRef so the parent can attach its drop-detection ref.
+const VitalsStrip = forwardRef<HTMLDivElement, {
+  health: number;
+  energy: number;
+  ammo: number;
+  dragging: boolean;
+  draggingConsumable: boolean;
+  over: boolean;
+}>(function VitalsStrip(
+  { health, energy, ammo, dragging, draggingConsumable, over },
+  ref,
+) {
+  const dropActive = dragging && draggingConsumable;
+  const dropHover = over && draggingConsumable;
+  const dropBad = over && dragging && !draggingConsumable;
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "flex items-center gap-3 border-b border-border/60 bg-card/30 px-6 py-2 transition-colors",
+        dropHover && "bg-emerald-500/10",
+        dropBad && "bg-red-500/5",
+      )}
+    >
+      <VitalsBar
+        label="HP"
+        value={health}
+        max={100}
+        icon={<Heart className="size-3 text-red-300" />}
+        color="bg-red-500/70"
+      />
+      <VitalsBar
+        label="Energy"
+        value={energy}
+        max={100}
+        icon={<Zap className="size-3 text-yellow-300" />}
+        color="bg-yellow-500/70"
+      />
+      <div className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-muted-foreground">
+        <Crosshair className="size-3" />
+        <span className="uppercase tracking-widest">Ammo</span>
+        <span className="text-foreground tabular-nums">{ammo}</span>
+      </div>
+      <div
+        className={cn(
+          "ml-auto inline-flex items-center gap-1.5 rounded-sm border border-dashed px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest transition-colors",
+          dropHover
+            ? "border-emerald-500/70 bg-emerald-500/15 text-emerald-200"
+            : dropBad
+              ? "border-red-500/50 bg-red-500/10 text-red-300"
+              : dropActive
+                ? "border-emerald-500/40 text-emerald-300"
+                : "border-border/50 text-muted-foreground/70",
+        )}
+      >
+        <PillBottle className="size-3" />
+        {dropBad ? "Not consumable" : "Drag consumable to use"}
+      </div>
+    </div>
+  );
+});
+
+function VitalsBar({
+  label,
+  value,
+  max,
+  icon,
+  color,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  icon: React.ReactNode;
+  color: string;
+}) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {icon}
+      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+        {label}
+      </span>
+      <div className="relative h-1.5 w-24 overflow-hidden rounded-sm bg-muted/40">
+        <div
+          className={cn("absolute inset-y-0 left-0 transition-all", color)}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="font-mono text-[11px] text-foreground tabular-nums">{value}</span>
+    </div>
   );
 }
 

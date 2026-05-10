@@ -1,17 +1,26 @@
 "use client";
 
+import { useMemo } from "react";
 import { useGame } from "@/store/game";
-import { Radio } from "lucide-react";
+import { Package, Radio } from "lucide-react";
 import { SfxPicker } from "./SfxPicker";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
+import { ITEMS } from "@/lib/data/items";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 export function Header() {
   const cash = useGame((s) => s.cash);
   const op = useGame((s) => s.operative);
   const raid = useGame((s) => s.currentRaid);
+  const stash = useGame((s) => s.stash);
 
   const locName = raid ? LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId : null;
   const status = raid ? `RAIDING · ${locName}` : op.state.toUpperCase();
+
+  const stashValue = useMemo(
+    () => stash.reduce((sum, si) => sum + (ITEMS[si.itemId]?.sellValue ?? 0), 0),
+    [stash],
+  );
 
   return (
     <header className="border-b border-border/60 bg-background/80 backdrop-blur">
@@ -27,6 +36,12 @@ export function Header() {
             {op.name}
             <span className="ml-2 text-foreground">[{status}]</span>
           </span>
+          <Tooltip text={`Total sell value of ${stash.length} stash items`}>
+            <span className="inline-flex cursor-default items-center gap-1.5 text-muted-foreground">
+              <Package className="size-3" />
+              <span className="text-foreground/90">¤ {stashValue.toLocaleString()}</span>
+            </span>
+          </Tooltip>
           <span className="text-foreground">¤ {cash.toLocaleString()}</span>
         </div>
       </div>

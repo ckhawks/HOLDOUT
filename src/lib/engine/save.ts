@@ -9,7 +9,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 25;
+export const SCHEMA_VERSION = 26;
 
 export interface PersistedState {
   cash: number;
@@ -326,11 +326,31 @@ export function migrateSave(saved: SavedGame): SavedGame {
       }
     }
   }
+  // v26: Operative gains persistent health/energy/ammo (read by startRaid,
+  // written back by endRaid). Backfill 100/100/30 on existing operatives.
+  if (saved.schemaVersion < 26) {
+    if (s.operative) {
+      const op = s.operative as unknown as { health?: number; energy?: number; ammo?: number };
+      if (typeof op.health !== "number") op.health = 100;
+      if (typeof op.energy !== "number") op.energy = 100;
+      if (typeof op.ammo !== "number") op.ammo = 30;
+    }
+  }
   // Defensive: shop must exist on the loaded state. A save can land here
   // with the right schemaVersion but a missing field if HMR + auto-save
   // raced during a sprint that introduced the field.
   if (!(s as unknown as { shop?: unknown }).shop) {
     (s as unknown as { shop: ShopState }).shop = { offers: [], lastRefreshAt: 0 };
+  }
+  // Defensive: persistent operative vitals (added v26) must be numbers. Same
+  // HMR-race scenario as shop above — a save can stamp schemaVersion 26 with
+  // the operative object missing these fields, which then survives the
+  // version-gated migration above.
+  if (s.operative) {
+    const op = s.operative as unknown as { health?: unknown; energy?: unknown; ammo?: unknown };
+    if (typeof op.health !== "number" || Number.isNaN(op.health)) op.health = 100;
+    if (typeof op.energy !== "number" || Number.isNaN(op.energy)) op.energy = 100;
+    if (typeof op.ammo !== "number" || Number.isNaN(op.ammo)) op.ammo = 30;
   }
   // Defensive shape check, version-independent: a save can end up with the
   // new schema version but old container data if HMR + auto-save raced

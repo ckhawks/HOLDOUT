@@ -1,8 +1,22 @@
 import type { StateCreator } from "zustand";
-import type { StashItem, Upgrades } from "@/lib/types";
+import type { Item, StashItem, Upgrades } from "@/lib/types";
 import { ITEMS } from "@/lib/data/items";
+import { isConsumable } from "@/lib/engine/raid";
 import { stashCapacity, stashUpgradeCost } from "@/lib/engine/upgrades";
 import type { GameState } from "../game";
+
+// "Junk" = sellable items with no in-game use. Excludes equippables (have a
+// slot) and consumables (have a CONSUMABLE_EFFECTS entry). Tier doesn't
+// gate this — a rare valuable is still junk if there's nothing to do with
+// it but sell. Future pin-to-keep affordance covers the "I want to hoard
+// this" case (see backlog).
+export function isJunk(item: Item | undefined): boolean {
+  if (!item) return false;
+  if (item.sellValue <= 0) return false;
+  if (item.slot != null) return false;
+  if (isConsumable(item.id)) return false;
+  return true;
+}
 
 // Stash + shop economy slice. Selling, buying offers, stash capacity upgrade.
 // Pure money-and-items routing — no raid lifecycle interplay.
@@ -31,8 +45,8 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
     const keep: StashItem[] = [];
     for (const si of stash) {
       const item = ITEMS[si.itemId];
-      if (item && item.tier === "common" && item.sellValue > 0) {
-        earned += item.sellValue;
+      if (isJunk(item)) {
+        earned += item!.sellValue;
       } else {
         keep.push(si);
       }
