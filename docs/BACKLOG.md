@@ -91,7 +91,6 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 ## Sprint follow-ups (next sprint, from Sprint J)
 
 - **Bags in loot pool / shop** — shipped partially: bags now appear in the loot pool. Shop module selling `canvas_satchel`/`tactical_pack` + bandages + food still TODO.
-- **Drag-based loadout in Stash panel** — current click-based UX ships, but the user wanted drag-from-stash → kit grids. Either reuse `PackTetris`'s drag engine in idle mode or extract a shared `KitColumn` component.
 - **Loadout presets** — save 2-3 named kit configurations (e.g. "scrounge run", "combat run") so it's not re-clicking every raid.
 - **Run-summary on extract** — silent extracts feel weird now that the player has to manually unload. A small banner ("extracted N items · ¤K kit value") confirms the haul.
 
@@ -279,6 +278,10 @@ Shipped work, newest sprints last. Acts as a record of what landed when.
 - **Real consumer**: every `move_forward` and `extract_step` rolls a `heat / 400` chance to fire a patrol modal IN ADDITION to the pre-gen threat check. heat 100 → 25% per move tick.
 - Different log lines distinguish pre-gen vs heat-ambush ("Hostiles in the next room. Holding." vs "Footsteps closing in — they heard me.").
 - Stay's heat reduction is -8 (was -3 before consumers existed). One Stay cancels a Fight tick + change.
+
+### Sprint J follow-ups
+
+- ✅ **Drag-based loadout in Stash panel** — shipped via shared `KitGrid` component (`src/components/panels/KitGrid.tsx`) and the `useDragDrop` hook (`src/lib/useDragDrop.ts`). `StashPanel.tsx` uses both, with a `DragSource` discriminated union covering stash → kit / kit → stash / kit ↔ kit moves.
 
 ### Sprint J — Kit / equipment (partial — slots reserved)
 
