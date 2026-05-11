@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Slash } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Package, Slash } from "lucide-react";
 import { useGame } from "@/store/game";
 import { pathToEntry } from "@/lib/engine/map";
 import type { MapTile, RaidMap as RaidMapType, RoomType } from "@/lib/types";
@@ -205,6 +205,12 @@ export function RaidMap() {
                 previewPos.y === hover.tile.y,
             )}
           </div>
+          {hover.tile.seen && hover.tile.contents.length > 0 ? (
+            <div className="text-purple-300">
+              {hover.tile.contents.length}{" "}
+              {hover.tile.contents.length === 1 ? "item" : "items"} left on floor
+            </div>
+          ) : null}
         </div>
       ) : null}
     </aside>
@@ -254,6 +260,20 @@ function Tile({
         <AlertTriangle className="size-3.5 text-red-400 drop-shadow-[0_0_3px_rgba(0,0,0,0.7)]" />
       </span>
     ) : null;
+  // Drop marker: tiles the operative has visited and seen contain items left
+  // on the floor (either dropped by the player or spawned by events). Tiny
+  // amber pip in the corner so it doesn't fight the threat icon or the
+  // operative pulse.
+  const hasFloorLoot =
+    tile.seen && !tile.blocked && tile.contents.length > 0;
+  const floorLootOverlay = hasFloorLoot ? (
+    <span className="pointer-events-none absolute right-0.5 top-0.5">
+      <Package className="size-2 text-purple-300 drop-shadow-[0_0_2px_rgba(0,0,0,0.8)]" />
+    </span>
+  ) : null;
+  const floorLootTint = hasFloorLoot && !tile.threat
+    ? "bg-purple-500/15"
+    : "";
   const baseProps = {
     style,
     onPointerEnter,
@@ -282,10 +302,12 @@ function Tile({
         {...baseProps}
         className={cn(
           "relative flex size-7 items-center justify-center bg-card",
+          floorLootTint,
           ringClass,
         )}
       >
         <span className="size-3 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]" />
+        {floorLootOverlay}
       </div>
     );
   }
@@ -329,11 +351,13 @@ function Tile({
         {...baseProps}
         className={cn(
           "relative size-7 border border-border/60 bg-card/20",
+          floorLootTint,
           tile.threat && "border-red-500/70 bg-red-500/15",
           ringClass,
         )}
       >
         {threatOverlay}
+        {floorLootOverlay}
         {previewOverlay}
       </div>
     );
@@ -346,11 +370,13 @@ function Tile({
         {...baseProps}
         className={cn(
           "relative size-7 bg-card",
+          floorLootTint,
           tile.threat && "border border-red-500/70 bg-red-500/20",
           ringClass,
         )}
       >
         {threatOverlay}
+        {floorLootOverlay}
         {previewOverlay}
       </div>
     );
@@ -362,11 +388,13 @@ function Tile({
       {...baseProps}
       className={cn(
         "relative size-7 bg-card/50",
+        floorLootTint,
         tile.threat && "border border-red-500/70 bg-red-500/15",
         ringClass,
       )}
     >
       {threatOverlay}
+      {floorLootOverlay}
       {previewOverlay}
     </div>
   );
