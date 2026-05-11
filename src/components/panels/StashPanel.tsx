@@ -23,6 +23,29 @@ import { KitDragGhost, KitGrid, KIT_CELL, type KitHover } from "./KitGrid";
 import type { KitSlot } from "@/store/game";
 import { playSfx } from "@/lib/sfx";
 
+// A row in the stash list. `single` = one equippable instance. `stack` =
+// 1..N non-equippable items of the same itemId collapsed for display. Both
+// expose the same sort keys so the row sorter doesn't have to branch.
+type StashRow =
+  | {
+      kind: "single";
+      key: string;
+      itemId: string;
+      si: StashItem;
+      totalValue: number;
+      maxDate: number;
+      count: 1;
+    }
+  | {
+      kind: "stack";
+      key: string;
+      itemId: string;
+      items: StashItem[];
+      totalValue: number;
+      maxDate: number;
+      count: number;
+    };
+
 export function StashPanel() {
   const stash = useGame((s) => s.stash);
   const cap = useGame((s) => s.hideout.modules.stash.capacity ?? 0);
@@ -66,7 +89,11 @@ export function StashPanel() {
   // Stash display prefs. State only — not persisted; defaults are fine on
   // reload. Default Date desc is what most players expect ("show me what
   // I just got"). Group toggles a category-banded layout.
-  const [sortMode, setSortMode] = useState<"date" | "value">("value");
+  const [sortMode, setSortMode] = useState<"date" | "value" | "quantity">("value");
+  // When the cursor is over a row's right-side action cluster, the row's
+  // ItemTooltip suppresses so the button-level tooltips (Pin / kit / sell /
+  // all) can read on their own without piling on top of the item card.
+  const [actionsHoverKey, setActionsHoverKey] = useState<string | null>(null);
   const [grouped, setGrouped] = useState(true);
 
   // Refs declared at the top level so the hook count is stable across
@@ -320,34 +347,89 @@ export function StashPanel() {
   const canEmptyAll = !inRaid && kitItemCount > 0;
   const canEmptyJunk = !inRaid && kitJunkCount > 0;
 
-  const sortedStash = useMemo(() => {
+  // Bundle non-equippable items of the same itemId into a single "stack" row.
+  // Equippables (slot != null) stay as singles so weapons/armor each get
+  // their own row — they tend to have meaningfully distinct valueMods and
+  // interact with the kit one at a time.
+  const rows = useMemo<StashRow[]>(() => {
+    // Pinned and unpinned subsets of the same itemId render as separate
+    // rows. Pinning toggles one instance, so the pin button effectively
+    // moves an item between the two stacks one click at a time.
+    const stackMap = new Map<string, StashItem[]>();
+    const singles: StashItem[] = [];
+    for (const si of stash) {
+      const def = ITEMS[si.itemId];
+      if (def && def.slot == null) {
+        const key = `${si.itemId}|${si.pinned ? "P" : "U"}`;
+        const list = stackMap.get(key);
+        if (list) list.push(si);
+        else stackMap.set(key, [si]);
+      } else {
+        singles.push(si);
+      }
+    }
+    const out: StashRow[] = [];
+    for (const si of singles) {
+      out.push({
+        kind: "single",
+        key: si.uid,
+        itemId: si.itemId,
+        si,
+        totalValue: effectiveSellValue(si),
+        maxDate: si.acquiredAt ?? 0,
+        count: 1,
+      });
+    }
+    for (const [key, items] of stackMap) {
+      // Singles get a stack row too if there's only one — keeps the count
+      // badge consistent and avoids a render branch per row type. The
+      // collapsed render handles count===1 by hiding the badge.
+      let totalValue = 0;
+      let maxDate = 0;
+      for (const si of items) {
+        totalValue += effectiveSellValue(si);
+        if ((si.acquiredAt ?? 0) > maxDate) maxDate = si.acquiredAt ?? 0;
+      }
+      out.push({
+        kind: "stack",
+        key: `stack:${key}`,
+        itemId: items[0].itemId,
+        items,
+        totalValue,
+        maxDate,
+        count: items.length,
+      });
+    }
     const sorter =
       sortMode === "value"
-        ? (a: StashItem, b: StashItem) => effectiveSellValue(b) - effectiveSellValue(a)
-        : (a: StashItem, b: StashItem) => (b.acquiredAt ?? 0) - (a.acquiredAt ?? 0);
-    return stash.toSorted(sorter);
+        ? (a: StashRow, b: StashRow) => b.totalValue - a.totalValue
+        : sortMode === "date"
+          ? (a: StashRow, b: StashRow) => b.maxDate - a.maxDate
+          : (a: StashRow, b: StashRow) => b.count - a.count || b.totalValue - a.totalValue;
+    out.sort(sorter);
+    return out;
   }, [stash, sortMode]);
 
   // Group sections — when grouped is false, return a single unlabeled section
   // so the renderer can iterate over the same shape.
   const sections = useMemo(() => {
     if (!grouped) {
-      return [{ category: null as ItemCategory | null, items: sortedStash }];
+      return [{ category: null as ItemCategory | null, rows }];
     }
-    const map = new Map<ItemCategory, StashItem[]>();
-    for (const si of sortedStash) {
-      const cat = ITEMS[si.itemId]?.category;
+    const map = new Map<ItemCategory, StashRow[]>();
+    for (const row of rows) {
+      const cat = ITEMS[row.itemId]?.category;
       if (!cat) continue;
       if (!map.has(cat)) map.set(cat, []);
-      map.get(cat)!.push(si);
+      map.get(cat)!.push(row);
     }
-    const out: Array<{ category: ItemCategory | null; items: StashItem[] }> = [];
+    const out: Array<{ category: ItemCategory | null; rows: StashRow[] }> = [];
     for (const cat of CATEGORY_ORDER) {
-      const items = map.get(cat);
-      if (items && items.length > 0) out.push({ category: cat, items });
+      const list = map.get(cat);
+      if (list && list.length > 0) out.push({ category: cat, rows: list });
     }
     return out;
-  }, [sortedStash, grouped]);
+  }, [rows, grouped]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -595,15 +677,23 @@ export function StashPanel() {
                         {section.category}
                       </span>
                       <span className="font-mono text-[10px] text-muted-foreground/60">
-                        {section.items.length}
+                        {section.rows.reduce((n, r) => n + r.count, 0)}
                       </span>
                     </div>
                   )}
                   <div className="grid grid-cols-1 gap-1 md:grid-cols-2 lg:grid-cols-3">
-                    {section.items.map((si) => {
-                      const item = ITEMS[si.itemId];
+                    {section.rows.map((row) => {
+                      const item = ITEMS[row.itemId];
                       if (!item) return null;
                       const sellable = item.sellValue > 0;
+                      const Icon = categoryIconFor(row.itemId);
+                      const isStack = row.kind === "stack" && row.count > 1;
+                      // Representative item for drag/ctrl-click/kit-fit: a
+                      // non-pinned instance if one exists, else first.
+                      const repItems = row.kind === "stack" ? row.items : [row.si];
+                      const repFree = repItems.find((s) => !s.pinned) ?? repItems[0];
+                      const allPinned = repItems.every((s) => s.pinned);
+                      const anyPinned = repItems.some((s) => s.pinned);
                       const equippable = item.slot != null;
                       const equippableNow =
                         !inRaid && equippable && (
@@ -613,21 +703,51 @@ export function StashPanel() {
                               ? !equipment.rig
                               : !equipment[item.slot!]
                         );
-                      const fit = !inRaid && !equippable ? findFit(equipment, si) : null;
+                      const fit = !inRaid && !equippable ? findFit(equipment, repFree) : null;
                       const ctrlClickAction = equippableNow
-                        ? () => equipFromStash(si.uid)
+                        ? () => equipFromStash(repFree.uid)
                         : fit
-                          ? () => kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation, fit.sectionId)
+                          ? () =>
+                              kitFromStash(repFree.uid, fit.slot, fit.x, fit.y, fit.rotation, fit.sectionId)
                           : null;
                       const ctrlHint = equippableNow
                         ? `Ctrl+click to equip · drag to ${item.slot} slot`
                         : fit
-                          ? `Ctrl+click to move into kit`
+                          ? isStack
+                            ? `Ctrl+click to move one into kit`
+                            : `Ctrl+click to move into kit`
                           : "";
-                      const beingDragged = drag?.kind === "stash" && drag.uid === si.uid;
-                      const Icon = categoryIconFor(si.itemId);
+                      const beingDragged =
+                        drag?.kind === "stash" &&
+                        repItems.some((s) => s.uid === drag.uid);
+                      const hideForJunkSell =
+                        hoveringSellJunk && !repItems.some((s) => junkUidSet.has(s.uid));
+                      // Sell one cheapest non-pinned instance.
+                      const sellOne = () => {
+                        const candidates = repItems
+                          .filter((s) => !s.pinned)
+                          .sort((a, b) => effectiveSellValue(a) - effectiveSellValue(b));
+                        const target = candidates[0];
+                        if (target) sellItem(target.uid);
+                      };
+                      const sellWhole = () => {
+                        for (const s of repItems) if (!s.pinned) sellItem(s.uid);
+                      };
+                      // Stacks are split by pin state — each stack is either
+                      // all pinned or all unpinned. Pin click toggles one
+                      // instance, moving it to the other (split) stack row.
+                      const pinOne = () => {
+                        const target = repItems[0];
+                        if (target) togglePinItem(target.uid);
+                      };
                       return (
-                        <ItemTooltip key={si.uid} itemId={si.itemId} hint={ctrlHint || undefined} acquiredAt={si.acquiredAt}>
+                        <ItemTooltip
+                          key={row.key}
+                          itemId={row.itemId}
+                          hint={ctrlHint || undefined}
+                          acquiredAt={row.maxDate || undefined}
+                          disabled={actionsHoverKey === row.key}
+                        >
                           <div
                             onPointerDown={(e) => {
                               if (inRaid) return;
@@ -635,8 +755,8 @@ export function StashPanel() {
                               e.preventDefault();
                               setDrag({
                                 kind: "stash",
-                                uid: si.uid,
-                                itemId: si.itemId,
+                                uid: repFree.uid,
+                                itemId: repFree.itemId,
                                 rotation: 0,
                                 mouseX: e.clientX,
                                 mouseY: e.clientY,
@@ -654,25 +774,46 @@ export function StashPanel() {
                               "group flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-card/40 px-3 py-2 transition-opacity",
                               !inRaid && "cursor-grab active:cursor-grabbing",
                               ctrlClickAction && "hover:border-emerald-500/40",
-                              si.pinned && "border-amber-400/40 bg-amber-400/5",
+                              allPinned && "border-amber-400/40 bg-amber-400/5",
                               beingDragged && "opacity-30",
-                              hoveringSellJunk && !junkUidSet.has(si.uid) && "opacity-25",
+                              hideForJunkSell && "opacity-25",
                             )}
                           >
                             <span className={cn("flex min-w-0 items-center gap-1.5 text-sm font-semibold", TIER_COLOR[item.tier])}>
+                              {isStack && (
+                                <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+                                  {row.count}×
+                                </span>
+                              )}
                               {Icon && <Icon className="size-3.5 shrink-0 opacity-80" />}
                               <span className="truncate">{item.name}</span>
                             </span>
-                            <div className="flex shrink-0 items-center gap-1">
+                            <div
+                              className="flex shrink-0 items-center gap-1"
+                              onPointerEnter={() => setActionsHoverKey(row.key)}
+                              onPointerLeave={() =>
+                                setActionsHoverKey((prev) => (prev === row.key ? null : prev))
+                              }
+                            >
                               <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                                ¤{effectiveSellValue(si)}
+                                ¤{row.totalValue}
                               </span>
-                              <Tooltip text={si.pinned ? "Unpin (allow bulk sell)" : "Pin (protect from bulk sell)"}>
+                              <Tooltip
+                                text={
+                                  isStack
+                                    ? allPinned
+                                      ? "Unpin one (move to unpinned stack)"
+                                      : "Pin one (move to pinned stack)"
+                                    : allPinned
+                                      ? "Unpin (allow bulk sell)"
+                                      : "Pin (protect from bulk sell)"
+                                }
+                              >
                                 <button
-                                  onClick={() => togglePinItem(si.uid)}
+                                  onClick={pinOne}
                                   className={cn(
                                     "inline-flex cursor-pointer items-center rounded-sm border border-transparent px-1.5 py-0.5 transition",
-                                    si.pinned
+                                    allPinned
                                       ? "text-amber-300 hover:text-amber-200"
                                       : "text-muted-foreground/60 hover:border-border hover:text-foreground",
                                   )}
@@ -681,10 +822,10 @@ export function StashPanel() {
                                 </button>
                               </Tooltip>
                               {fit && (
-                                <Tooltip text={`Move to ${fit.slot}`}>
+                                <Tooltip text={isStack ? `Move one to ${fit.slot}` : `Move to ${fit.slot}`}>
                                   <button
                                     onClick={() =>
-                                      kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation, fit.sectionId)
+                                      kitFromStash(repFree.uid, fit.slot, fit.x, fit.y, fit.rotation, fit.sectionId)
                                     }
                                     className="inline-flex cursor-pointer items-center gap-0.5 rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
                                   >
@@ -694,23 +835,58 @@ export function StashPanel() {
                                 </Tooltip>
                               )}
                               {sellable && (
-                                <Tooltip text={si.pinned ? "Unpin first to sell" : "Sell"}>
-                                  <button
-                                    onClick={() => {
-                                      if (si.pinned) return;
-                                      sellItem(si.uid);
-                                    }}
-                                    disabled={si.pinned}
-                                    className={cn(
-                                      "rounded-sm border border-transparent px-2 py-0.5 text-xs transition",
-                                      si.pinned
-                                        ? "cursor-not-allowed text-muted-foreground/40"
-                                        : "cursor-pointer text-muted-foreground hover:border-border hover:text-foreground",
-                                    )}
+                                <>
+                                  <Tooltip
+                                    text={
+                                      allPinned
+                                        ? "Unpin first to sell"
+                                        : isStack
+                                          ? "Sell one"
+                                          : "Sell"
+                                    }
                                   >
-                                    sell
-                                  </button>
-                                </Tooltip>
+                                    <button
+                                      onClick={() => {
+                                        if (allPinned) return;
+                                        sellOne();
+                                      }}
+                                      disabled={allPinned}
+                                      className={cn(
+                                        "rounded-sm border border-transparent px-2 py-0.5 text-xs transition",
+                                        allPinned
+                                          ? "cursor-not-allowed text-muted-foreground/40"
+                                          : "cursor-pointer text-muted-foreground hover:border-border hover:text-foreground",
+                                      )}
+                                    >
+                                      sell
+                                    </button>
+                                  </Tooltip>
+                                  {isStack && (
+                                    <Tooltip
+                                      text={
+                                        allPinned
+                                          ? "Unpin first to sell"
+                                          : `Sell stack (${row.count}) · ¤${row.totalValue.toLocaleString()}`
+                                      }
+                                    >
+                                      <button
+                                        onClick={() => {
+                                          if (allPinned) return;
+                                          sellWhole();
+                                        }}
+                                        disabled={allPinned}
+                                        className={cn(
+                                          "rounded-sm border border-transparent px-2 py-0.5 text-xs transition",
+                                          allPinned
+                                            ? "cursor-not-allowed text-muted-foreground/40"
+                                            : "cursor-pointer text-muted-foreground hover:border-border hover:text-foreground",
+                                        )}
+                                      >
+                                        all
+                                      </button>
+                                    </Tooltip>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
@@ -874,9 +1050,9 @@ function StashToolbar({
   onSortChange,
   onGroupedToggle,
 }: {
-  sortMode: "date" | "value";
+  sortMode: "date" | "value" | "quantity";
   grouped: boolean;
-  onSortChange: (m: "date" | "value") => void;
+  onSortChange: (m: "date" | "value" | "quantity") => void;
   onGroupedToggle: () => void;
 }) {
   return (
@@ -888,6 +1064,9 @@ function StashToolbar({
         </ToolbarToggle>
         <ToolbarToggle active={sortMode === "date"} onClick={() => onSortChange("date")}>
           Date
+        </ToolbarToggle>
+        <ToolbarToggle active={sortMode === "quantity"} onClick={() => onSortChange("quantity")}>
+          Quantity
         </ToolbarToggle>
       </div>
       <button

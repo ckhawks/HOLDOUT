@@ -93,7 +93,7 @@ export function Tooltip({
       >
         {children}
       </span>
-      {cursor && !pressed && text && (
+      {cursor && !pressed && !disabled && text && (
         <div
           ref={tipRef}
           className="pointer-events-none fixed z-[60] whitespace-nowrap rounded-sm border border-border/80 bg-popover/95 px-2 py-1 font-mono text-[10px] uppercase tracking-widest shadow-md backdrop-blur"

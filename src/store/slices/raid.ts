@@ -670,7 +670,10 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
   },
 
   dismissRaidOutcome: () => {
-    set({ raidOutcome: null });
+    // After the report, drop the player into the stash — that's where the
+    // immediate work is (sort loot, sell junk, re-kit) and where they were
+    // navigating to manually before.
+    set({ raidOutcome: null, activePanel: "stash" });
   },
 });
 
