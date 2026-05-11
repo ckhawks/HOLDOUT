@@ -11,6 +11,9 @@ import {
   moduleTierUpCost,
   payCost,
 } from "@/lib/engine/hideout";
+import { craft as engineCraft, describeCraft } from "@/lib/engine/workbench";
+import { startResearch as engineStartResearch } from "@/lib/engine/research";
+import { CRAFT_RECIPES } from "@/lib/data/recipes";
 import { describeProduced, recycleItem } from "@/lib/engine/recycle";
 import {
   describeSmelt,
@@ -66,6 +69,9 @@ export interface ConstructionSlice {
   smeltStashItem: (uid: string) => { ok: boolean; reason?: "not_found" | "no_recipe" | "tier_too_low" | "not_built" };
   smeltStackByItemId: (itemId: string, count?: number) => { ok: boolean; smelted: number };
   sellMetal: (metal: MetalId, amount: number) => { ok: boolean; cash: number };
+  // Workbench + Research
+  craftRecipe: (recipeId: string) => { ok: boolean; reason?: string };
+  startResearch: (recipeId: string) => { ok: boolean; reason?: string };
 }
 
 export const createConstructionSlice: StateCreator<GameState, [], [], ConstructionSlice> = (set, get) => ({
@@ -247,6 +253,56 @@ export const createConstructionSlice: StateCreator<GameState, [], [], Constructi
       construction: { ...construction, foundry, log },
     });
     return { ok: true, smelted: consumedUids.size };
+  },
+
+  craftRecipe: (recipeId) => {
+    const { stash, construction } = get();
+    const mod = construction.modules.workbench;
+    const recipe = CRAFT_RECIPES[recipeId];
+    if (!recipe) return { ok: false, reason: "no_recipe" };
+    const r = engineCraft(
+      recipe,
+      stash,
+      construction.foundry,
+      mod,
+      construction.research.unlockedRecipes,
+      Date.now(),
+      Math.random,
+    );
+    if ("ok" in r && r.ok === false) {
+      return { ok: false, reason: r.reason };
+    }
+    const success = r as Exclude<typeof r, { ok: false }>;
+    const now = Date.now();
+    const log = appendLog(construction.log, "workbench", describeCraft(recipe), now);
+    set({
+      stash: success.stash,
+      construction: { ...construction, foundry: success.foundry, log },
+    });
+    return { ok: true };
+  },
+
+  startResearch: (recipeId) => {
+    const { stash, construction } = get();
+    const mod = construction.modules.research_bench;
+    const r = engineStartResearch(recipeId, construction.research, stash, mod);
+    if ("error" in r) {
+      return { ok: false, reason: r.error };
+    }
+    const recipe = CRAFT_RECIPES[recipeId];
+    const outName = recipe ? (ITEMS[recipe.output.itemId]?.name ?? recipe.output.itemId) : recipeId;
+    const now = Date.now();
+    const log = appendLog(
+      construction.log,
+      "research",
+      `Started research: ${outName} · ${recipe?.research?.tileTicks ?? 0} tiles`,
+      now,
+    );
+    set({
+      stash: r.stash,
+      construction: { ...construction, research: r.research, log },
+    });
+    return { ok: true };
   },
 
   sellMetal: (metal, amount) => {

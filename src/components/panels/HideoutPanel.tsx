@@ -1,6 +1,6 @@
 "use client";
 
-import { Backpack, Flame, Hammer, HeartPulse, Package, Plus, Recycle } from "lucide-react";
+import { Backpack, Flame, Hammer, HeartPulse, Microscope, Package, Plus, Recycle } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,8 @@ export function HideoutPanel() {
   const equipment = useGame((s) => s.operative.equipment);
   const recycler = useGame((s) => s.construction.modules.recycler);
   const foundry = useGame((s) => s.construction.modules.foundry);
+  const workbench = useGame((s) => s.construction.modules.workbench);
+  const researchBench = useGame((s) => s.construction.modules.research_bench);
 
   const stashCost = stashUpgradeCost(upgrades);
   const summarizeContainer = (label: string, c: typeof equipment.bag): string => {
@@ -144,9 +146,50 @@ export function HideoutPanel() {
         <ModuleCard
           Icon={Hammer}
           name="Workbench"
-          status={unlocks.workbench ? "schematic recovered · install pending" : "no schematic"}
-          unlocked={unlocks.workbench}
-          hint="Find Schematic: Workbench on a raid"
+          status={
+            workbench.built
+              ? `tier ${workbench.tier} · craft enabled`
+              : unlocks.workbench
+                ? "schematic recovered · ready to build"
+                : "no schematic"
+          }
+          unlocked={workbench.built || unlocks.workbench}
+          hint={
+            workbench.built
+              ? undefined
+              : unlocks.workbench
+                ? "Open the workbench panel to install"
+                : "Find Schematic: Workbench on a raid"
+          }
+          action={
+            (workbench.built || unlocks.workbench) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPanel("workbench")}
+                className="rounded-sm"
+              >
+                {workbench.built ? "Open Workbench" : "View build cost"}
+              </Button>
+            ) : undefined
+          }
+        />
+        <ModuleCard
+          Icon={Microscope}
+          name="Research Bench"
+          status={researchBench.built ? `tier ${researchBench.tier} · unlock recipes` : "not built · 900¤ + parts"}
+          unlocked
+          hint={researchBench.built ? undefined : "Spend docs + components to unlock locked craft recipes"}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPanel("research_bench")}
+              className="rounded-sm"
+            >
+              {researchBench.built ? "Open Bench" : "View build cost"}
+            </Button>
+          }
         />
         <ModuleCard
           Icon={HeartPulse}

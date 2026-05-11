@@ -10,10 +10,13 @@ import {
   Crosshair,
   Droplet,
   Flame,
+  FlaskConical,
   Footprints,
   Heart,
   Zap,
 } from "lucide-react";
+import { ITEMS } from "@/lib/data/items";
+import { CRAFT_RECIPES } from "@/lib/data/recipes";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
 import { PackTetris } from "./PackTetris";
@@ -27,6 +30,7 @@ import type { LogEntry } from "@/lib/types";
 export function FeedPanel() {
   const raid = useGame((s) => s.currentRaid);
   const useBandage = useGame((s) => s.useBandage);
+  const activeResearch = useGame((s) => s.construction.research.active);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -59,6 +63,9 @@ export function FeedPanel() {
   }
   const extracting = rs.flags.includes("extracting");
   const exhausted = rs.energy <= 0;
+  const activeResearchName = activeResearch
+    ? ITEMS[CRAFT_RECIPES[activeResearch.recipeId]?.output.itemId ?? ""]?.name ?? activeResearch.recipeId
+    : null;
 
   const locationName = LOCATIONS_BY_ID[raid.locationId]?.name ?? raid.locationId;
 
@@ -79,6 +86,17 @@ export function FeedPanel() {
         <Stat icon={Crosshair} label="Ammo" value={rs.ammo} tone={rs.ammo < 10 ? "warn" : "ok"} />
         <Stat icon={Footprints} label="Distance" value={rs.distanceFromExtract} />
       </div>
+      {activeResearch && activeResearchName ? (
+        <div className="flex items-center gap-3 border-b border-border/60 bg-emerald-500/5 px-6 py-2">
+          <span className="inline-flex items-center gap-1 rounded-sm bg-emerald-500/20 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-emerald-200">
+            <FlaskConical className="size-3" />
+            Research
+          </span>
+          <span className="text-xs text-muted-foreground">
+            <span className="text-foreground">{activeResearchName}</span> · {activeResearch.ticksRemaining} tiles to unlock
+          </span>
+        </div>
+      ) : null}
       {hasBleed ? (
         <div className="flex items-center gap-3 border-b border-border/60 bg-red-500/5 px-6 py-2">
           <span

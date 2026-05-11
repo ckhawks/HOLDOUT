@@ -27,7 +27,7 @@ import {
   type PersistedState,
 } from "@/lib/engine/save";
 
-export type PanelId = "hideout" | "stash" | "ops" | "feed" | "shop" | "manual" | "data" | "settings" | "recycler" | "foundry";
+export type PanelId = "hideout" | "stash" | "ops" | "feed" | "shop" | "manual" | "data" | "settings" | "recycler" | "foundry" | "workbench" | "research_bench";
 
 // After-raid report. Built once in endRaid() — captures the diff between
 // startingEquipment and final equipment plus the per-tick counters the slice

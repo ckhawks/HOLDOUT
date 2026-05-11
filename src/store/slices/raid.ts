@@ -22,6 +22,8 @@ import { removeFromKit } from "@/lib/engine/equipment";
 import { entranceLog } from "@/lib/engine/flavor";
 import { makeLog } from "@/lib/engine/logging";
 import { autoPickAction } from "@/lib/engine/actions";
+import { tickResearch } from "@/lib/engine/research";
+import { CRAFT_RECIPES } from "@/lib/data/recipes";
 import { refreshShop } from "@/lib/engine/shop";
 import { pocketsDimensions } from "@/lib/engine/upgrades";
 import {
@@ -282,6 +284,40 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       return;
     }
 
+    // Research tick: if an operative-tile-move happened this tick AND the
+    // research bench has something active, decrement its tile counter.
+    // Driven off real movement so `stay` / `loot` / `fight` don't progress
+    // research (spec §7.4).
+    const construction = get().construction;
+    let nextConstruction = construction;
+    if (nextPos !== currentRaid.operativePos && construction.modules.research_bench.built && construction.research.active) {
+      const r = tickResearch(construction.research);
+      nextConstruction = { ...construction, research: r.research };
+      if (r.completed) {
+        const recipe = CRAFT_RECIPES[r.completed];
+        const outName = recipe ? (ITEMS[recipe.output.itemId]?.name ?? recipe.output.itemId) : r.completed;
+        raid = {
+          ...raid,
+          log: [
+            ...raid.log,
+            makeLog("system", `Research complete: ${outName}. Recipe unlocked at workbench.`, undefined, tickNow, rand),
+          ],
+        };
+        const logEntry = {
+          id: `${tickNow}-${Math.random().toString(36).slice(2, 8)}`,
+          timestamp: tickNow,
+          text: `Research complete: ${outName}`,
+        };
+        nextConstruction = {
+          ...nextConstruction,
+          log: {
+            ...nextConstruction.log,
+            research: [logEntry, ...nextConstruction.log.research].slice(0, 20),
+          },
+        };
+      }
+    }
+
     // Auto-pick the next action and reset the action timer.
     const queuedAction = autoPickAction(raid);
     raid = {
@@ -289,7 +325,10 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       queuedAction,
       actionStartedAt: Date.now(),
     };
-    set({ currentRaid: raid });
+    set({
+      currentRaid: raid,
+      ...(nextConstruction !== construction ? { construction: nextConstruction } : {}),
+    });
   },
 
   overrideAction: (action) => {
