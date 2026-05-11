@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearSave, loadGame, saveGame, type PersistedState } from "./save";
+import { clearSave, defaultConstructionState, loadGame, saveGame, type PersistedState } from "./save";
 
 class MemoryStorage {
   private store = new Map<string, string>();
@@ -52,6 +52,7 @@ function freshState(): PersistedState {
     currentRaid: null,
     shop: { offers: [], lastRefreshAt: 0 },
     debugMode: false,
+    construction: defaultConstructionState(),
   };
 }
 

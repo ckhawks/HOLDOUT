@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type {
+  ConstructionState,
   Equipment,
   Hideout,
   KitSlot,
@@ -18,6 +19,7 @@ import { createKitSlice, type KitSlice } from "./slices/kit";
 import { createEconomySlice, type EconomySlice } from "./slices/economy";
 import { createRaidSlice, type RaidSlice } from "./slices/raid";
 import {
+  defaultConstructionState,
   loadGame,
   saveGame,
   clearSave,
@@ -82,6 +84,7 @@ export interface GameState extends KitSlice, EconomySlice, RaidSlice {
   unlocks: Unlocks;
   upgrades: Upgrades;
   shop: ShopState;
+  construction: ConstructionState;
   activePanel: PanelId;
   rngSeed: number;
   hydrated: boolean;
@@ -147,6 +150,7 @@ export const useGame = create<GameState>((set, get, store) => ({
   unlocks: { workbench: false, medbay: false, biolab: false },
   upgrades: initialUpgrades,
   shop: { offers: [], lastRefreshAt: 0 },
+  construction: defaultConstructionState(),
   activePanel: "ops",
   rngSeed: Math.floor(Math.random() * 0xffffffff),
   hydrated: false,
@@ -178,6 +182,7 @@ export const useGame = create<GameState>((set, get, store) => ({
       upgrades: initialUpgrades,
       currentRaid: null,
       shop: refreshShop(makeRng(Math.floor(Math.random() * 0xffffffff)), Date.now()),
+      construction: defaultConstructionState(),
       activePanel: "ops",
       rngSeed: Math.floor(Math.random() * 0xffffffff),
       raidOutcome: null,
@@ -205,6 +210,7 @@ export const useGame = create<GameState>((set, get, store) => ({
         upgrades: loaded.upgrades,
         currentRaid: loaded.currentRaid,
         shop,
+        construction: loaded.construction ?? defaultConstructionState(),
         // If a raid is in progress, return the player to the comms feed
         // (HMR / page reload otherwise drops them on the Ops panel).
         activePanel: loaded.currentRaid ? "feed" : get().activePanel,
@@ -237,7 +243,8 @@ if (typeof window !== "undefined") {
       state.upgrades === prev.upgrades &&
       state.currentRaid === prev.currentRaid &&
       state.shop === prev.shop &&
-      state.debugMode === prev.debugMode
+      state.debugMode === prev.debugMode &&
+      state.construction === prev.construction
     ) {
       return;
     }
@@ -251,6 +258,7 @@ if (typeof window !== "undefined") {
       currentRaid: state.currentRaid,
       shop: state.shop,
       debugMode: state.debugMode,
+      construction: state.construction,
     });
   });
 }

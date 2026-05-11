@@ -100,7 +100,7 @@ export const ITEMS: Record<string, Item> = {
 
   // experimental
   prototype_chip:   { id: "prototype_chip",   name: "Prototype Chip",    tier: "rare",         category: "experimental", sellValue: 220, weight: 1, shape: S.one },
-  exotic_alloy:     { id: "exotic_alloy",     name: "Exotic Alloy Slab", tier: "rare",         category: "experimental", sellValue: 320, weight: 3, shape: S.square2 },
+  exotic_alloy:     { id: "exotic_alloy",     name: "Reactor Plate",     tier: "rare",         category: "experimental", sellValue: 320, weight: 3, shape: S.square2 },
   corrupted_data_slug:{ id: "corrupted_data_slug", name: "Corrupted Data Slug", tier: "rare", category: "experimental", sellValue: 235, weight: 1, shape: S.one },
   prototype_lens:   { id: "prototype_lens",   name: "Prototype Lens",    tier: "experimental", category: "experimental", sellValue: 450, weight: 1, shape: S.one },
   black_box:        { id: "black_box",        name: "Black Box",         tier: "experimental", category: "experimental", sellValue: 500, weight: 2, shape: S.t4 },
@@ -143,7 +143,66 @@ export const ITEMS: Record<string, Item> = {
     { id: "admin", label: "Admin", width: 3, height: 2 },
     { id: "side",  label: "Side",  width: 2, height: 2 },
   ] },
+
+  // ─── Construction-system base components (added 2026-05-11) ───
+  // Medical bases. Synthate = synthetic chemistry (lab-sourced);
+  // botanical = plant extracts (civilian/outdoor). Recipes mix them.
+  synthate:         { id: "synthate",         name: "Synthate Vial",     tier: "common",   category: "medical",    sellValue: 12, weight: 1, shape: S.one },
+  botanical:        { id: "botanical",        name: "Botanical Sample",  tier: "common",   category: "medical",    sellValue: 9,  weight: 1, shape: S.one },
+  // Fabric / polymer bases for apparel + recycler output.
+  cloth_scrap:      { id: "cloth_scrap",      name: "Cloth Scrap",       tier: "common",   category: "apparel",    sellValue: 5,  weight: 1, shape: S.one },
+  polymer_strip:    { id: "polymer_strip",    name: "Polymer Strip",     tier: "common",   category: "mechanical", sellValue: 6,  weight: 1, shape: S.one },
+
+  // ─── Specialized construction junk ───
+  // Direct upgrade gates. Each named item is consumed by one or two
+  // specific module recipes (see data/modules.ts + data/recipes.ts).
+  industrial_motor:    { id: "industrial_motor",    name: "Industrial Motor",     tier: "uncommon", category: "mechanical",  sellValue: 80,  weight: 3, shape: S.square2 },
+  industrial_shelving: { id: "industrial_shelving", name: "Industrial Shelving",  tier: "common",   category: "mechanical",  sellValue: 35,  weight: 2, shape: S.i3 },
+  reinforced_locker:   { id: "reinforced_locker",   name: "Reinforced Locker",    tier: "uncommon", category: "mechanical",  sellValue: 110, weight: 4, shape: S.rect2x3 },
+  vault_door:          { id: "vault_door",          name: "Vault Door Mechanism", tier: "rare",     category: "mechanical",  sellValue: 280, weight: 4, shape: S.square2 },
+  power_tool:          { id: "power_tool",          name: "Power Tool",           tier: "uncommon", category: "mechanical",  sellValue: 90,  weight: 2, shape: S.horiz2 },
+  calibration_jig:     { id: "calibration_jig",     name: "Calibration Jig",      tier: "uncommon", category: "mechanical",  sellValue: 130, weight: 2, shape: S.l3 },
+  precision_lathe:     { id: "precision_lathe",     name: "Precision Lathe",      tier: "rare",     category: "mechanical",  sellValue: 320, weight: 4, shape: S.rect2x3 },
+  control_board:       { id: "control_board",       name: "Control Board",        tier: "uncommon", category: "electronics", sellValue: 95,  weight: 1, shape: S.horiz2 },
+  medical_autoclave:   { id: "medical_autoclave",   name: "Medical Autoclave",    tier: "uncommon", category: "medical",     sellValue: 140, weight: 3, shape: S.square2 },
+  anesthesia_rig:      { id: "anesthesia_rig",      name: "Anesthesia Rig",       tier: "rare",     category: "medical",     sellValue: 240, weight: 2, shape: S.rect2x3 },
+  surgical_kit:        { id: "surgical_kit",        name: "Surgical Kit",         tier: "uncommon", category: "medical",     sellValue: 110, weight: 1, shape: S.horiz2 },
+  modular_harness:     { id: "modular_harness",     name: "Modular Harness",      tier: "uncommon", category: "apparel",     sellValue: 100, weight: 1, shape: S.horiz2 },
 };
+
+// Component flags applied after the item table so we don't repeat them
+// on every line above. Order: existing items repurposed as components,
+// then the new base components from the construction system, then the
+// specialized "named junk" gating module recipes.
+const COMPONENT_IDS = [
+  // Mechanical
+  "scrap_metal", "rusted_bolt", "ball_bearing", "valve_handle", "copper_wire",
+  "spring_coil", "rail_clamp", "hydraulic_piston", "precision_gear",
+  "exo_servo", "tungsten_gear", "powered_actuator",
+  // Electronics
+  "cracked_battery", "microchip", "optic_lens", "capacitor_bank",
+  "signal_jammer", "coolant_loop", "holo_display", "quantum_capacitor",
+  // New construction-system base components
+  "synthate", "botanical", "cloth_scrap", "polymer_strip",
+] as const;
+
+const SPECIALIZED_IDS = [
+  "industrial_motor", "industrial_shelving", "reinforced_locker", "vault_door",
+  "power_tool", "calibration_jig", "precision_lathe", "control_board",
+  "medical_autoclave", "anesthesia_rig", "surgical_kit", "modular_harness",
+] as const;
+
+for (const id of COMPONENT_IDS) {
+  const def = ITEMS[id];
+  if (def) def.component = true;
+}
+for (const id of SPECIALIZED_IDS) {
+  const def = ITEMS[id];
+  if (def) {
+    def.specialized = true;
+    def.component = true;
+  }
+}
 
 export const ITEM_IDS = Object.keys(ITEMS);
 
@@ -152,10 +211,10 @@ export const ITEM_IDS = Object.keys(ITEMS);
 // rate, so they can land in regular containers (via pickCommonItemId/
 // pickRareItemId) and locked containers (via pickItemForLocation fallback).
 const TIER_POOLS: Record<string, string[]> = {
-  common: Object.values(ITEMS).filter((i) => i.tier === "common").map((i) => i.id),
-  uncommon: Object.values(ITEMS).filter((i) => i.tier === "uncommon").map((i) => i.id),
-  rare: Object.values(ITEMS).filter((i) => i.tier === "rare" && i.id !== "datacenter_keycard").map((i) => i.id),
-  experimental: Object.values(ITEMS).filter((i) => i.tier === "experimental" && i.id !== "biolab_coords" && i.id !== "workbench_schematic").map((i) => i.id),
+  common: Object.values(ITEMS).filter((i) => i.tier === "common" && !i.specialized).map((i) => i.id),
+  uncommon: Object.values(ITEMS).filter((i) => i.tier === "uncommon" && !i.specialized).map((i) => i.id),
+  rare: Object.values(ITEMS).filter((i) => i.tier === "rare" && !i.specialized && i.id !== "datacenter_keycard").map((i) => i.id),
+  experimental: Object.values(ITEMS).filter((i) => i.tier === "experimental" && !i.specialized && i.id !== "biolab_coords" && i.id !== "workbench_schematic").map((i) => i.id),
 };
 
 // Items keyed unlock items are excluded from generic pools so they only drop
@@ -258,6 +317,7 @@ export function pickItemForLocation(
       (i) =>
         i.category === cat &&
         i.tier === tier &&
+        !i.specialized &&
         !["datacenter_keycard", "biolab_coords", "workbench_schematic"].includes(i.id),
     );
     if (slice.length > 0) {

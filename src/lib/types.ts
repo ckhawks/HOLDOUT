@@ -42,6 +42,12 @@ export interface Item {
   // single grid in the UI. `id` is the stable handle used in placements
   // and drag routing — keep it stable across rebalances.
   bagSections?: BagSectionDef[];
+  // Construction-system tags. `component` = counts as upgrade-cost-payable
+  // (basic component pool). `specialized` = named "construction junk"
+  // gating specific module builds/upgrades. Flat tier — see
+  // docs/archive/CONSTRUCTION_SYSTEM.md.
+  component?: boolean;
+  specialized?: boolean;
 }
 
 export interface BagSectionDef {
@@ -440,4 +446,85 @@ export interface Upgrades {
   // now split into pockets + equipped bag.
   pocketsLevel: number;
   stashLevel: number;
+}
+
+// ─── Construction system ────────────────────────────────────────────────
+// Components economy + hideout module state. Designed 2026-05-10; see
+// docs/CONSTRUCTION_SYSTEM.md. The whole thing lives under `construction`
+// on PersistedState; old hideout.modules stays around as a UI shell.
+
+export type MetalId = "steel" | "copper" | "titanium" | "chromite" | "voidsteel";
+
+export type ModuleId =
+  | "recycler"
+  | "workbench"
+  | "research_bench"
+  | "foundry"
+  | "armory"
+  | "armor_stand"
+  | "repair_bench"
+  | "generator";
+
+export interface ModuleState {
+  built: boolean;
+  tier: number; // 0 = unbuilt; 1+ once built
+}
+
+export interface FoundryState {
+  vessels: Record<MetalId, number>;
+}
+
+export interface ResearchState {
+  unlockedRecipes: string[];
+  active: { recipeId: string; ticksRemaining: number } | null;
+}
+
+export interface ArmoryState {
+  items: StashItem[];
+}
+
+export interface GeneratorState {
+  powerCells: number;
+}
+
+export interface ArmorStandState {
+  // Future: presets: LoadoutPreset[]
+  _reserved?: never;
+}
+
+export interface RepairBenchState {
+  _reserved?: never;
+}
+
+export interface ConstructionLogEntry {
+  id: string;
+  timestamp: number;
+  text: string;
+}
+
+export interface ConstructionLog {
+  recycler: ConstructionLogEntry[];
+  foundry: ConstructionLogEntry[];
+  workbench: ConstructionLogEntry[];
+  research: ConstructionLogEntry[];
+}
+
+export interface ConstructionState {
+  modules: Record<ModuleId, ModuleState>;
+  foundry: FoundryState;
+  research: ResearchState;
+  armory: ArmoryState;
+  generator: GeneratorState;
+  armorStand: ArmorStandState;
+  repairBench: RepairBenchState;
+  log: ConstructionLog;
+}
+
+// Extended upgrade-cost shape used by both stash upgrades and module
+// build/tier costs. Existing cash-only consumers pass `{ cash }` and the
+// helpers treat omitted arrays as empty.
+export interface UpgradeCost {
+  cash: number;
+  items?: ReadonlyArray<{ id: string; count: number }>;
+  metals?: ReadonlyArray<{ id: MetalId; count: number }>;
 }

@@ -1,15 +1,18 @@
 import type {
+  ConstructionState,
   CurrentRaid,
   Hideout,
+  ModuleId,
   Operative,
   ShopState,
   StashItem,
   Unlocks,
   Upgrades,
 } from "@/lib/types";
+import { DEFAULT_UNLOCKED_RECIPES } from "@/lib/data/recipes";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 29;
+export const SCHEMA_VERSION = 30;
 
 export interface PersistedState {
   cash: number;
@@ -21,6 +24,36 @@ export interface PersistedState {
   currentRaid: CurrentRaid | null;
   shop: ShopState;
   debugMode: boolean;
+  construction: ConstructionState;
+}
+
+const MODULE_IDS: ModuleId[] = [
+  "recycler",
+  "workbench",
+  "research_bench",
+  "foundry",
+  "armory",
+  "armor_stand",
+  "repair_bench",
+  "generator",
+];
+
+export function defaultConstructionState(): ConstructionState {
+  return {
+    modules: Object.fromEntries(MODULE_IDS.map((id) => [id, { built: false, tier: 0 }])) as ConstructionState["modules"],
+    foundry: {
+      vessels: { steel: 0, copper: 0, titanium: 0, chromite: 0, voidsteel: 0 },
+    },
+    research: {
+      unlockedRecipes: [...DEFAULT_UNLOCKED_RECIPES],
+      active: null,
+    },
+    armory: { items: [] },
+    generator: { powerCells: 0 },
+    armorStand: {},
+    repairBench: {},
+    log: { recycler: [], foundry: [], workbench: [], research: [] },
+  };
 }
 
 export interface SavedGame {
@@ -339,6 +372,12 @@ export function migrateSave(saved: SavedGame): SavedGame {
       if (typeof op.ammo !== "number") op.ammo = 30;
     }
   }
+  // Defensive: construction must exist on the loaded state. Same HMR-race
+  // scenario as shop below.
+  {
+    const sx = s as unknown as { construction?: ConstructionState };
+    if (!sx.construction) sx.construction = defaultConstructionState();
+  }
   // Defensive: shop must exist on the loaded state. A save can land here
   // with the right schemaVersion but a missing field if HMR + auto-save
   // raced during a phase that introduced the field.
@@ -360,6 +399,20 @@ export function migrateSave(saved: SavedGame): SavedGame {
   if (saved.schemaVersion < 27) {
     if (typeof (s as unknown as { debugMode?: unknown }).debugMode !== "boolean") {
       (s as unknown as { debugMode: boolean }).debugMode = false;
+    }
+  }
+  // v30: construction system bolted on. New top-level `construction` branch
+  // holds module build/tier state, foundry vessels, research, armory,
+  // generator, and a per-module activity log. Old hideout.modules (stash /
+  // pockets / workbench / medbay / loadout) stays intact — the new
+  // construction panel will gradually replace it. If the old save already
+  // had `unlocks.workbench` set, mirror that into modules.workbench so the
+  // player doesn't need to refind a Schematic they already used.
+  if (saved.schemaVersion < 30) {
+    const sx = s as unknown as { construction?: ConstructionState };
+    if (!sx.construction) sx.construction = defaultConstructionState();
+    if (s.unlocks?.workbench) {
+      sx.construction.modules.workbench = { built: true, tier: 1 };
     }
   }
   // v29: chest rig EquipSlot added. Equipment now has both `bag` and `rig`
