@@ -55,6 +55,28 @@ Context, only shown when eligible (under a divider in the action card):
 
 Open wishlist from the player. DONE items have been moved to the Changelog at the bottom.
 
+- DONE: ctrl click to pickup item from ground should fill inventory top to bottom (pockets -> rig -> backpack, right now) [should match display order]
+- DONE: prevent selling a pinned item
+- DONE: keybind for force end turn (maybe enter or right arrow or both)
+- DONE: remove green leave subtext from leave action
+- DONE: remove the SFX chooser and and minimal click the one that we stick with for general presses
+- DONE: allowing using items from ground instead of having to be in the inventory first
+- DONE: display generic items as stacks in the stash -> then add sort by quantity
+- DONE: add tooltip that shows on the stat bars that describe what they do
+- DONE: need to display "1 items in here" tool tip when hover room on map (if something was on the floor)
+- DONE: room tile color if loot on ground (and/or slight icon?)
+- DONE: rig names need to be more clear they are chest rigs/extra storage equippables
+- DONE: make empty loot button also take apparel out of the inventory (not unequip it)
+
+- drag to swap backpacks (try to swap items, reject if can't)
+- toast when rejecting unequipping bag/rig if items are in, toast when rejecting moving bag/rig if cant for some reason
+- backpacks/rigs need <-- Kit button that equips them or something
+- choose operative name when you first start the save
+- return back to stash after end-of-raid screen
+
+- more weight on character = higher per turn energy consumption
+- buy multiple quantity in market
+
 - DONE: food consumed during raid to keep energy up
 - DONE?: need item that can restore HP (over time?) — see also AI medical-ladder proposal below
 - DONE: need to be able to eat things (thinking a drag drop zone like the discard, instant/doesn't take a turn)
@@ -66,13 +88,17 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - small shop: buy backpack, decent low/mid weapon, ammo
 - make it so bags can have split inventory sections, like tarkov rigs/bags (i.e. a 2x3 area and a 3x3 area)
 - backpack packing like Tarkov for dropped bags (hard)
-- hideout: foundry — melt metals down, forge items. Construct foundry first.
+- hideout: foundry — melt metals down, forge items. Construct foundry first. _(folded into "Components + hideout construction system" below.)_
 - realistic ammo: magazines, swap mags, reload from pack ammo
 - opponent quality preview ("the big scary guy" vs "the little shrimp" vs "cant tell")
 - add locked doors (edges between tiles on map); action in action list to try to keypad/lockpick etc
-- repair bench, uses wurm-style rotating repair materials/items to increase condition
+- repair bench, uses wurm-style rotating repair materials/items to increase condition _(buildable shell folded into "Components + hideout construction system" below; functionality still TODO and gated on weapon-condition system existing.)_
 - hacking minigame? keypads?
 - multiple operatives...
+- hardcode mode where you can't pause O_O
+- post hideout changes: show notification pulse thing (red) when there's action needing to be done in the hideout (like things that have raid-timer-related things)
+
+- revisit loot weights/rarity system
 
 ### From the older IDEAS.md (carried over)
 
@@ -114,7 +140,75 @@ Make "scrounge / push / lay low" real instead of theatre.
 - [ ] Key/keycard/ID-badge items: matching `keyType` on a `LockedContainer` lets you open it cleanly (no ammo cost, no heat).
 - [ ] Key items spawn in regular containers; ID badges drop from defeated patrols.
 
-## Smaller follow-ups (any order)
+## Components + hideout construction system (multi-phase)
+
+A unified construction economy: loot decomposes into components, components feed hideout module upgrades, modules unlock new content. Replaces the current cash-only upgrade gates with cash + components + specialized named loot, so raids become directional ("I need circuits → server farm").
+
+Designed in conversation 2026-05-10. Locked decisions:
+
+- **Components are existing items where possible.** `scrap_metal`, `copper_wire`, `microchip`, `optic_lens`, `capacitor_bank`, `cracked_battery` already exist in `src/lib/data/items.ts` — they double as base components. Stash L3 = ¤700 + 4× scrap_metal + 2× copper_wire + 1× named "industrial shelving" item. Sell-vs-save tension is the loop's beating heart.
+- **Two new med base components**: **Synthates** (synthetic chemistry, lab-sourced) and **Botanicals** (plant extracts, outdoor/civilian-sourced). Recipes mix them. Bioculture as a third option deferred — see parking lot.
+- **Foundry stores molten metal in vessels, not as ingot items.** Per-metal capacity scales with foundry tier. Selling happens via foundry UI, not stash. No inventory pollution.
+- **Pockets upgrades cut.** Too OP. Bigger pockets stays a one-time bag-equip thing.
+- **No weapon crafting.** Apparel + meds only at the workbench. Keeps scope narrow.
+- **Recycler functionality**: per-item decompose recipes with rolled yields per component (`Worn Radio → 80% wiring, 60% circuit, 30% polymer`). Tier upgrades = better roll % + bulk-scrap QoL + ability to scrap higher-tier items.
+- **Research bench**: spend looted documents/manuals + components to unlock recipes. Progress ticks on **per-tile-moved during raids**, not real-world time and not per-raid (which would be cheesable by in-and-out raids). Pauses when game pauses.
+
+### Modules + rough phase order
+
+| Module             | Role                                                            | Phase |
+| ------------------ | --------------------------------------------------------------- | ----- |
+| **Recycler**       | Items → components, manual scrap, real panel                    | A     |
+| Stash (rework)     | Capacity tiers now want components + specialized items          | A     |
+| **Workbench**      | Apparel + med crafting (gated on schematic, already in design)  | B     |
+| **Research Bench** | Recipe unlocks, ticks per tile-moved in raids                   | B     |
+| **Foundry**        | Metallic items → molten metal vessels; forge from molten        | C     |
+| **Armory**         | Specialized equipment storage slots, separate from stash        | D     |
+| **Armor Stand**    | Buildable shell for loadout presets; functionality wired later  | D     |
+| **Repair Bench**   | Buildable shell; functionality gated on weapon-condition system | D     |
+| **Generator**      | Powers high-tier modules, consumes power cells per raid         | E     |
+
+### Recycler shape
+
+- Each scrappable item declares a recipe like `{ item: "combat_knife", outputs: [{ id: "scrap_metal", chance: 0.9 }, { id: "spring_coil", chance: 0.5 }] }`.
+- L1: base rolls. L2: +15% to all rolls. L3: +30%, plus a chance to roll bonus stacks (2× output on a hit), plus rare items become scrappable.
+- Bulk-scrap a whole stack at L2+.
+- Real panel in hideout (not a stash-item modal) — drives traffic to the hideout screen.
+
+### Foundry shape
+
+- Vessels: `foundry: { steel: 340, copper: 120, titanium: 0, ... }` — millilitres or arbitrary units, doesn't matter as long as recipes match.
+- L1 cap: 500 each. L2: 1500. L3: 5000.
+- Smelting into a full vessel either rejects the input or wastes overflow with a warning.
+- v1 metals: **steel**, **copper**, **titanium**. Late-game fictional metals (corp-2090 flavor names — TBD) added at L3+.
+- UI: vertical fill bars per metal, hideout panel readout.
+- Sell from foundry UI directly — no ingot exports.
+
+### Item pool rework (alongside)
+
+- Audit `src/lib/data/items.ts` and tag items as `recyclerInput` and/or `foundryInput`. The same metallic item (e.g. `combat_knife`) can route either way — player choice.
+- Rename **"Exotic Alloy Slab"** to something foundry-flavored (e.g. "Reactor Plate", "Salvaged Bulkhead") so it reads as raw metal stock, not a finished alloy. It melts into the foundry as high-yield rare metal.
+- Add ~6-8 specialized "construction junk" items as named loot drops at appropriate tiers — gates specific upgrades. Examples: industrial shelving, reinforced locker, calibration jig, vault door, modular harness, medical autoclave, anesthesia rig, control board.
+- Upgrade panels show progress bars per requirement, reading live from stash ("circuits: 2/3").
+
+### Cost progression (illustrative, tune in implementation)
+
+- **Stash L1→L2**: ¤300 (current; no components yet)
+- **Stash L2→L3**: ¤700 + 4 scrap_metal + 1 industrial shelving
+- **Stash L3→L4**: ¤1500 + 8 scrap_metal + 3 copper_wire + 1 reinforced locker
+- **Stash L4→L5**: ¤3500 + 15 scrap_metal + 6 copper_wire + 200 steel (foundry) + 1 vault door
+- **Recycler L1**: ¤600 + 1 industrial motor (cash-only base components — chicken/egg, can't gate the component-producer behind components)
+- **Recycler L2**: ¤1500 + 3 copper_wire + 1 control board
+- **Workbench L1**: schematic drop + ¤800 + 4 scrap_metal + 2 copper_wire + 1 power tool
+- **Foundry L1**: ¤2500 + 6 scrap_metal + 3 ceramic_plate + 1 industrial motor
+
+### Phase rollout sketch
+
+- **Phase A** — Recycler module + revised Stash upgrade costs + first wave of construction-junk items + components-as-existing-items wiring. End state: player has a real reason to hoard mechanical/electronics loot and a panel to convert other loot into it.
+- **Phase B** — Workbench (real, not just schematic flag) + Research Bench + Synthates/Botanicals + apparel & med recipes. End state: crafting has shape, recipes unlock progressively.
+- **Phase C** — Foundry + molten-metal vessels + late-tier upgrade ladders that need metals + item pool rename pass. End state: late-game upgrade goals are on the board.
+- **Phase D** — Armory + Armor Stand placeholder + Repair Bench placeholder. End state: hideout looks more lived-in; presets and repair are visibly coming.
+- **Phase E** — Generator + power-cell drain on high-tier modules. End state: power cells gain a recurring sink.
 
 - [ ] **After-raid report — pass 2: map replay.** Pass 1 (2026-05-10) shipped the report modal with loot diff / vitals / combat / choices / consumables. Pass 2 adds the map-replay section: render the same 12×5 strip with visited tiles dimmed and the operative's path drawn in order. Needs new state on `CurrentRaid` (`pathVisited: Array<{x,y,tick}>` updated each move in `doTick`) since fog only tells us _which_ tiles, not _when_. Optional polish: scrubber, or static end-state with arrows.
 - [ ] First-run intro modal.
@@ -124,7 +218,20 @@ Make "scrounge / push / lay low" real instead of theatre.
 - [ ] More context-eligible actions for the action card's bottom section (lockpick-on-locked, use-key-on-locked, examine-corpse, etc.).
 - [ ] **Movement override — pass 2: destination/goal.** Builds on the one-shot tile-click override (the player wishlist item). Once the primitive ships, this layer lets the player click any tile (not just adjacent) to set it as the operative's _goal_. `move_forward` ticks BFS-step toward it each cycle until the operative arrives, gets interrupted (combat / pendingChoice), or the player cancels. Adds a `goal: {x,y} | null` field on `CurrentRaid`, a goal-tile highlight on the map, and a cancel control on the action card. Stays on-theme (the operative still acts each tick — the player has radioed in a destination, not micro-steered). Defer until the one-shot version has been played enough to confirm players need multi-tick redirects.
 - [ ] Item flavor: per-stash-item adjective so each loot has individual identity (carried over from older IDEAS.md — partially shipped via room/container vocab, but not per-item adjectives yet).
-- [ ] Hideout depth: Workbench schematic currently flips a flag and does nothing. Wire actual crafting (consume X, Y → produce Z gear). Medbay healing flow.
+- [ ] Hideout depth: Workbench schematic currently flips a flag and does nothing. Wire actual crafting (consume X, Y → produce Z gear). Medbay healing flow. _(Workbench crafting now belongs inside the Components + hideout construction system above; Medbay flagged as deferred there pending a real purpose.)_
+
+## Parking lot — bigger ideas seeded during components/hideout brainstorm (2026-05-10)
+
+Pulled out of the components-system convo to keep that scope focused. Pull from this list when active work needs depth.
+
+- **Bank / Stock Market hideout module.** Deposit cash, locked for X raid-turns, RNG-rolled return on withdrawal. Pure RNG gamba for v1; fits the "no real-world clock" rule because lock duration is in raid ticks. Possible enhancements (don't ship initially): tie returns to corp-flavored intel found in raids (insider trading), or to raid loudness (operative-as-market-mover). User wasn't sold on intel-tied versions — keep it raw RNG unless it feels too soulless in playtest.
+- **Farm / Greenhouse module for med ingredients.** Produces Botanicals (and maybe Synthates via a chem-vat variant) gated on raid-tile ticks, same as Research Bench. Closes the "med crafting requires raiding" loop with a passive trickle that still respects the no-clock rule. Probably built into the hideout after Workbench lands.
+- **Components from flavor events.** Currently components only drop from container loot. Allowing event outcomes to grant components ("salvaged the patrol's radio → +1 wiring") would make events feel materially consequential beyond just stat changes.
+- **Item rarity/quality tiers for equipment.** Same base item rolls in common/uncommon/rare/experimental quality with stat modifiers. Weapon-focused. Intentionally NOT applied to components — components stay flat-tier so the recycler/foundry math stays clean. (If a component should be "better," it's a different component.)
+- **Foundry alloying recipes.** Bronze (copper + tin), brass (copper + zinc), and corp-fictional alloys at higher tiers. Foundry L2+ feature; v1 foundry just stores and dispenses base metals.
+- **Bioculture as a third med base component.** Engineered cell stock, lab/biolab tier, gates rare med recipes (nano-clot etc.). Held back to keep the med-crafting search space manageable; add if Synthates+Botanicals feel too samey.
+- **Comms Suite, Medbay, Intel Desk modules.** Originally on the module list; deferred until each has a concrete useful function. Don't build empty modules just to fill panel space.
+- **Trading molten metal between hideouts.** Only relevant if multiplayer ships. Foundry-as-vessel design means metals would need to be re-bottled into ingot items at trade time. Trivial extension if needed.
 
 ## Tech debt / refactor (from arch review 2026-05-09)
 
@@ -156,6 +263,8 @@ Known "not now" decisions. Pull from this list when the active work needs depth.
 - Pre-mission intel-buy mechanic — depends on a currency/economy model not yet decided.
 - Sound mapping pass beyond the 4 kinds — phase when more event types exist.
 - Multiplayer — discussed and explicitly deferred. Engine is kept pure / clock-free as insurance (see DESIGN.md "Multiplayer port-readiness" section).
+- **Pockets capacity upgrades** — cut as too-OP during 2026-05-10 components/hideout brainstorm. Carrying capacity is governed by equipped bag/rig only; the on-operative built-in pockets stay at their starting size.
+- **Weapon crafting at Workbench** — explicitly out of scope for the components system. Workbench produces apparel + meds only. Weapon crafting may return as a separate phase later if the loop wants it.
 
 ---
 
