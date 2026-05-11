@@ -282,12 +282,12 @@ export function unequipItem(
   return { next: { ...eq, [slot]: null }, removed: cur };
 }
 
-// First-fit placement search. Walks pockets, then each container's
-// sections in declared order — so the player gets predictable behavior:
-// "pockets fill first, then bag, then rig", and within each container
-// the section order matches the item def's section ordering. Returns
-// the slot + (sectionId for containers) + position + rotation, or null
-// if the item won't fit anywhere with any rotation.
+// First-fit placement search. Walks pockets, then rig, then bag — matching
+// the inventory display order (pockets at top, rig above bag) so ctrl+click
+// pickup fills from the top of the visible list down. Within each container
+// the section order matches the item def's section ordering. Returns the
+// slot + (sectionId for containers) + position + rotation, or null if the
+// item won't fit anywhere with any rotation.
 export interface FitResult {
   slot: KitSlot;
   sectionId?: string;
@@ -317,7 +317,7 @@ export function findFit(eq: Equipment, item: StashItem): FitResult | null {
   };
   const inPockets = tryGrid(eq.pockets.items, eq.pockets.grid);
   if (inPockets) return { slot: "pockets", ...inPockets };
-  for (const slot of ["bag", "rig"] as const) {
+  for (const slot of ["rig", "bag"] as const) {
     const container = containerFor(eq, slot);
     if (!container) continue;
     for (const s of container.sections) {

@@ -349,6 +349,15 @@ describe("pin / sellAllJunk", () => {
     expect(useGame.getState().stash[0].pinned).toBeFalsy();
   });
 
+  it("sellItem refuses to sell a pinned item", () => {
+    resetStore([{ uid: "u1", itemId: "scrap_metal", pinned: true }]);
+    const before = useGame.getState().cash;
+    useGame.getState().sellItem("u1");
+    const s = useGame.getState();
+    expect(s.stash.find((x) => x.uid === "u1")).toBeDefined();
+    expect(s.cash).toBe(before);
+  });
+
   it("sellAllJunk skips pinned items", () => {
     resetStore([
       { uid: "u1", itemId: "scrap_metal" },

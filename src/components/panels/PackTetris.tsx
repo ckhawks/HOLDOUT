@@ -143,7 +143,11 @@ export function PackTetris() {
       return false;
     };
     if (tryGrid(raid.equipment.pockets, "pockets")) return;
-    for (const { slot, container } of iterContainers(raid.equipment)) {
+    // rig before bag, matching the inventory display order.
+    const ordered = Array.from(iterContainers(raid.equipment)).sort((a, b) =>
+      a.slot === "rig" ? -1 : b.slot === "rig" ? 1 : 0,
+    );
+    for (const { slot, container } of ordered) {
       for (const s of container.sections) {
         if (tryGrid(s, slot, s.id)) return;
       }

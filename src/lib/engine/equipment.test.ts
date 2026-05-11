@@ -300,6 +300,24 @@ describe("findFit (auto-placement)", () => {
     expect(fit?.sectionId).toBe("main");
   });
 
+  it("prefers rig over bag when pockets is full and both containers have space", () => {
+    // Display order is pockets → rig → bag, so ctrl-pickup should fill rig
+    // before bag when pockets overflows.
+    const fill: PackPlacement[] = [];
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        fill.push({ uid: `p-${x}-${y}`, itemId: "bandage_pack", x, y, rotation: 0 });
+      }
+    }
+    const eq = makeEq({
+      pockets: makePockets(fill),
+      bag: makeBag(),
+      rig: equipItem(makeEq(), { uid: "rig1", itemId: "light_rig" })!.rig,
+    });
+    const fit = findFit(eq, stashItem);
+    expect(fit?.slot).toBe("rig");
+  });
+
   it("falls through to rig when pockets and bag are full", () => {
     // Fill pockets and a single-section bag; the rig should catch the item.
     const fill: PackPlacement[] = [];
