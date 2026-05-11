@@ -13,7 +13,11 @@ import {
   startRaid,
   tickAction,
 } from "@/lib/engine/raid";
-import { applyBandage, applyConsumable } from "@/lib/engine/consumables";
+import {
+  applyBandage,
+  applyConsumable,
+  applyConsumableFromFloor,
+} from "@/lib/engine/consumables";
 import { removeFromKit } from "@/lib/engine/equipment";
 import { entranceLog } from "@/lib/engine/flavor";
 import { makeLog } from "@/lib/engine/logging";
@@ -51,6 +55,7 @@ export interface RaidSlice {
   resolvePendingChoice: (choiceId: string) => void;
   useBandage: () => void;
   useConsumable: (uid: string) => void;
+  useConsumableFromFloor: (uid: string) => void;
   togglePause: () => void;
   skipActionTimer: () => void;
   recall: () => void;
@@ -497,6 +502,27 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       eq.bag?.sections.flatMap((s) => s.items).find((p) => p.uid === uid);
     const itemId = placement?.itemId;
     const next = applyConsumable(currentRaid, uid, Date.now(), Math.random);
+    if (next === currentRaid) return;
+    set({
+      currentRaid: itemId
+        ? {
+            ...next,
+            tally: {
+              ...next.tally,
+              consumablesUsed: [...next.tally.consumablesUsed, { itemId }],
+            },
+          }
+        : next,
+    });
+  },
+
+  useConsumableFromFloor: (uid) => {
+    const { currentRaid } = get();
+    if (!currentRaid || !currentRaid.active) return;
+    const { x, y } = currentRaid.operativePos;
+    const tile = currentRaid.map.tiles[y * currentRaid.map.width + x];
+    const itemId = tile?.contents.find((c) => c.uid === uid)?.itemId;
+    const next = applyConsumableFromFloor(currentRaid, uid, Date.now(), Math.random);
     if (next === currentRaid) return;
     set({
       currentRaid: itemId

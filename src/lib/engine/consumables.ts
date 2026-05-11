@@ -8,6 +8,7 @@
 
 import type { CurrentRaid, Equipment, Operative, StashItem } from "@/lib/types";
 import { findInKit, iterKitItems, removeFromKit } from "./equipment";
+import { removeFromTileContents } from "./map";
 import { makeLogger } from "./logging";
 
 export interface ConsumableEffect {
@@ -76,6 +77,59 @@ export function applyConsumable(
   return {
     ...raid,
     equipment: removed.next,
+    runState: { ...raid.runState, health, energy, flags },
+    log: [
+      ...raid.log,
+      makeLogger(now, rand)("system", effect.log ?? "Consumed."),
+    ],
+  };
+}
+
+// Variant of applyConsumable that pulls the item from the floor of the
+// operative's current tile instead of their kit. Same useful-effect gate,
+// same log line, same stat math — only the source differs.
+export function applyConsumableFromFloor(
+  raid: CurrentRaid,
+  uid: string,
+  now: number,
+  rand: () => number,
+): CurrentRaid {
+  const { x, y } = raid.operativePos;
+  const idx = y * raid.map.width + x;
+  const tile = raid.map.tiles[idx];
+  if (!tile) return raid;
+  const onFloor = tile.contents.find((c) => c.uid === uid);
+  if (!onFloor) return raid;
+  const effect = CONSUMABLE_EFFECTS[onFloor.itemId];
+  if (!effect) return raid;
+
+  const rs = raid.runState;
+  const hasBleed =
+    rs.flags.includes("bleeding_minor") || rs.flags.includes("bleeding_major");
+  const hpHelps = (effect.hp ?? 0) > 0 && rs.health < 100;
+  const energyHelps = (effect.energy ?? 0) > 0 && rs.energy < 100;
+  const bleedHelps = !!effect.clearBleed && hasBleed;
+  if (!hpHelps && !energyHelps && !bleedHelps) return raid;
+
+  const { map: nextMap, item } = removeFromTileContents(raid.map, x, y, uid);
+  if (!item) return raid;
+
+  let flags = raid.runState.flags;
+  if (effect.clearBleed) {
+    flags = flags.filter((f) => f !== "bleeding_minor" && f !== "bleeding_major");
+  }
+  const health = Math.max(
+    0,
+    Math.min(100, raid.runState.health + (effect.hp ?? 0)),
+  );
+  const energy = Math.max(
+    0,
+    Math.min(100, raid.runState.energy + (effect.energy ?? 0)),
+  );
+
+  return {
+    ...raid,
+    map: nextMap,
     runState: { ...raid.runState, health, energy, flags },
     log: [
       ...raid.log,

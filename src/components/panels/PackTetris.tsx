@@ -65,6 +65,7 @@ export function PackTetris() {
   // Aliased away from `useConsumable` — the `use` prefix would trigger
   // react-hooks/rules-of-hooks if called inside a callback.
   const consume = useGame((s) => s.useConsumable);
+  const consumeFromFloor = useGame((s) => s.useConsumableFromFloor);
 
   const pocketsRef = useRef<HTMLDivElement>(null);
   // One ref per (containerSlot, sectionId) pair. Bag and rig sections are
@@ -242,14 +243,17 @@ export function PackTetris() {
         if (equipFromFloor(d.uid)) played = true;
       }
     } else if (isInside(consumeZoneRef.current, e.clientX, e.clientY)) {
-      // Use-zone: only consumables in pockets / bag / rig with a
-      // CONSUMABLE_EFFECTS entry. Other items dropped here just fall back
-      // to drag-cancel.
+      // Use-zone: consumables in pockets / bag / rig / floor with a
+      // CONSUMABLE_EFFECTS entry. Other items dropped here fall back to
+      // drag-cancel.
       if (
         (d.source === "pockets" || d.source === "bag" || d.source === "rig") &&
         CONSUMABLE_EFFECTS[d.itemId]
       ) {
         consume(d.uid);
+        played = true;
+      } else if (d.source === "floor" && CONSUMABLE_EFFECTS[d.itemId]) {
+        consumeFromFloor(d.uid);
         played = true;
       }
     } else if (isInside(floorRef.current, e.clientX, e.clientY)) {
@@ -310,7 +314,7 @@ export function PackTetris() {
     setDrag(null);
     setHover(null);
     setSlotHover(null);
-  }, [pockets, containers, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, equipFromFloor, unequipToFloor, consume]);
+  }, [pockets, containers, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, equipFromFloor, unequipToFloor, consume, consumeFromFloor]);
 
   const rotateInPlace = useCallback(() => {
     setDrag((d) => {
@@ -416,7 +420,10 @@ export function PackTetris() {
               // Light up green only when a consumable is being dragged.
               drag &&
                 CONSUMABLE_EFFECTS[drag.itemId] &&
-                (drag.source === "pockets" || drag.source === "bag" || drag.source === "rig") &&
+                (drag.source === "pockets" ||
+                  drag.source === "bag" ||
+                  drag.source === "rig" ||
+                  drag.source === "floor") &&
                 "border-emerald-500/70 bg-emerald-950/30 text-emerald-300",
             )}
             title="Drag a consumable here to use it"
