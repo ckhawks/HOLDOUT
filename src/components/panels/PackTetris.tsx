@@ -145,7 +145,7 @@ export function PackTetris() {
     };
     if (tryGrid(raid.equipment.pockets, "pockets")) return;
     // rig before bag, matching the inventory display order.
-    const ordered = Array.from(iterContainers(raid.equipment)).sort((a, b) =>
+    const ordered = Array.from(iterContainers(raid.equipment)).toSorted((a, b) =>
       a.slot === "rig" ? -1 : b.slot === "rig" ? 1 : 0,
     );
     for (const { slot, container } of ordered) {
@@ -162,8 +162,9 @@ export function PackTetris() {
   const pockets = raid?.equipment.pockets;
   const containers = useMemo(() => {
     if (!raid) return [];
-    const list = Array.from(iterContainers(raid.equipment));
-    return list.sort((a, b) => (a.slot === "rig" ? -1 : b.slot === "rig" ? 1 : 0));
+    return Array.from(iterContainers(raid.equipment)).toSorted((a, b) =>
+      a.slot === "rig" ? -1 : b.slot === "rig" ? 1 : 0,
+    );
   }, [raid]);
 
   const onMove = useCallback((e: PointerEvent, d: DragState) => {

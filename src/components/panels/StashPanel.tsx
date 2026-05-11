@@ -101,7 +101,7 @@ export function StashPanel() {
   );
   const containers = useMemo(
     () =>
-      Array.from(iterContainers(equipment)).sort((a, b) =>
+      Array.from(iterContainers(equipment)).toSorted((a, b) =>
         a.slot === "rig" ? -1 : b.slot === "rig" ? 1 : 0,
       ),
     [equipment],
@@ -325,7 +325,7 @@ export function StashPanel() {
       sortMode === "value"
         ? (a: StashItem, b: StashItem) => effectiveSellValue(b) - effectiveSellValue(a)
         : (a: StashItem, b: StashItem) => (b.acquiredAt ?? 0) - (a.acquiredAt ?? 0);
-    return [...stash].sort(sorter);
+    return stash.toSorted(sorter);
   }, [stash, sortMode]);
 
   // Group sections — when grouped is false, return a single unlabeled section

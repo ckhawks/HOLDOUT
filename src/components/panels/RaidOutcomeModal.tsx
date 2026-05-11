@@ -339,7 +339,7 @@ function ItemList({
         <div className="text-xs italic text-muted-foreground/60">{emptyText}</div>
       ) : (
         <ul className="space-y-0.5">
-          {[...items].sort((a, b) => b.sellValue - a.sellValue).map((it) => {
+          {items.toSorted((a, b) => b.sellValue - a.sellValue).map((it) => {
             const def = ITEMS[it.itemId];
             const tier = def?.tier ?? "common";
             const name = def?.name ?? it.itemId;

@@ -22,6 +22,7 @@ import { NextActionCard } from "./NextActionCard";
 import { RaidMap } from "./RaidMap";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 import { iterKitItems } from "@/lib/engine/equipment";
+import type { LogEntry } from "@/lib/types";
 
 export function FeedPanel() {
   const raid = useGame((s) => s.currentRaid);
@@ -118,90 +119,13 @@ export function FeedPanel() {
       <div className="flex min-h-0 flex-1">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div ref={scrollRef} className="min-h-0 flex-1 select-text overflow-y-auto px-6 py-4 text-sm">
-        {raid.log.map((entry, idx) => {
-          const distFromEnd = raid.log.length - 1 - idx;
-          const opacity = Math.max(0.25, 1 - distFromEnd * 0.05);
-          if (entry.kind === "choice_result") {
-            return (
-              <div
-                key={entry.id}
-                className="flex items-center gap-2 py-0.5 pl-[7.25rem] text-[13px] text-amber-300/90 transition-opacity"
-                style={{ opacity }}
-              >
-                <CornerDownRight className="size-3.5 shrink-0 opacity-70" />
-                <span className="italic">{entry.text}</span>
-              </div>
-            );
-          }
-          if (entry.kind === "combat_resolved") {
-            return (
-              <div
-                key={entry.id}
-                className="my-1 flex items-center gap-3 border-l-2 border-amber-400/70 bg-amber-500/5 py-2 pl-3 pr-3 transition-opacity"
-                style={{ opacity }}
-              >
-                <Crosshair className="size-4 shrink-0 text-amber-300" />
-                <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-amber-300">
-                  Engagement
-                </span>
-                <span className="text-foreground leading-relaxed font-medium">
-                  {splitItemText(entry.text).parts.map((p, i) =>
-                    p.isItem ? (
-                      <span
-                        key={i}
-                        className={cn("font-semibold", tierColorFor(entry.itemId))}
-                      >
-                        {p.text}
-                      </span>
-                    ) : (
-                      <span key={i}>{p.text}</span>
-                    ),
-                  )}
-                </span>
-              </div>
-            );
-          }
-          return (
-          <div
+        {raid.log.map((entry, idx) => (
+          <LogRow
             key={entry.id}
-            className="flex items-center gap-3 py-1.5 transition-opacity"
-            style={{ opacity }}
-          >
-            <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
-              {new Date(entry.timestamp).toLocaleTimeString([], { hour12: false })}
-            </span>
-            <span
-              className={cn(
-                "shrink-0 font-mono uppercase tracking-widest text-[10px] w-16",
-                entry.kind === "loot" && "text-emerald-400/80",
-                entry.kind === "damage" && "text-red-400/80",
-                entry.kind === "system" && "text-foreground",
-                entry.kind === "flavor" && "text-muted-foreground",
-                entry.kind === "choice" && "text-amber-400/80",
-              )}
-            >
-              {entry.kind}
-            </span>
-            <span className="text-foreground/90 leading-relaxed">
-              {splitItemText(entry.text).parts.map((p, i) =>
-                p.isItem ? (
-                  <span
-                    key={i}
-                    className={cn(
-                      "font-semibold",
-                      tierColorFor(entry.itemId),
-                    )}
-                  >
-                    {p.text}
-                  </span>
-                ) : (
-                  <span key={i}>{p.text}</span>
-                ),
-              )}
-            </span>
-          </div>
-          );
-        })}
+            entry={entry}
+            opacity={Math.max(0.25, 1 - (raid.log.length - 1 - idx) * 0.05)}
+          />
+        ))}
       </div>
       <RaidMap />
       </div>
@@ -210,6 +134,80 @@ export function FeedPanel() {
       </div>
       <BranchModal />
     </section>
+  );
+}
+
+function LogRow({ entry, opacity }: { entry: LogEntry; opacity: number }) {
+  if (entry.kind === "choice_result") {
+    return (
+      <div
+        className="flex items-center gap-2 py-0.5 pl-[7.25rem] text-[13px] text-amber-300/90 transition-opacity"
+        style={{ opacity }}
+      >
+        <CornerDownRight className="size-3.5 shrink-0 opacity-70" />
+        <span className="italic">{entry.text}</span>
+      </div>
+    );
+  }
+  const parts = splitItemText(entry.text).parts;
+  const itemColor = tierColorFor(entry.itemId);
+  if (entry.kind === "combat_resolved") {
+    return (
+      <div
+        className="my-1 flex items-center gap-3 border-l-2 border-amber-400/70 bg-amber-500/5 py-2 pl-3 pr-3 transition-opacity"
+        style={{ opacity }}
+      >
+        <Crosshair className="size-4 shrink-0 text-amber-300" />
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-amber-300">
+          Engagement
+        </span>
+        <span className="text-foreground leading-relaxed font-medium">
+          {parts.map((p, i) =>
+            p.isItem ? (
+              <span key={i} className={cn("font-semibold", itemColor)}>
+                {p.text}
+              </span>
+            ) : (
+              <span key={i}>{p.text}</span>
+            ),
+          )}
+        </span>
+      </div>
+    );
+  }
+  const time = new Date(entry.timestamp).toLocaleTimeString([], { hour12: false });
+  return (
+    <div
+      className="flex items-center gap-3 py-1.5 transition-opacity"
+      style={{ opacity }}
+    >
+      <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+        {time}
+      </span>
+      <span
+        className={cn(
+          "shrink-0 font-mono uppercase tracking-widest text-[10px] w-16",
+          entry.kind === "loot" && "text-emerald-400/80",
+          entry.kind === "damage" && "text-red-400/80",
+          entry.kind === "system" && "text-foreground",
+          entry.kind === "flavor" && "text-muted-foreground",
+          entry.kind === "choice" && "text-amber-400/80",
+        )}
+      >
+        {entry.kind}
+      </span>
+      <span className="text-foreground/90 leading-relaxed">
+        {parts.map((p, i) =>
+          p.isItem ? (
+            <span key={i} className={cn("font-semibold", itemColor)}>
+              {p.text}
+            </span>
+          ) : (
+            <span key={i}>{p.text}</span>
+          ),
+        )}
+      </span>
+    </div>
   );
 }
 
