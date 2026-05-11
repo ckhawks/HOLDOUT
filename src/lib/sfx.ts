@@ -14,17 +14,16 @@ export type SfxId = (typeof SFX_FILES)[number]["id"];
 
 export type SfxKind = "tick" | "inventory" | "error" | "click";
 
-const KIND_MAP: Record<SfxKind, SfxId | null> = {
+const KIND_MAP: Record<SfxKind, SfxId> = {
   tick: "click_minimal",
   inventory: "hover_g",
   error: "decline",
-  click: null, // falls back to active picker selection
+  click: "click_minimal",
 };
 
-const STORAGE_KEY = "holdout:sfx:active";
 const POOL_SIZE = 6;
+const VOLUME_STORAGE_KEY = "holdout:sfx:volume";
 
-let activeId: SfxId | null = null;
 let volume = 0.5;
 const pool: HTMLAudioElement[] = [];
 let poolCursor = 0;
@@ -43,35 +42,25 @@ export function initSfx() {
       pool.push(a);
     }
   }
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === "__off__") {
-    activeId = null;
-  } else if (stored && SFX_FILES.some((f) => f.id === stored)) {
-    activeId = stored as SfxId;
-  } else {
-    activeId = "press";
-  }
+  const stored = localStorage.getItem(VOLUME_STORAGE_KEY);
+  const parsed = stored ? parseFloat(stored) : NaN;
+  if (Number.isFinite(parsed)) volume = Math.max(0, Math.min(1, parsed));
 }
 
-export function setActiveSfx(id: SfxId | null) {
-  activeId = id;
-  if (typeof window !== "undefined") {
-    localStorage.setItem(STORAGE_KEY, id ?? "__off__");
-  }
-}
-
-export function getActiveSfx(): SfxId | null {
-  return activeId;
+export function getSfxVolume(): number {
+  return volume;
 }
 
 export function setSfxVolume(v: number) {
   volume = Math.max(0, Math.min(1, v));
+  if (typeof window !== "undefined") {
+    localStorage.setItem(VOLUME_STORAGE_KEY, String(volume));
+  }
 }
 
 export function playSfx(kind: SfxKind = "click") {
   if (typeof window === "undefined") return;
-  const id = KIND_MAP[kind] ?? activeId;
-  if (!id) return;
+  const id = KIND_MAP[kind];
   const src = srcFor(id);
   if (!src) return;
   const a = pool[poolCursor];

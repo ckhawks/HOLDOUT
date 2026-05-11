@@ -200,3 +200,50 @@
 .raid-report-sweep {
   animation: raid-report-sweep 900ms ease-out 120ms 1;
 }
+
+/* Slim slider thumb used for header SFX volume. Keep the track tall enough
+ * for the cursor to hit but shrink the thumb so it reads as a small dot.
+ */
+.slider-slim {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.slider-slim {
+  --slider-pct: 50%;
+  --slider-track-bg: color-mix(in oklab, var(--border) 80%, transparent);
+  --slider-fill-bg: var(--foreground);
+}
+.slider-slim::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 1px;
+  background:
+    linear-gradient(to right, var(--slider-fill-bg) 0 var(--slider-pct), var(--slider-track-bg) var(--slider-pct) 100%);
+}
+.slider-slim::-moz-range-track {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--slider-track-bg);
+}
+.slider-slim::-moz-range-progress {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--slider-fill-bg);
+}
+.slider-slim::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--foreground);
+  border: none;
+  margin-top: -3px;
+}
+.slider-slim::-moz-range-thumb {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--foreground);
+  border: none;
+}

@@ -3,10 +3,10 @@
 import { useMemo } from "react";
 import { useGame } from "@/store/game";
 import { Package, Radio } from "lucide-react";
-import { SfxPicker } from "./SfxPicker";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { effectiveSellValue } from "@/store/slices/economy";
+import { SfxVolume } from "./SfxVolume";
 
 export function Header() {
   const cash = useGame((s) => s.cash);
@@ -31,7 +31,7 @@ export function Header() {
           <span className="text-muted-foreground">/ dispatch terminal</span>
         </div>
         <div className="flex items-center gap-6">
-          <SfxPicker />
+          <SfxVolume />
           <span className="text-muted-foreground">
             {op.name}
             <span className="ml-2 text-foreground">[{status}]</span>
