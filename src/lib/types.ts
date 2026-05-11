@@ -284,6 +284,11 @@ export interface Location {
   // more cramped layouts.
   blockedTileRatio?: number;
   unlock?: LocationUnlock;
+  // Per-location pool of "specialized construction junk" item ids (see
+  // §10.5 / construction system). On each loot roll, pickItemForLocation
+  // first checks for a small specialized-drop chance against this pool.
+  // Items not in this list never drop from this location.
+  specializedDrops?: ReadonlyArray<string>;
 }
 
 export type RoomType =

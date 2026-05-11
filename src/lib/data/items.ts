@@ -283,6 +283,11 @@ const UNLOCK_TOKEN_CHANCE = 0.04; // ~4% of rare-event drops in eligible locatio
 // point of category weights is location flavor.
 const WILDCARD_CHANCE = 0.06;
 
+// Per-location chance that a regular loot roll is replaced by a specialized
+// construction-junk drop. Kept low so the rare/specialized pool doesn't
+// crowd out generic loot, but high enough to give a build target.
+const SPECIALIZED_DROP_CHANCE = 0.04;
+
 export function pickItemForLocation(
   rand: () => number,
   location: Location,
@@ -294,6 +299,15 @@ export function pickItemForLocation(
     const token = UNLOCK_TOKEN_DROPS[location.id];
     if (token && rand() < UNLOCK_TOKEN_CHANCE) return token;
     if (rand() < 0.05) return "workbench_schematic";
+  }
+
+  // Specialized construction-junk drops — per-location pool, small flat
+  // chance. Lets every location have a build target without inflating the
+  // generic tier pools.
+  if (location.specializedDrops && location.specializedDrops.length > 0) {
+    if (rand() < SPECIALIZED_DROP_CHANCE) {
+      return location.specializedDrops[Math.floor(rand() * location.specializedDrops.length)];
+    }
   }
 
   const weights = location.categoryWeights;

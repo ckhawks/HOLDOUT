@@ -97,6 +97,34 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
         items: operative.equipment.pockets.items,
       },
     };
+    // Generator: deduct power cells for high-tier modules at raid start.
+    // Insufficient cells doesn't block the raid — we just consume what we
+    // have. Degradation of effective tier when undersupplied is a future
+    // polish; v1 just exercises the cell sink so cracked_battery has a
+    // recurring use beyond pure sell-fodder.
+    const { construction } = get();
+    let nextConstruction = construction;
+    if (construction.modules.generator.built) {
+      let required = 0;
+      const m = construction.modules;
+      if (m.workbench.built && m.workbench.tier >= 3) required += 1;
+      if (m.recycler.built && m.recycler.tier >= 3) required += 1;
+      if (m.research_bench.built && m.research_bench.tier >= 2) required += 1;
+      if (m.foundry.built) {
+        if (m.foundry.tier >= 3) required += 2;
+        else if (m.foundry.tier >= 2) required += 1;
+      }
+      if (required > 0) {
+        const have = construction.generator.powerCells;
+        const consumed = Math.min(have, required);
+        if (consumed > 0) {
+          nextConstruction = {
+            ...construction,
+            generator: { powerCells: have - consumed },
+          };
+        }
+      }
+    }
     set({
       stash: nextStash,
       currentRaid: startRaid(
@@ -108,6 +136,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       ),
       operative: { ...operative, state: "raiding" },
       activePanel: "feed",
+      ...(nextConstruction !== construction ? { construction: nextConstruction } : {}),
     });
   },
 

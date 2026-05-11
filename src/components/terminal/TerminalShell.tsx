@@ -9,6 +9,10 @@ import { RecyclerPanel } from "@/components/panels/RecyclerPanel";
 import { FoundryPanel } from "@/components/panels/FoundryPanel";
 import { WorkbenchPanel } from "@/components/panels/WorkbenchPanel";
 import { ResearchBenchPanel } from "@/components/panels/ResearchBenchPanel";
+import { ArmoryPanel } from "@/components/panels/ArmoryPanel";
+import { ArmorStandPanel } from "@/components/panels/ArmorStandPanel";
+import { RepairBenchPanel } from "@/components/panels/RepairBenchPanel";
+import { GeneratorPanel } from "@/components/panels/GeneratorPanel";
 import { StashPanel } from "@/components/panels/StashPanel";
 import { OpsPanel } from "@/components/panels/OpsPanel";
 import { FeedPanel } from "@/components/panels/FeedPanel";
@@ -158,6 +162,10 @@ export function TerminalShell() {
           {panel === "foundry" && <FoundryPanel />}
           {panel === "workbench" && <WorkbenchPanel />}
           {panel === "research_bench" && <ResearchBenchPanel />}
+          {panel === "armory" && <ArmoryPanel />}
+          {panel === "armor_stand" && <ArmorStandPanel />}
+          {panel === "repair_bench" && <RepairBenchPanel />}
+          {panel === "generator" && <GeneratorPanel />}
           {panel === "stash" && <StashPanel />}
           {panel === "ops" && <OpsPanel />}
           {panel === "feed" && <FeedPanel />}

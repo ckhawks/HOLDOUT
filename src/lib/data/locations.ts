@@ -25,6 +25,7 @@ export const LOCATIONS: Location[] = [
       office: 1,
       locked: 1,
     },
+    specializedDrops: ["industrial_shelving", "industrial_motor"],
   },
   {
     id: "subway",
@@ -53,6 +54,7 @@ export const LOCATIONS: Location[] = [
     // Cramped tunnels — collapsed sections, flooded passages, blocked-off
     // platforms. ~2× the default blocker density.
     blockedTileRatio: 0.24,
+    specializedDrops: ["medical_autoclave", "surgical_kit", "reinforced_locker"],
   },
   {
     id: "drone_graveyard",
@@ -77,6 +79,7 @@ export const LOCATIONS: Location[] = [
       locked: 2,
       office: 1,
     },
+    specializedDrops: ["industrial_motor", "power_tool", "control_board", "calibration_jig"],
   },
   {
     id: "datacenter",
@@ -106,6 +109,7 @@ export const LOCATIONS: Location[] = [
       itemId: "datacenter_keycard",
       label: "Keycard: Datacenter",
     },
+    specializedDrops: ["precision_lathe", "calibration_jig", "control_board", "vault_door"],
   },
   {
     id: "biolab",
@@ -135,6 +139,7 @@ export const LOCATIONS: Location[] = [
       itemId: "biolab_coords",
       label: "Biolab Coordinates",
     },
+    specializedDrops: ["medical_autoclave", "anesthesia_rig", "surgical_kit", "modular_harness"],
   },
 ];
 

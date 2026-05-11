@@ -72,6 +72,12 @@ export interface ConstructionSlice {
   // Workbench + Research
   craftRecipe: (recipeId: string) => { ok: boolean; reason?: string };
   startResearch: (recipeId: string) => { ok: boolean; reason?: string };
+  // Armory: deposit/withdraw equippable gear; armory holds an item-count
+  // capped pool excluded from stash + stash capacity counting.
+  depositArmoryItem: (uid: string) => { ok: boolean; reason?: "not_built" | "not_eligible" | "not_found" | "full" };
+  withdrawArmoryItem: (uid: string) => { ok: boolean; reason?: "not_found" | "stash_full" };
+  // Generator: convert a cracked_battery in stash into a stored power cell.
+  depositPowerCell: () => { ok: boolean; reason?: "not_built" | "no_battery" };
 }
 
 export const createConstructionSlice: StateCreator<GameState, [], [], ConstructionSlice> = (set, get) => ({
@@ -253,6 +259,63 @@ export const createConstructionSlice: StateCreator<GameState, [], [], Constructi
       construction: { ...construction, foundry, log },
     });
     return { ok: true, smelted: consumedUids.size };
+  },
+
+  depositArmoryItem: (uid) => {
+    const { stash, construction, hideout } = get();
+    if (!construction.modules.armory.built) return { ok: false, reason: "not_built" };
+    const idx = stash.findIndex((s) => s.uid === uid);
+    if (idx === -1) return { ok: false, reason: "not_found" };
+    const si = stash[idx];
+    const def = ITEMS[si.itemId];
+    // Armory holds slot-defined gear (bags, rigs, weapons, armor, helmets).
+    if (!def?.slot) return { ok: false, reason: "not_eligible" };
+    const capacity = construction.modules.armory.tier === 1 ? 8 : 16;
+    if (construction.armory.items.length >= capacity) return { ok: false, reason: "full" };
+    void hideout; // armory capacity is independent of stash modules
+    const nextStash = [...stash.slice(0, idx), ...stash.slice(idx + 1)];
+    set({
+      stash: nextStash,
+      construction: {
+        ...construction,
+        armory: { items: [...construction.armory.items, si] },
+      },
+    });
+    return { ok: true };
+  },
+
+  withdrawArmoryItem: (uid) => {
+    const { stash, construction, hideout } = get();
+    const idx = construction.armory.items.findIndex((s) => s.uid === uid);
+    if (idx === -1) return { ok: false, reason: "not_found" };
+    const cap = hideout.modules.stash.capacity ?? Infinity;
+    if (stash.length >= cap) return { ok: false, reason: "stash_full" };
+    const si = construction.armory.items[idx];
+    const nextArmory = [
+      ...construction.armory.items.slice(0, idx),
+      ...construction.armory.items.slice(idx + 1),
+    ];
+    set({
+      stash: [...stash, si],
+      construction: { ...construction, armory: { items: nextArmory } },
+    });
+    return { ok: true };
+  },
+
+  depositPowerCell: () => {
+    const { stash, construction } = get();
+    if (!construction.modules.generator.built) return { ok: false, reason: "not_built" };
+    const idx = stash.findIndex((s) => !s.pinned && s.itemId === "cracked_battery");
+    if (idx === -1) return { ok: false, reason: "no_battery" };
+    const nextStash = [...stash.slice(0, idx), ...stash.slice(idx + 1)];
+    set({
+      stash: nextStash,
+      construction: {
+        ...construction,
+        generator: { powerCells: construction.generator.powerCells + 1 },
+      },
+    });
+    return { ok: true };
   },
 
   craftRecipe: (recipeId) => {

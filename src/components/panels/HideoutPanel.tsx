@@ -1,6 +1,6 @@
 "use client";
 
-import { Backpack, Flame, Hammer, HeartPulse, Microscope, Package, Plus, Recycle } from "lucide-react";
+import { Backpack, Flame, Hammer, HeartPulse, Microscope, Package, Plus, Recycle, Shield, Shirt, Wrench, Zap } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
@@ -62,6 +62,10 @@ export function HideoutPanel() {
   const foundry = useGame((s) => s.construction.modules.foundry);
   const workbench = useGame((s) => s.construction.modules.workbench);
   const researchBench = useGame((s) => s.construction.modules.research_bench);
+  const armory = useGame((s) => s.construction.modules.armory);
+  const armorStand = useGame((s) => s.construction.modules.armor_stand);
+  const repairBench = useGame((s) => s.construction.modules.repair_bench);
+  const generator = useGame((s) => s.construction.modules.generator);
 
   const stashCost = stashUpgradeCost(upgrades);
   const stashList = useGame((s) => s.stash);
@@ -212,6 +216,54 @@ export function HideoutPanel() {
               className="rounded-sm"
             >
               {researchBench.built ? "Open Bench" : "View build cost"}
+            </Button>
+          }
+        />
+        <ModuleCard
+          Icon={Shield}
+          name="Armory"
+          status={armory.built ? `tier ${armory.tier} · gear storage` : "not built · 1200¤ + parts"}
+          unlocked
+          hint={armory.built ? undefined : "Specialized storage for equippable gear"}
+          action={
+            <Button variant="outline" size="sm" onClick={() => setPanel("armory")} className="rounded-sm">
+              {armory.built ? "Open Armory" : "View build cost"}
+            </Button>
+          }
+        />
+        <ModuleCard
+          Icon={Zap}
+          name="Generator"
+          status={generator.built ? `tier ${generator.tier} · power online` : "not built · 3000¤ + parts"}
+          unlocked
+          hint={generator.built ? undefined : "Powers high-tier modules at raid start"}
+          action={
+            <Button variant="outline" size="sm" onClick={() => setPanel("generator")} className="rounded-sm">
+              {generator.built ? "Open Generator" : "View build cost"}
+            </Button>
+          }
+        />
+        <ModuleCard
+          Icon={Shirt}
+          name="Armor Stand"
+          status={armorStand.built ? `tier ${armorStand.tier} · presets pending` : "not built · 500¤ + parts"}
+          unlocked
+          hint={armorStand.built ? undefined : "Loadout presets (coming later)"}
+          action={
+            <Button variant="outline" size="sm" onClick={() => setPanel("armor_stand")} className="rounded-sm">
+              {armorStand.built ? "Open Stand" : "View build cost"}
+            </Button>
+          }
+        />
+        <ModuleCard
+          Icon={Wrench}
+          name="Repair Bench"
+          status={repairBench.built ? "built · awaiting condition system" : "not built · 1000¤ + parts"}
+          unlocked
+          hint={repairBench.built ? undefined : "Repair gear (coming with weapon condition)"}
+          action={
+            <Button variant="outline" size="sm" onClick={() => setPanel("repair_bench")} className="rounded-sm">
+              {repairBench.built ? "Open Bench" : "View build cost"}
             </Button>
           }
         />
