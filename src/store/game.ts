@@ -18,6 +18,7 @@ import { pocketsDimensions, stashCapacity } from "@/lib/engine/upgrades";
 import { createKitSlice, type KitSlice } from "./slices/kit";
 import { createEconomySlice, type EconomySlice } from "./slices/economy";
 import { createRaidSlice, type RaidSlice } from "./slices/raid";
+import { createConstructionSlice, type ConstructionSlice } from "./slices/construction";
 import {
   defaultConstructionState,
   loadGame,
@@ -26,7 +27,7 @@ import {
   type PersistedState,
 } from "@/lib/engine/save";
 
-export type PanelId = "hideout" | "stash" | "ops" | "feed" | "shop" | "manual" | "data" | "settings";
+export type PanelId = "hideout" | "stash" | "ops" | "feed" | "shop" | "manual" | "data" | "settings" | "recycler";
 
 // After-raid report. Built once in endRaid() — captures the diff between
 // startingEquipment and final equipment plus the per-tick counters the slice
@@ -76,7 +77,7 @@ export interface RaidOutcome {
 
 // State + non-slice actions. Slice interfaces (KitSlice, etc.) are merged in
 // via interface extension so the Zustand store sees one combined shape.
-export interface GameState extends KitSlice, EconomySlice, RaidSlice {
+export interface GameState extends KitSlice, EconomySlice, RaidSlice, ConstructionSlice {
   cash: number;
   stash: StashItem[];
   operative: Operative;
@@ -170,6 +171,7 @@ export const useGame = create<GameState>((set, get, store) => ({
   ...createRaidSlice(set, get, store),
   ...createKitSlice(set, get, store),
   ...createEconomySlice(set, get, store),
+  ...createConstructionSlice(set, get, store),
 
   resetGame: () => {
     clearSave();

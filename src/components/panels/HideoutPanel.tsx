@@ -1,6 +1,6 @@
 "use client";
 
-import { Backpack, Hammer, HeartPulse, Package, Plus } from "lucide-react";
+import { Backpack, Hammer, HeartPulse, Package, Plus, Recycle } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
@@ -53,6 +53,7 @@ export function HideoutPanel() {
   const setPanel = useGame((s) => s.setPanel);
   const buyStash = useGame((s) => s.buyStashUpgrade);
   const equipment = useGame((s) => s.operative.equipment);
+  const recycler = useGame((s) => s.construction.modules.recycler);
 
   const stashCost = stashUpgradeCost(upgrades);
   const summarizeContainer = (label: string, c: typeof equipment.bag): string => {
@@ -102,6 +103,23 @@ export function HideoutPanel() {
               className="rounded-sm"
             >
               Manage in Stash
+            </Button>
+          }
+        />
+        <ModuleCard
+          Icon={Recycle}
+          name="Recycler"
+          status={recycler.built ? `tier ${recycler.tier} · ready` : "not built · 600¤ + 1 Industrial Motor"}
+          unlocked
+          hint={recycler.built ? undefined : "Decompose junk into base components"}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPanel("recycler")}
+              className="rounded-sm"
+            >
+              {recycler.built ? "Open Recycler" : "View build cost"}
             </Button>
           }
         />

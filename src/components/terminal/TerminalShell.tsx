@@ -5,6 +5,7 @@ import { useGame } from "@/store/game";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { HideoutPanel } from "@/components/panels/HideoutPanel";
+import { RecyclerPanel } from "@/components/panels/RecyclerPanel";
 import { StashPanel } from "@/components/panels/StashPanel";
 import { OpsPanel } from "@/components/panels/OpsPanel";
 import { FeedPanel } from "@/components/panels/FeedPanel";
@@ -150,6 +151,7 @@ export function TerminalShell() {
         <Sidebar />
         <main className="grid-paper flex min-h-0 flex-1 flex-col">
           {panel === "hideout" && <HideoutPanel />}
+          {panel === "recycler" && <RecyclerPanel />}
           {panel === "stash" && <StashPanel />}
           {panel === "ops" && <OpsPanel />}
           {panel === "feed" && <FeedPanel />}
