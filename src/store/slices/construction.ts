@@ -12,9 +12,17 @@ import {
   payCost,
 } from "@/lib/engine/hideout";
 import { describeProduced, recycleItem } from "@/lib/engine/recycle";
+import {
+  describeSmelt,
+  metalSellValue,
+  smeltItem,
+  withdrawMetal,
+} from "@/lib/engine/foundry";
 import { RECYCLE_RECIPES } from "@/lib/data/recycle";
+import { SMELT_RECIPES, METAL_DISPLAY_NAME } from "@/lib/data/smelt";
 import { ITEMS } from "@/lib/data/items";
 import { MODULE_DEFS } from "@/lib/data/modules";
+import type { MetalId } from "@/lib/types";
 import { rollValueMod } from "./economy";
 import type { GameState } from "../game";
 
@@ -54,6 +62,10 @@ export interface ConstructionSlice {
   // Recycler — one item or a stack of N
   recycleStashItem: (uid: string) => { ok: boolean; reason?: "not_found" | "no_recipe" | "tier_too_low" | "not_built" };
   recycleStackByItemId: (itemId: string, count?: number) => { ok: boolean; recycled: number };
+  // Foundry
+  smeltStashItem: (uid: string) => { ok: boolean; reason?: "not_found" | "no_recipe" | "tier_too_low" | "not_built" };
+  smeltStackByItemId: (itemId: string, count?: number) => { ok: boolean; smelted: number };
+  sellMetal: (metal: MetalId, amount: number) => { ok: boolean; cash: number };
 }
 
 export const createConstructionSlice: StateCreator<GameState, [], [], ConstructionSlice> = (set, get) => ({
@@ -156,6 +168,108 @@ export const createConstructionSlice: StateCreator<GameState, [], [], Constructi
     );
     set({ stash: nextStash, construction: { ...construction, log } });
     return { ok: true };
+  },
+
+  smeltStashItem: (uid) => {
+    const { stash, construction } = get();
+    const mod = construction.modules.foundry;
+    if (!mod.built) return { ok: false, reason: "not_built" };
+    const idx = stash.findIndex((s) => s.uid === uid);
+    if (idx === -1) return { ok: false, reason: "not_found" };
+    const si = stash[idx];
+    if (si.pinned) return { ok: false, reason: "not_found" };
+    if (!SMELT_RECIPES[si.itemId]) return { ok: false, reason: "no_recipe" };
+    const r = smeltItem(si, construction.foundry, mod);
+    if ("error" in r) {
+      return { ok: false, reason: r.error === "not_built" ? "not_built" : r.error };
+    }
+    const nextStash = [...stash];
+    nextStash.splice(idx, 1);
+    const now = Date.now();
+    const inputName = ITEMS[si.itemId]?.name ?? si.itemId;
+    const log = appendLog(
+      construction.log,
+      "foundry",
+      `Smelted ${inputName} → ${describeSmelt(r.result)}`,
+      now,
+    );
+    set({
+      stash: nextStash,
+      construction: { ...construction, foundry: r.foundry, log },
+    });
+    return { ok: true };
+  },
+
+  smeltStackByItemId: (itemId, count) => {
+    const { stash, construction } = get();
+    const mod = construction.modules.foundry;
+    if (!mod.built) return { ok: false, smelted: 0 };
+    if (mod.tier < 2) return { ok: false, smelted: 0 }; // bulk gated to L2+
+    const recipe = SMELT_RECIPES[itemId];
+    if (!recipe) return { ok: false, smelted: 0 };
+    const tier = mod.tier as 1 | 2 | 3;
+    if ((recipe.minTier ?? 1) > tier) return { ok: false, smelted: 0 };
+
+    const candidates = stash.filter((s) => !s.pinned && s.itemId === itemId);
+    const take = count != null ? Math.min(count, candidates.length) : candidates.length;
+    if (take === 0) return { ok: false, smelted: 0 };
+
+    let foundry = construction.foundry;
+    const consumedUids = new Set<string>();
+    const totalAdded: Partial<Record<MetalId, number>> = {};
+    const totalWasted: Partial<Record<MetalId, number>> = {};
+    for (let i = 0; i < take; i++) {
+      const c = candidates[i];
+      const r = smeltItem(c, foundry, mod);
+      if ("error" in r) break;
+      foundry = r.foundry;
+      consumedUids.add(c.uid);
+      for (const [m, n] of Object.entries(r.result.added) as Array<[MetalId, number]>) {
+        totalAdded[m] = (totalAdded[m] ?? 0) + n;
+      }
+      for (const [m, n] of Object.entries(r.result.wasted) as Array<[MetalId, number]>) {
+        totalWasted[m] = (totalWasted[m] ?? 0) + n;
+      }
+    }
+    if (consumedUids.size === 0) return { ok: false, smelted: 0 };
+    const nextStash = stash.filter((s) => !consumedUids.has(s.uid));
+    const now = Date.now();
+    const inputName = ITEMS[itemId]?.name ?? itemId;
+    const text = describeSmelt({ consumedUid: "_", added: totalAdded, wasted: totalWasted });
+    const log = appendLog(
+      construction.log,
+      "foundry",
+      `Smelted ${consumedUids.size}× ${inputName} → ${text}`,
+      now,
+    );
+    set({
+      stash: nextStash,
+      construction: { ...construction, foundry, log },
+    });
+    return { ok: true, smelted: consumedUids.size };
+  },
+
+  sellMetal: (metal, amount) => {
+    const { cash, construction } = get();
+    const mod = construction.modules.foundry;
+    if (!mod.built) return { ok: false, cash };
+    if (amount <= 0) return { ok: false, cash };
+    const r = withdrawMetal(construction.foundry, metal, amount);
+    if (r.withdrawn === 0) return { ok: false, cash };
+    const earned = metalSellValue(metal, r.withdrawn);
+    const nextCash = cash + earned;
+    const now = Date.now();
+    const log = appendLog(
+      construction.log,
+      "foundry",
+      `Sold ${r.withdrawn} ${METAL_DISPLAY_NAME[metal]} → ¤${earned}`,
+      now,
+    );
+    set({
+      cash: nextCash,
+      construction: { ...construction, foundry: r.foundry, log },
+    });
+    return { ok: true, cash: nextCash };
   },
 
   recycleStackByItemId: (itemId, count) => {

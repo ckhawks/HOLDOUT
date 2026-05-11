@@ -1,6 +1,6 @@
 "use client";
 
-import { Backpack, Hammer, HeartPulse, Package, Plus, Recycle } from "lucide-react";
+import { Backpack, Flame, Hammer, HeartPulse, Package, Plus, Recycle } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { cn } from "@/lib/utils";
@@ -54,6 +54,7 @@ export function HideoutPanel() {
   const buyStash = useGame((s) => s.buyStashUpgrade);
   const equipment = useGame((s) => s.operative.equipment);
   const recycler = useGame((s) => s.construction.modules.recycler);
+  const foundry = useGame((s) => s.construction.modules.foundry);
 
   const stashCost = stashUpgradeCost(upgrades);
   const summarizeContainer = (label: string, c: typeof equipment.bag): string => {
@@ -120,6 +121,23 @@ export function HideoutPanel() {
               className="rounded-sm"
             >
               {recycler.built ? "Open Recycler" : "View build cost"}
+            </Button>
+          }
+        />
+        <ModuleCard
+          Icon={Flame}
+          name="Foundry"
+          status={foundry.built ? `tier ${foundry.tier} · vessels online` : "not built · 2500¤ + parts"}
+          unlocked
+          hint={foundry.built ? undefined : "Melt metallic items into vessel-stored metals"}
+          action={
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPanel("foundry")}
+              className="rounded-sm"
+            >
+              {foundry.built ? "Open Foundry" : "View build cost"}
             </Button>
           }
         />
