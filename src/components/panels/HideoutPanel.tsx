@@ -10,6 +10,11 @@ import {
   STASH_SLOTS_PER_LEVEL,
   stashUpgradeCost,
 } from "@/lib/engine/upgrades";
+import { canAfford as canAffordCost } from "@/lib/engine/hideout";
+import { ITEMS } from "@/lib/data/items";
+import { METAL_DISPLAY_NAME } from "@/lib/data/smelt";
+import { tierColorFor } from "@/lib/itemDisplay";
+import type { MetalId } from "@/lib/types";
 
 interface ModuleCardProps {
   Icon: typeof Package;
@@ -59,6 +64,9 @@ export function HideoutPanel() {
   const researchBench = useGame((s) => s.construction.modules.research_bench);
 
   const stashCost = stashUpgradeCost(upgrades);
+  const stashList = useGame((s) => s.stash);
+  const foundryState = useGame((s) => s.construction.foundry);
+  const stashAfford = canAffordCost(stashCost, { cash, stash: stashList, foundry: foundryState });
   const summarizeContainer = (label: string, c: typeof equipment.bag): string => {
     if (!c) return `no ${label} equipped`;
     if (c.sections.length === 1) {
@@ -80,16 +88,32 @@ export function HideoutPanel() {
           status={`${stashLen} of ${h.modules.stash.capacity} slots · level ${upgrades.stashLevel}`}
           unlocked
           action={
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={cash < stashCost}
-              onClick={buyStash}
-              className="rounded-sm"
-            >
-              <Plus className="size-3.5" />
-              +{STASH_SLOTS_PER_LEVEL} slots · ¤{stashCost.toLocaleString()}
-            </Button>
+            <div className="flex flex-col gap-1.5">
+              {((stashCost.items?.length ?? 0) > 0 || (stashCost.metals?.length ?? 0) > 0) && (
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                  {(stashCost.items ?? []).map((req) => (
+                    <span key={req.id}>
+                      {req.count}× <span className={tierColorFor(req.id)}>{ITEMS[req.id]?.name ?? req.id}</span>
+                    </span>
+                  ))}
+                  {(stashCost.metals ?? []).map((req) => (
+                    <span key={req.id}>
+                      {req.count} {METAL_DISPLAY_NAME[req.id as MetalId] ?? req.id}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!stashAfford.ok}
+                onClick={buyStash}
+                className="rounded-sm"
+              >
+                <Plus className="size-3.5" />
+                +{STASH_SLOTS_PER_LEVEL} slots · ¤{stashCost.cash.toLocaleString()}
+              </Button>
+            </div>
           }
         />
         <ModuleCard

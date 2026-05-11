@@ -35,13 +35,30 @@ describe("upgrade costs", () => {
     expect(pocketsUpgradeCost(lvl(4, 0))).toBe(1500);
   });
 
-  it("stash cost grows by 400/level from 800", () => {
-    expect(stashUpgradeCost(lvl(0, 0))).toBe(800);
-    expect(stashUpgradeCost(lvl(0, 1))).toBe(1200);
-    expect(stashUpgradeCost(lvl(0, 3))).toBe(2000);
+  it("stash cost follows the construction-system ladder (cash + components)", () => {
+    // L0 -> L1 is cash-only.
+    expect(stashUpgradeCost(lvl(0, 0)).cash).toBe(300);
+    expect(stashUpgradeCost(lvl(0, 0)).items ?? []).toEqual([]);
+    // L1 -> L2 adds components.
+    const l2 = stashUpgradeCost(lvl(0, 1));
+    expect(l2.cash).toBe(700);
+    expect(l2.items?.map((i) => i.id).sort()).toEqual(["industrial_shelving", "scrap_metal"].sort());
+    // L3 -> L4 adds metals.
+    const l4 = stashUpgradeCost(lvl(0, 3));
+    expect(l4.cash).toBe(3500);
+    expect(l4.metals?.[0]).toEqual({ id: "steel", count: 200 });
   });
 
-  it("costs are strictly increasing (endless progression assumption)", () => {
+  it("stash cost falls back to a cash-only progression past the ladder's end", () => {
+    // Ladder runs through level 6. Beyond, fall back to a steep cash-only
+    // curve so the game doesn't dead-end.
+    const beyond = stashUpgradeCost(lvl(0, 12));
+    expect(beyond.items).toBeUndefined();
+    expect(beyond.metals).toBeUndefined();
+    expect(beyond.cash).toBeGreaterThan(0);
+  });
+
+  it("pockets cost is strictly increasing (endless progression assumption)", () => {
     let prev = -1;
     for (let i = 0; i < 20; i++) {
       const c = pocketsUpgradeCost(lvl(i, 0));

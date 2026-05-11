@@ -5,6 +5,7 @@ import { isConsumable } from "@/lib/engine/consumables";
 import { makeRng } from "@/lib/engine/raid";
 import { refreshShop } from "@/lib/engine/shop";
 import { stashCapacity, stashUpgradeCost } from "@/lib/engine/upgrades";
+import { canAfford as canAffordCost, payCost } from "@/lib/engine/hideout";
 import type { GameState } from "../game";
 
 // Per-item sell-value multiplier range. Rolled at acquisition (raid loot,
@@ -121,12 +122,15 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
   },
 
   buyStashUpgrade: () => {
-    const { cash, upgrades, hideout } = get();
+    const { cash, stash, upgrades, hideout, construction } = get();
     const cost = stashUpgradeCost(upgrades);
-    if (cash < cost) return;
+    const afford = canAffordCost(cost, { cash, stash, foundry: construction.foundry });
+    if (!afford.ok) return;
+    const paid = payCost(cost, { cash, stash, foundry: construction.foundry });
     const next: Upgrades = { ...upgrades, stashLevel: upgrades.stashLevel + 1 };
     set({
-      cash: cash - cost,
+      cash: paid.cash,
+      stash: paid.stash,
       upgrades: next,
       hideout: {
         ...hideout,
@@ -135,6 +139,7 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
           stash: { ...hideout.modules.stash, capacity: stashCapacity(next) },
         },
       },
+      construction: { ...construction, foundry: paid.foundry },
     });
   },
 });
