@@ -55,8 +55,7 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
     const { stash, cash } = get();
     const idx = stash.findIndex((i) => i.uid === uid);
     if (idx === -1) return;
-    // Pinned items can still be sold via single-item sell — pin only blocks
-    // the bulk sell-all-junk path (where accidental sells matter most).
+    if (stash[idx].pinned) return;
     const value = effectiveSellValue(stash[idx]);
     if (value <= 0) return;
     const next = [...stash];

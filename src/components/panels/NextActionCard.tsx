@@ -1,9 +1,11 @@
 "use client";
 
+import { createElement } from "react";
 import { useNow } from "@/lib/useNow";
 import {
   ChevronRight,
   Crosshair,
+  ExternalLink,
   Flame,
   Footprints,
   Heart,
@@ -30,6 +32,10 @@ import {
 } from "@/lib/engine/actions";
 import { cn } from "@/lib/utils";
 import type { ActionId, CurrentRaid } from "@/lib/types";
+
+const ACTION_ICONS: Partial<Record<ActionId, React.ComponentType<{ className?: string }>>> = {
+  extract_now: ExternalLink,
+};
 
 const CHIP_ICONS: Record<ChipKind, React.ComponentType<{ className?: string }>> = {
   hp: Heart,
@@ -205,7 +211,12 @@ function ActionRow({
         )}
       />
       <div className="flex flex-1 flex-col gap-1">
-        <span className="text-[12px] font-medium leading-tight">{actionLabelFor(id, raid)}</span>
+        <span className="flex items-center gap-1.5 text-[12px] font-medium leading-tight">
+          {ACTION_ICONS[id]
+            ? createElement(ACTION_ICONS[id]!, { className: "size-3 shrink-0" })
+            : null}
+          {actionLabelFor(id, raid)}
+        </span>
         <span className="text-[10px] font-normal leading-tight text-muted-foreground opacity-80">
           {a.description}
         </span>

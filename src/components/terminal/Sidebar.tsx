@@ -37,7 +37,7 @@ export function Sidebar() {
           Icon={Icon}
           active={active}
           setPanel={setPanel}
-          notify={id === "feed" && raidActive && active !== "feed"}
+          notify={id === "feed" && raidActive}
         />
       ))}
       <div className="mt-auto">

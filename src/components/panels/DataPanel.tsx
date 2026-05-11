@@ -184,6 +184,33 @@ export function DataPanel() {
           <KV k="Ammo picks / refresh" v={`2 of ${AMMO_POOL.length}`} />
         </Section>
 
+        <Section title="Containers (bags + rigs)">
+          <Table
+            head={["id", "slot", "tier", "external", "internal", "efficiency"]}
+            rows={Object.values(ITEMS)
+              .filter((i) => i.bagSections && i.bagSections.length > 0)
+              .sort((a, b) => {
+                if (a.slot !== b.slot) return a.slot === "rig" ? -1 : 1;
+                const ai = a.bagSections!.reduce((n, s) => n + s.width * s.height, 0);
+                const bi = b.bagSections!.reduce((n, s) => n + s.width * s.height, 0);
+                return ai - bi;
+              })
+              .map((i) => {
+                const external = i.shape.length;
+                const internal = i.bagSections!.reduce((n, s) => n + s.width * s.height, 0);
+                const efficiency = external > 0 ? internal / external : 0;
+                return [
+                  i.id,
+                  i.slot ?? "—",
+                  i.tier,
+                  `${external} cells`,
+                  `${internal} cells`,
+                  `${efficiency.toFixed(2)}×`,
+                ];
+              })}
+          />
+        </Section>
+
         <Section title="Items by tier">
           <Table
             head={["tier", "count", "ids"]}

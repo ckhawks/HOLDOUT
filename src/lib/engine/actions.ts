@@ -70,7 +70,7 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
   },
   breach_locked: {
     id: "breach_locked",
-    label: "Breach locked",
+    label: "Breach container",
     description: "Blast open a locked container.",
     isEligible: (raid) => {
       if (raid.runState.flags.includes("combat_engaged")) return false;
@@ -129,7 +129,7 @@ const STATIC_CHIPS: Record<ActionId, ActionChip[]> = {
     { kind: "energy", value: "-2", tone: "bad" },
   ],
   extract_step: [{ kind: "distance", value: "-1", tone: "good" }],
-  extract_now: [{ kind: "misc", value: "leave", tone: "good" }],
+  extract_now: [],
   fight: [
     { kind: "ammo", value: "-2", tone: "bad" },
     { kind: "heat", value: "+5", tone: "bad" },

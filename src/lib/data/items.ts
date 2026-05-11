@@ -10,6 +10,10 @@ const S = {
   t4: [[0, 0], [1, 0], [2, 0], [1, 1]] as const,
   i3: [[0, 0], [1, 0], [2, 0]] as const,
   s4: [[1, 0], [2, 0], [0, 1], [1, 1]] as const,
+  rect2x3: [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]] as const,
+  square3: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]] as const,
+  rect3x4: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2], [0, 3], [1, 3], [2, 3]] as const,
+  rect4x5: [[0, 0], [1, 0], [2, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1], [0, 2], [1, 2], [2, 2], [3, 2], [0, 3], [1, 3], [2, 3], [3, 3], [0, 4], [1, 4], [2, 4], [3, 4]] as const,
 } satisfies Record<string, ShapeCells>;
 
 export const ITEMS: Record<string, Item> = {
@@ -106,19 +110,19 @@ export const ITEMS: Record<string, Item> = {
   // bags — equippable apparel into the `bag` slot. Provides one or more
   // independent sub-grids alongside built-in pockets. Single-section bags
   // render as one grid; multi-section bags render stacked sub-grids.
-  canvas_satchel:   { id: "canvas_satchel",   name: "Canvas Satchel",     tier: "common",   category: "apparel", sellValue: 60,  weight: 2, shape: S.square2, slot: "bag", bagSections: [
+  canvas_satchel:   { id: "canvas_satchel",   name: "Canvas Satchel",     tier: "common",   category: "apparel", sellValue: 60,  weight: 2, shape: S.rect2x3, slot: "bag", bagSections: [
     { id: "main", label: "Main", width: 4, height: 2 },
   ] },
-  tactical_pack:    { id: "tactical_pack",    name: "Tactical Pack",      tier: "uncommon", category: "apparel", sellValue: 220, weight: 3, shape: S.square2, slot: "bag", bagSections: [
+  tactical_pack:    { id: "tactical_pack",    name: "Tactical Pack",      tier: "uncommon", category: "apparel", sellValue: 220, weight: 3, shape: S.square3, slot: "bag", bagSections: [
     { id: "main", label: "Main", width: 5, height: 5 },
   ] },
   // Modular pack: a wide main compartment + a side pocket. Sits between
   // tactical_pack and raider_rucksack on the value curve.
-  modular_pack:     { id: "modular_pack",     name: "Modular Pack",       tier: "uncommon", category: "apparel", sellValue: 320, weight: 3, shape: S.square2, slot: "bag", bagSections: [
+  modular_pack:     { id: "modular_pack",     name: "Modular Pack",       tier: "uncommon", category: "apparel", sellValue: 320, weight: 3, shape: S.rect3x4, slot: "bag", bagSections: [
     { id: "main", label: "Main", width: 4, height: 4 },
     { id: "side", label: "Side", width: 2, height: 3 },
   ] },
-  raider_rucksack:  { id: "raider_rucksack",  name: "Raider Rucksack",    tier: "rare",     category: "apparel", sellValue: 540, weight: 4, shape: S.square2, slot: "bag", bagSections: [
+  raider_rucksack:  { id: "raider_rucksack",  name: "Raider Rucksack",    tier: "rare",     category: "apparel", sellValue: 540, weight: 4, shape: S.rect4x5, slot: "bag", bagSections: [
     { id: "main", label: "Main", width: 6, height: 7 },
   ] },
 
@@ -126,15 +130,15 @@ export const ITEMS: Record<string, Item> = {
   // a bag (not instead of). Always multi-section (it's the rig fantasy);
   // smaller cell counts than bags but the split layout makes loadout
   // organization meaningful (admin pouch for meds, main pouch for ammo).
-  light_rig:        { id: "light_rig",        name: "Scrap Webbing",      tier: "common",   category: "apparel", sellValue: 90,  weight: 1, shape: S.horiz2,  slot: "rig", bagSections: [
+  light_rig:        { id: "light_rig",        name: "Scrap Webbing",      tier: "common",   category: "apparel", sellValue: 90,  weight: 1, shape: S.rect2x3, slot: "rig", bagSections: [
     { id: "main",  label: "Main",  width: 3, height: 2 },
     { id: "admin", label: "Admin", width: 2, height: 1 },
   ] },
-  combat_rig:       { id: "combat_rig",       name: "Skirmisher Rig",     tier: "uncommon", category: "apparel", sellValue: 240, weight: 2, shape: S.square2, slot: "rig", bagSections: [
+  combat_rig:       { id: "combat_rig",       name: "Skirmisher Rig",     tier: "uncommon", category: "apparel", sellValue: 240, weight: 2, shape: S.square3, slot: "rig", bagSections: [
     { id: "main",  label: "Main",  width: 4, height: 2 },
     { id: "admin", label: "Admin", width: 2, height: 2 },
   ] },
-  recon_rig:        { id: "recon_rig",        name: "Ghost Harness",      tier: "rare",     category: "apparel", sellValue: 480, weight: 2, shape: S.square2, slot: "rig", bagSections: [
+  recon_rig:        { id: "recon_rig",        name: "Ghost Harness",      tier: "rare",     category: "apparel", sellValue: 480, weight: 2, shape: S.rect3x4, slot: "rig", bagSections: [
     { id: "main",  label: "Main",  width: 4, height: 3 },
     { id: "admin", label: "Admin", width: 3, height: 2 },
     { id: "side",  label: "Side",  width: 2, height: 2 },

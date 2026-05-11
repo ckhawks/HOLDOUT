@@ -46,7 +46,7 @@ export function StashPanel() {
   //  - equipped slot → stash list
   //  - kit item → other kit slot (rearrange) / stash list
   type DragSource =
-    | { kind: "stash"; uid: string; itemId: string }
+    | { kind: "stash"; uid: string; itemId: string; rotation: Rotation }
     | { kind: "slot"; slot: EquipSlot; itemId: string }
     | {
         kind: "kit";
@@ -100,7 +100,10 @@ export function StashPanel() {
     [],
   );
   const containers = useMemo(
-    () => Array.from(iterContainers(equipment)),
+    () =>
+      Array.from(iterContainers(equipment)).sort((a, b) =>
+        a.slot === "rig" ? -1 : b.slot === "rig" ? 1 : 0,
+      ),
     [equipment],
   );
   const vitalsRef = useRef<HTMLDivElement>(null);
@@ -135,7 +138,7 @@ export function StashPanel() {
       if (!grid) return false;
       const itemId = d.kind === "stash" || d.kind === "kit" ? d.itemId : null;
       if (!itemId) return false;
-      const rotation = d.kind === "kit" ? d.rotation : 0;
+      const rotation = d.kind === "kit" || d.kind === "stash" ? d.rotation : 0;
       const cells = shapeFor(itemId, rotation);
       const sameTarget =
         d.kind === "kit" &&
@@ -244,7 +247,7 @@ export function StashPanel() {
       if (s) {
         if (equipFromStash(d.uid)) played = true;
       } else if (kitTarget && cell) {
-        if (kitFromStash(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, 0, kitSectionId)) {
+        if (kitFromStash(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, d.rotation, kitSectionId)) {
           played = true;
         }
       }
@@ -267,7 +270,35 @@ export function StashPanel() {
     setOverVitals(false);
   }, [equipment, equipFromStash, unequipToStash, kitFromStash, stashFromKit, moveKitItem, consumeOnOperative, slotRefs]);
 
-  useDragDrop(drag, { onMove, onUp });
+  const rotateInPlace = useCallback(() => {
+    setDrag((d) => {
+      if (!d) return d;
+      if (d.kind === "stash") {
+        return { ...d, rotation: ((d.rotation + 1) % 4) as Rotation };
+      }
+      if (d.kind === "kit") {
+        return { ...d, rotation: ((d.rotation + 1) % 4) as Rotation, grabDx: 0, grabDy: 0 };
+      }
+      return d;
+    });
+  }, []);
+  const onKey = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        rotateInPlace();
+      }
+    },
+    [rotateInPlace],
+  );
+  const onContextMenu = useCallback(
+    (e: MouseEvent) => {
+      e.preventDefault();
+      rotateInPlace();
+    },
+    [rotateInPlace],
+  );
+  useDragDrop(drag, { onMove, onUp, onKey, onContextMenu });
 
   const [confirmSellJunk, setConfirmSellJunk] = useState(false);
   const [hoveringSellJunk, setHoveringSellJunk] = useState(false);
@@ -606,6 +637,7 @@ export function StashPanel() {
                                 kind: "stash",
                                 uid: si.uid,
                                 itemId: si.itemId,
+                                rotation: 0,
                                 mouseX: e.clientX,
                                 mouseY: e.clientY,
                               });
@@ -642,7 +674,7 @@ export function StashPanel() {
                                     "inline-flex cursor-pointer items-center rounded-sm border border-transparent px-1.5 py-0.5 transition",
                                     si.pinned
                                       ? "text-amber-300 hover:text-amber-200"
-                                      : "text-muted-foreground/60 opacity-0 hover:border-border hover:text-foreground group-hover:opacity-100",
+                                      : "text-muted-foreground/60 hover:border-border hover:text-foreground",
                                   )}
                                 >
                                   <Pin className="size-3" />
@@ -662,12 +694,23 @@ export function StashPanel() {
                                 </Tooltip>
                               )}
                               {sellable && (
-                                <button
-                                  onClick={() => sellItem(si.uid)}
-                                  className="cursor-pointer rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
-                                >
-                                  sell
-                                </button>
+                                <Tooltip text={si.pinned ? "Unpin first to sell" : "Sell"}>
+                                  <button
+                                    onClick={() => {
+                                      if (si.pinned) return;
+                                      sellItem(si.uid);
+                                    }}
+                                    disabled={si.pinned}
+                                    className={cn(
+                                      "rounded-sm border border-transparent px-2 py-0.5 text-xs transition",
+                                      si.pinned
+                                        ? "cursor-not-allowed text-muted-foreground/40"
+                                        : "cursor-pointer text-muted-foreground hover:border-border hover:text-foreground",
+                                    )}
+                                  >
+                                    sell
+                                  </button>
+                                </Tooltip>
                               )}
                             </div>
                           </div>
@@ -691,6 +734,15 @@ export function StashPanel() {
             mouseY={drag.mouseY}
             grabDx={drag.grabDx}
             grabDy={drag.grabDy}
+          />
+        ) : drag.kind === "stash" ? (
+          <KitDragGhost
+            itemId={drag.itemId}
+            rotation={drag.rotation}
+            mouseX={drag.mouseX}
+            mouseY={drag.mouseY}
+            grabDx={0}
+            grabDy={0}
           />
         ) : (
           <StashDragGhost itemId={drag.itemId} mouseX={drag.mouseX} mouseY={drag.mouseY} />

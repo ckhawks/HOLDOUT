@@ -5,6 +5,7 @@ import type { Equipment, EquipSlot, SlotItem } from "@/lib/types";
 import { ITEMS } from "@/lib/data/items";
 import { cn } from "@/lib/utils";
 import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
+import { renderCategoryIcon } from "@/lib/itemIcon";
 import { ItemTooltip, Tooltip } from "@/components/ui/Tooltip";
 
 const SLOT_META: Record<EquipSlot, { label: string; Icon: typeof Backpack }> = {
@@ -125,13 +126,16 @@ function SlotTile({
     <div
       onPointerDown={onPointerDown}
       className={cn(
-        "flex size-full cursor-grab items-center justify-center rounded-sm border active:cursor-grabbing",
+        "relative flex size-full cursor-grab items-center justify-center overflow-hidden rounded-sm border active:cursor-grabbing",
         bg,
       )}
     >
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        {renderCategoryIcon(itemId, cn("size-10 opacity-20", fg))}
+      </div>
       <span
         className={cn(
-          "pointer-events-none font-mono text-[10px] font-semibold uppercase tracking-widest",
+          "pointer-events-none relative font-mono text-[10px] font-semibold uppercase tracking-widest",
           fg,
         )}
       >

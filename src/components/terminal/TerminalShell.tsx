@@ -16,6 +16,8 @@ import { RaidOutcomeModal } from "@/components/panels/RaidOutcomeModal";
 import { useRaidLoop } from "@/components/terminal/useRaidLoop";
 import { initSfx, playSfx } from "@/lib/sfx";
 import { dumpRaid } from "@/lib/engine/debug";
+import { ACTIONS, contextActions, primaryActionOrder } from "@/lib/engine/actions";
+import type { ActionId } from "@/lib/types";
 
 export function TerminalShell() {
   const panel = useGame((s) => s.activePanel);
@@ -77,7 +79,16 @@ export function TerminalShell() {
     // document so the handler runs before any focused button's space-as-click,
     // and runs regardless of focus (body, panel div, etc.).
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== "Space" && e.key !== " ") return;
+      const isSpace = e.code === "Space" || e.key === " ";
+      const isForceTick =
+        e.key === "Enter" ||
+        e.code === "Enter" ||
+        e.code === "NumpadEnter" ||
+        e.key === "ArrowRight" ||
+        e.code === "ArrowRight";
+      const isCycleUp = e.key === "ArrowUp" || e.code === "ArrowUp";
+      const isCycleDown = e.key === "ArrowDown" || e.code === "ArrowDown";
+      if (!isSpace && !isForceTick && !isCycleUp && !isCycleDown) return;
       const target = e.target as HTMLElement | null;
       // Bail only for actual text-entry contexts.
       if (
@@ -90,12 +101,30 @@ export function TerminalShell() {
       }
       const raid = useGame.getState().currentRaid;
       if (!raid || !raid.active) return;
+      if (isForceTick && (raid.pendingChoice || raid.pausedAt || raid.pendingEnd)) return;
+      if ((isCycleUp || isCycleDown) && (raid.pendingChoice || raid.pendingEnd)) return;
       e.preventDefault();
       e.stopPropagation();
       // Drop focus so a button doesn't intercept the next press.
       const active = document.activeElement as HTMLElement | null;
       if (active && typeof active.blur === "function") active.blur();
-      useGame.getState().togglePause();
+      if (isSpace) {
+        useGame.getState().togglePause();
+      } else if (isForceTick) {
+        useGame.getState().skipActionTimer();
+      } else {
+        const eligible: ActionId[] = [
+          ...primaryActionOrder(raid).filter((id) => ACTIONS[id].isEligible(raid)),
+          ...contextActions(raid).map((a) => a.id),
+        ];
+        if (eligible.length === 0) return;
+        const cur = eligible.indexOf(raid.queuedAction);
+        const dir = isCycleDown ? 1 : -1;
+        // If queued isn't in the eligible list (rare), start from the top.
+        const base = cur < 0 ? 0 : cur;
+        const next = (base + dir + eligible.length) % eligible.length;
+        useGame.getState().overrideAction(eligible[next]);
+      }
     };
     document.addEventListener("keydown", onKeyDown, true);
     return () => {

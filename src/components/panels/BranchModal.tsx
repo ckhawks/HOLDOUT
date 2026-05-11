@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useGame } from "@/store/game";
 import { useNow } from "@/lib/useNow";
+import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
@@ -68,6 +69,51 @@ export function BranchModal() {
     }
   }, [choice, paused, wallNow, resolve]);
 
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const selectedIdxRef = useRef(0);
+  selectedIdxRef.current = selectedIdx;
+  useEffect(() => {
+    if (!choice) return;
+    const def = choice.options.findIndex((o) => o.id === choice.defaultId);
+    setSelectedIdx(def >= 0 ? def : 0);
+  }, [choice]);
+
+  useEffect(() => {
+    if (!choice) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const isUp = e.key === "ArrowUp" || e.code === "ArrowUp";
+      const isDown = e.key === "ArrowDown" || e.code === "ArrowDown";
+      const isConfirm =
+        e.key === "Enter" ||
+        e.code === "Enter" ||
+        e.code === "NumpadEnter" ||
+        e.key === "ArrowRight" ||
+        e.code === "ArrowRight";
+      if (!isUp && !isDown && !isConfirm) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      if (isUp || isDown) {
+        const len = choice.options.length;
+        setSelectedIdx((i) => (i + (isDown ? 1 : -1) + len) % len);
+      } else {
+        const opt = choice.options[selectedIdxRef.current];
+        if (opt) resolve(opt.id);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [choice, resolve]);
+
   if (!choice) return null;
 
   const elapsed = Math.max(0, now - choice.startedAt);
@@ -116,18 +162,27 @@ export function BranchModal() {
           />
         </div>
         <div className="flex flex-col gap-2 px-5 py-4">
-          {choice.options.map((opt) => {
+          {choice.options.map((opt, idx) => {
             const chips = chipsFor(opt);
+            const isSelected = idx === selectedIdx;
             return (
               <Button
                 key={opt.id}
                 variant="outline"
                 onClick={() => resolve(opt.id)}
+                onMouseEnter={() => setSelectedIdx(idx)}
                 className={cn(
                   "h-auto justify-start py-2.5",
                   opt.isDefault && "ring-2 ring-amber-400/60",
+                  isSelected && "border-emerald-400 bg-emerald-400/10",
                 )}
               >
+                <ChevronRight
+                  className={cn(
+                    "size-4 shrink-0",
+                    isSelected ? "text-emerald-400" : "text-transparent",
+                  )}
+                />
                 <div className="flex flex-col items-start gap-1 text-left">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{opt.label}</span>

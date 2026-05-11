@@ -151,6 +151,7 @@ function ItemTiles({
   const bg = tileBgFor(itemId);
   const fg = tierColorFor(itemId);
   const { w, h } = shapeBounds(cells);
+  const cellSet = new Set(cells.map(([x, y]) => `${x},${y}`));
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const tier = ITEMS[itemId]?.tier ?? "common";
@@ -184,6 +185,10 @@ function ItemTiles({
           const iconSize = Math.min(w, h) * KIT_CELL * 0.9;
           const iconLeft = (w * KIT_CELL - iconSize) / 2 - dx * KIT_CELL;
           const iconTop = (h * KIT_CELL - iconSize) / 2 - dy * KIT_CELL;
+          const hasTop = cellSet.has(`${dx},${dy - 1}`);
+          const hasRight = cellSet.has(`${dx + 1},${dy}`);
+          const hasBottom = cellSet.has(`${dx},${dy + 1}`);
+          const hasLeft = cellSet.has(`${dx - 1},${dy}`);
           return (
             <div
               key={`${dx}-${dy}-${i}`}
@@ -197,6 +202,10 @@ function ItemTiles({
                 top: dy * KIT_CELL,
                 width: KIT_CELL,
                 height: KIT_CELL,
+                borderTopWidth: hasTop ? 0 : undefined,
+                borderRightWidth: hasRight ? 0 : undefined,
+                borderBottomWidth: hasBottom ? 0 : undefined,
+                borderLeftWidth: hasLeft ? 0 : undefined,
               }}
               onPointerEnter={update}
               onPointerMove={update}
@@ -300,6 +309,7 @@ export function KitDragGhost({
   const fg = tierColorFor(itemId);
   const Icon = categoryIconFor(itemId);
   const { w, h } = shapeBounds(cells);
+  const cellSet = new Set(cells.map(([x, y]) => `${x},${y}`));
   const left = mouseX - (grabDx * KIT_CELL + KIT_CELL / 2);
   const top = mouseY - (grabDy * KIT_CELL + KIT_CELL / 2);
   return (
@@ -311,6 +321,10 @@ export function KitDragGhost({
         const iconSize = Math.min(w, h) * KIT_CELL * 0.9;
         const iconLeft = (w * KIT_CELL - iconSize) / 2 - dx * KIT_CELL;
         const iconTop = (h * KIT_CELL - iconSize) / 2 - dy * KIT_CELL;
+        const hasTop = cellSet.has(`${dx},${dy - 1}`);
+        const hasRight = cellSet.has(`${dx + 1},${dy}`);
+        const hasBottom = cellSet.has(`${dx},${dy + 1}`);
+        const hasLeft = cellSet.has(`${dx - 1},${dy}`);
         return (
           <div
             key={i}
@@ -320,6 +334,10 @@ export function KitDragGhost({
               top: dy * KIT_CELL,
               width: KIT_CELL,
               height: KIT_CELL,
+              borderTopWidth: hasTop ? 0 : undefined,
+              borderRightWidth: hasRight ? 0 : undefined,
+              borderBottomWidth: hasBottom ? 0 : undefined,
+              borderLeftWidth: hasLeft ? 0 : undefined,
             }}
           >
             {Icon && (

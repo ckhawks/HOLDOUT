@@ -155,10 +155,11 @@ export function PackTetris() {
     : undefined;
   const roomContents = currentTile?.contents ?? [];
   const pockets = raid?.equipment.pockets;
-  const containers = useMemo(
-    () => (raid ? Array.from(iterContainers(raid.equipment)) : []),
-    [raid],
-  );
+  const containers = useMemo(() => {
+    if (!raid) return [];
+    const list = Array.from(iterContainers(raid.equipment));
+    return list.sort((a, b) => (a.slot === "rig" ? -1 : b.slot === "rig" ? 1 : 0));
+  }, [raid]);
 
   const onMove = useCallback((e: PointerEvent, d: DragState) => {
     if (!raid) return;
@@ -573,6 +574,7 @@ function FloorTile({
   const Icon = categoryIconFor(itemId);
   const cells = shapeFor(itemId, 0);
   const { w, h } = shapeBounds(cells);
+  const cellSet = new Set(cells.map(([x, y]) => `${x},${y}`));
   const px = CELL - 2;
   return (
     <ItemTooltip itemId={itemId} hint="Drag to kit · Ctrl+click to fast-pickup">
@@ -588,11 +590,24 @@ function FloorTile({
           const iconSize = Math.min(w, h) * px * 0.9;
           const iconLeft = (w * px - iconSize) / 2 - dx * px;
           const iconTop = (h * px - iconSize) / 2 - dy * px;
+          const hasTop = cellSet.has(`${dx},${dy - 1}`);
+          const hasRight = cellSet.has(`${dx + 1},${dy}`);
+          const hasBottom = cellSet.has(`${dx},${dy + 1}`);
+          const hasLeft = cellSet.has(`${dx - 1},${dy}`);
           return (
             <div
               key={i}
               className={cn("absolute overflow-hidden border", bg)}
-              style={{ left: dx * px, top: dy * px, width: px, height: px }}
+              style={{
+                left: dx * px,
+                top: dy * px,
+                width: px,
+                height: px,
+                borderTopWidth: hasTop ? 0 : undefined,
+                borderRightWidth: hasRight ? 0 : undefined,
+                borderBottomWidth: hasBottom ? 0 : undefined,
+                borderLeftWidth: hasLeft ? 0 : undefined,
+              }}
             >
               {Icon && (
                 <Icon
