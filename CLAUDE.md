@@ -109,9 +109,44 @@ engine/shapes.ts      Item-shape geometry: occupancy grids, rotation, canPlace.
 engine/events.ts      Event template substitution (vocab tables → flavored text).
 engine/save.ts        Persistence + schema migrations. SCHEMA_VERSION lives here.
 engine/shop.ts        Shop offer generation + refresh.
-engine/upgrades.ts    Cost curves for stash / pockets levels.
+engine/upgrades.ts    Cost curves for stash / pockets levels. stashUpgradeCost
+                      returns UpgradeCost (cash + items + metals) sourced from
+                      STASH_UPGRADE_COSTS in data/modules.ts.
 engine/debug.ts       Debug-only helpers exposed via window.__h.
+
+# Construction system (shipped 2026-05-11)
+engine/recycle.ts     recycleItem(item, tier, rand): decompose junk into base
+                      components per data/recycle.ts. Pure + seeded.
+engine/foundry.ts     smeltItem / withdrawMetal / vesselCapacity: melt
+                      metallic items into vessel-stored metals (numeric per
+                      MetalId, not items). Overflow over capacity is wasted.
+engine/workbench.ts   canCraft / craft / inputSatisfactions: validate + atomic
+                      consume from stash AND foundry vessels. Skips pinned.
+engine/research.ts    startResearch / tickResearch / researchStatus: ticks
+                      decrement only on real tile movement (called from
+                      raid.ts doTick when nextPos changes).
+engine/hideout.ts     canAfford / payCost / moduleBuildCost / moduleTierUpCost.
+                      Shared cost helper for module builds, stash upgrades, etc.
+                      Consumes pinned-skipping stash items + foundry metals
+                      atomically.
 ```
+
+### Construction state
+
+The construction system lives in a single `construction: ConstructionState` branch on `PersistedState`, separate from the legacy `hideout.modules` shape (which stays around as a UI shell for Stash/Loadout/Medbay). New modules go through `construction.modules[id]: { built, tier }`.
+
+```
+construction.modules        Record<ModuleId, { built, tier }>. ModuleId =
+                            recycler | workbench | research_bench | foundry |
+                            armory | armor_stand | repair_bench | generator.
+construction.foundry        { vessels: Record<MetalId, number> }
+construction.research       { unlockedRecipes, active: { recipeId, ticksRemaining } | null }
+construction.armory         { items: StashItem[] }  // capacity-gated, excluded from stash
+construction.generator      { powerCells: number }   // consumed at raid start
+construction.log            { recycler, foundry, workbench, research } — ring buffers
+```
+
+The `construction` slice in `src/store/slices/construction.ts` owns all actions: build/upgrade module, recycle, smelt, sell metal, craft, start research, armory deposit/withdraw, power-cell deposit. The raid slice's `beginRaid` deducts generator cells; `doTick` calls `tickResearch` when the operative actually moves a tile.
 
 ### Raid timer ownership
 

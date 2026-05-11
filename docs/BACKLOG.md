@@ -140,75 +140,9 @@ Make "scrounge / push / lay low" real instead of theatre.
 - [ ] Key/keycard/ID-badge items: matching `keyType` on a `LockedContainer` lets you open it cleanly (no ammo cost, no heat).
 - [ ] Key items spawn in regular containers; ID badges drop from defeated patrols.
 
-## Components + hideout construction system (multi-phase)
+## Components + hideout construction system — _shipped 2026-05-11_
 
-A unified construction economy: loot decomposes into components, components feed hideout module upgrades, modules unlock new content. Replaces the current cash-only upgrade gates with cash + components + specialized named loot, so raids become directional ("I need circuits → server farm").
-
-Designed in conversation 2026-05-10. Locked decisions:
-
-- **Components are existing items where possible.** `scrap_metal`, `copper_wire`, `microchip`, `optic_lens`, `capacitor_bank`, `cracked_battery` already exist in `src/lib/data/items.ts` — they double as base components. Stash L3 = ¤700 + 4× scrap_metal + 2× copper_wire + 1× named "industrial shelving" item. Sell-vs-save tension is the loop's beating heart.
-- **Two new med base components**: **Synthates** (synthetic chemistry, lab-sourced) and **Botanicals** (plant extracts, outdoor/civilian-sourced). Recipes mix them. Bioculture as a third option deferred — see parking lot.
-- **Foundry stores molten metal in vessels, not as ingot items.** Per-metal capacity scales with foundry tier. Selling happens via foundry UI, not stash. No inventory pollution.
-- **Pockets upgrades cut.** Too OP. Bigger pockets stays a one-time bag-equip thing.
-- **No weapon crafting.** Apparel + meds only at the workbench. Keeps scope narrow.
-- **Recycler functionality**: per-item decompose recipes with rolled yields per component (`Worn Radio → 80% wiring, 60% circuit, 30% polymer`). Tier upgrades = better roll % + bulk-scrap QoL + ability to scrap higher-tier items.
-- **Research bench**: spend looted documents/manuals + components to unlock recipes. Progress ticks on **per-tile-moved during raids**, not real-world time and not per-raid (which would be cheesable by in-and-out raids). Pauses when game pauses.
-
-### Modules + rough phase order
-
-| Module             | Role                                                            | Phase |
-| ------------------ | --------------------------------------------------------------- | ----- |
-| **Recycler**       | Items → components, manual scrap, real panel                    | A     |
-| Stash (rework)     | Capacity tiers now want components + specialized items          | A     |
-| **Workbench**      | Apparel + med crafting (gated on schematic, already in design)  | B     |
-| **Research Bench** | Recipe unlocks, ticks per tile-moved in raids                   | B     |
-| **Foundry**        | Metallic items → molten metal vessels; forge from molten        | C     |
-| **Armory**         | Specialized equipment storage slots, separate from stash        | D     |
-| **Armor Stand**    | Buildable shell for loadout presets; functionality wired later  | D     |
-| **Repair Bench**   | Buildable shell; functionality gated on weapon-condition system | D     |
-| **Generator**      | Powers high-tier modules, consumes power cells per raid         | E     |
-
-### Recycler shape
-
-- Each scrappable item declares a recipe like `{ item: "combat_knife", outputs: [{ id: "scrap_metal", chance: 0.9 }, { id: "spring_coil", chance: 0.5 }] }`.
-- L1: base rolls. L2: +15% to all rolls. L3: +30%, plus a chance to roll bonus stacks (2× output on a hit), plus rare items become scrappable.
-- Bulk-scrap a whole stack at L2+.
-- Real panel in hideout (not a stash-item modal) — drives traffic to the hideout screen.
-
-### Foundry shape
-
-- Vessels: `foundry: { steel: 340, copper: 120, titanium: 0, ... }` — millilitres or arbitrary units, doesn't matter as long as recipes match.
-- L1 cap: 500 each. L2: 1500. L3: 5000.
-- Smelting into a full vessel either rejects the input or wastes overflow with a warning.
-- v1 metals: **steel**, **copper**, **titanium**. Late-game fictional metals (corp-2090 flavor names — TBD) added at L3+.
-- UI: vertical fill bars per metal, hideout panel readout.
-- Sell from foundry UI directly — no ingot exports.
-
-### Item pool rework (alongside)
-
-- Audit `src/lib/data/items.ts` and tag items as `recyclerInput` and/or `foundryInput`. The same metallic item (e.g. `combat_knife`) can route either way — player choice.
-- Rename **"Exotic Alloy Slab"** to something foundry-flavored (e.g. "Reactor Plate", "Salvaged Bulkhead") so it reads as raw metal stock, not a finished alloy. It melts into the foundry as high-yield rare metal.
-- Add ~6-8 specialized "construction junk" items as named loot drops at appropriate tiers — gates specific upgrades. Examples: industrial shelving, reinforced locker, calibration jig, vault door, modular harness, medical autoclave, anesthesia rig, control board.
-- Upgrade panels show progress bars per requirement, reading live from stash ("circuits: 2/3").
-
-### Cost progression (illustrative, tune in implementation)
-
-- **Stash L1→L2**: ¤300 (current; no components yet)
-- **Stash L2→L3**: ¤700 + 4 scrap_metal + 1 industrial shelving
-- **Stash L3→L4**: ¤1500 + 8 scrap_metal + 3 copper_wire + 1 reinforced locker
-- **Stash L4→L5**: ¤3500 + 15 scrap_metal + 6 copper_wire + 200 steel (foundry) + 1 vault door
-- **Recycler L1**: ¤600 + 1 industrial motor (cash-only base components — chicken/egg, can't gate the component-producer behind components)
-- **Recycler L2**: ¤1500 + 3 copper_wire + 1 control board
-- **Workbench L1**: schematic drop + ¤800 + 4 scrap_metal + 2 copper_wire + 1 power tool
-- **Foundry L1**: ¤2500 + 6 scrap_metal + 3 ceramic_plate + 1 industrial motor
-
-### Phase rollout sketch
-
-- **Phase A** — Recycler module + revised Stash upgrade costs + first wave of construction-junk items + components-as-existing-items wiring. End state: player has a real reason to hoard mechanical/electronics loot and a panel to convert other loot into it.
-- **Phase B** — Workbench (real, not just schematic flag) + Research Bench + Synthates/Botanicals + apparel & med recipes. End state: crafting has shape, recipes unlock progressively.
-- **Phase C** — Foundry + molten-metal vessels + late-tier upgrade ladders that need metals + item pool rename pass. End state: late-game upgrade goals are on the board.
-- **Phase D** — Armory + Armor Stand placeholder + Repair Bench placeholder. End state: hideout looks more lived-in; presets and repair are visibly coming.
-- **Phase E** — Generator + power-cell drain on high-tier modules. End state: power cells gain a recurring sink.
+The full spec (Phases A–E rolled into one push) shipped as 6 commits on 2026-05-11. See the Changelog entry below for the per-stage breakdown. Spec moved to `docs/archive/2026-05-11-CONSTRUCTION_SYSTEM.md`.
 
 - [ ] **After-raid report — pass 2: map replay.** Pass 1 (2026-05-10) shipped the report modal with loot diff / vitals / combat / choices / consumables. Pass 2 adds the map-replay section: render the same 12×5 strip with visited tiles dimmed and the operative's path drawn in order. Needs new state on `CurrentRaid` (`pathVisited: Array<{x,y,tick}>` updated each move in `doTick`) since fog only tells us _which_ tiles, not _when_. Optional polish: scrubber, or static end-state with arrows.
 - [ ] First-run intro modal.
@@ -232,6 +166,19 @@ Pulled out of the components-system convo to keep that scope focused. Pull from 
 - **Bioculture as a third med base component.** Engineered cell stock, lab/biolab tier, gates rare med recipes (nano-clot etc.). Held back to keep the med-crafting search space manageable; add if Synthates+Botanicals feel too samey.
 - **Comms Suite, Medbay, Intel Desk modules.** Originally on the module list; deferred until each has a concrete useful function. Don't build empty modules just to fill panel space.
 - **Trading molten metal between hideouts.** Only relevant if multiplayer ships. Foundry-as-vessel design means metals would need to be re-bottled into ingot items at trade time. Trivial extension if needed.
+
+### Parked during construction-system implementation (2026-05-11)
+
+These came up while shipping the construction system and were intentionally deferred so the first cut could land. Pull when playtest signals it's worth it.
+
+- **Generator effective-tier degradation.** Currently, if the Generator runs dry at raid start, cells are partially consumed but high-tier modules keep operating at full tier between raids. The spec's design (§9.4) was for under-funded modules to degrade to their max-funded tier for that raid. Skipped because (a) construction operations happen between raids, so degradation would only matter if mid-raid ops existed (they don't — even Research Bench just decrements its own counter), and (b) the cell sink works without it. Revisit if there's a between-raid module operation that wants to degrade.
+- **In-stash scrap / smelt hint chips.** Spec §12.5: hover a recyclable / smeltable item in the stash, see a small "scrap" / "smelt" chip indicating it has a use beyond selling. The actual scrap/smelt action stays in the module panel — hints just nudge the player toward the panel. Worth doing once playtest shows whether players are leaving recyclable junk un-scrapped because they didn't know.
+- **Drop-weight micro-tuning pass on locations.** Stage 6 added `specializedDrops` per location at a flat 4% chance, and category weights stayed unchanged. The spec (§10.4) called for a tuning pass — e.g. bumping medical+intel on biolab so synthate/botanical lands more often there. Skipped because the categories already biased correctly; revisit if early raids feel light on the new base components (synthate, botanical, cloth_scrap, polymer_strip).
+- **Specialized-item drop alternative approach.** Currently `specializedDrops` is a per-location additive 4% pre-roll. Spec §10.5 floated a second approach: roll normally, and if the rolled result _is_ a specialized item, swap it with a per-location specialized substitution at low chance. The current approach is simpler and works; the alternative would only matter if specialized items started clogging the rare-tier pool (they can't right now because they're excluded from `TIER_POOLS`).
+- **Repair Bench functionality.** Spec §9.3 — blocked on the weapon-condition system not existing. The bench is buildable; functionality lands once condition lands.
+- **Armor Stand loadout presets.** Spec §9.2 — buildable shell only. Preset save/swap UX and the actual loadout-routing on raid start are a separate phase. The grid of empty preset slots renders at the tier-appropriate count (1/3/5) as a teaser.
+- **Crafting-tier-3 recipes unlocked but no recipe added at tier 3.** Workbench L3 unlocks `craft_raider_rucksack` and `craft_nano_clot`; spec §6.3 lists these but they're the only T3 recipes. Adding 2-3 more T3 recipes per category would make L3 feel less anticlimactic. Easy content add.
+- **Research queue / cancellation.** Per locked decision #12, only one research at a time, and there's no "cancel research" action — once started, the operative has to tile-move it to completion. Players starting the wrong recipe have to eat the time.
 
 ## Tech debt / refactor (from arch review 2026-05-09)
 
@@ -277,6 +224,26 @@ Shipped work, newest phases last. Acts as a record of what landed when.
 - ✅ **Loot categories per location** — each location biases toward certain item categories. Shipped via `location.categoryWeights` in `src/lib/data/locations.ts` (Warehouse → mechanical 5 / consumables 3 / electronics 2; Datacenter → electronics 6 / intel 5; Biolab → medical 5 / experimental 4; etc.) and routed through `pickItemForLocation()` in `src/lib/data/items.ts` — picks a category by weight, then a tier by depth+rarity, then an item from the intersection (with a generic fallback when no weights are set).
 
 ## Phases
+
+### Construction system — components + 8 hideout modules (2026-05-11)
+
+The unified components / hideout construction system from the 2026-05-10 brainstorm shipped as a single multi-stage push. The full spec is archived at `docs/archive/2026-05-11-CONSTRUCTION_SYSTEM.md`.
+
+**Stage 1 — foundation** (`074ff2c`). New items: 4 base components (synthate, botanical, cloth_scrap, polymer_strip) + 12 specialized "named junk" gating module recipes. Tagged existing component-class items via a `COMPONENT_IDS` manifest. Renamed Exotic Alloy Slab → Reactor Plate. New types `MetalId`, `ModuleId`, `FoundryState`, `ResearchState`, `ArmoryState`, `GeneratorState`, `ConstructionState`, `UpgradeCost`. New data files `recycle.ts`, `smelt.ts`, `recipes.ts`, `modules.ts`. Save schema v30 adds the `construction` branch; mirrors `unlocks.workbench` into `modules.workbench` so existing players don't refind a used schematic. Specialized items excluded from generic `TIER_POOLS` so they only drop via the per-location specialized pool added in Stage 6.
+
+**Stage 2 — Recycler** (`54297e9`). `engine/recycle.ts` (`recycleItem`, `rolledOutputs`, `describeProduced`) + 9 tests. New `engine/hideout.ts` with shared `canAfford` / `payCost` helpers (atomic; skips pinned stash items). New `construction.ts` store slice with `buildModule`, `upgradeModule`, `recycleStashItem`, `recycleStackByItemId` (L2+ bulk gated). `RecyclerPanel.tsx` with grouped stash list, per-tier yield preview, activity log ring buffer.
+
+**Stage 3 — Foundry** (`a276512`). `engine/foundry.ts` (`smeltItem`, `withdrawMetal`, `metalSellValue`) + 11 tests covering vessel overflow, tier-gated metals (chromite/voidsteel are L3-only), withdraw clipping. Store actions `smeltStashItem`, `smeltStackByItemId`, `sellMetal`. `FoundryPanel.tsx` with per-metal fill cards + sell input. Per spec §5.6, raw-sell typically beats smelt+sell — smelting only wins when a metal is gating an upgrade.
+
+**Stage 4 — Workbench + Research** (`e51fc8f`). `engine/workbench.ts` (`canCraft`, `craft`, `inputSatisfactions`) + 10 tests. `engine/research.ts` (`startResearch`, `tickResearch`, `researchStatus`) + 11 tests. Raid tick hook in `src/store/slices/raid.ts:doTick` — decrements `research.active.ticksRemaining` only on real tile movement (not `stay` / `loot`). Completion posts both a system log line in the raid feed and a per-module activity log entry. `WorkbenchPanel.tsx` (apparel + medical sections, per-input have/need badges) and `ResearchBenchPanel.tsx` (locked-recipe grid with ready/active/blocked states). `FeedPanel.tsx` gains a research progress chip under the stats row when active.
+
+**Stage 5 — stash upgrade rework** (`ee264c1`). `stashUpgradeCost` now returns an `UpgradeCost` sourced from `STASH_UPGRADE_COSTS` in `src/lib/data/modules.ts` (level 1–6, cash + items + metals). Falls back to a steep cash-only curve past level 6 so the game doesn't dead-end. `buyStashUpgrade` now uses `canAfford` + `payCost` from `engine/hideout.ts`. `HideoutPanel` Stash card renders the inline component cost above the upgrade button. `upgrades.test.ts` rewritten for the new shape.
+
+**Stage 6 — Armory + Generator + placeholders + drop pools** (`1e1b652`). Functional `ArmoryPanel` (deposit/withdraw slot-defined gear; L1=8, L2=16 capacity; items don't count against stash). Functional `GeneratorPanel` (deposit cracked_battery as power cells; L1=20, L2=60 cap). Raid-start hook in `beginRaid` deducts cells based on which high-tier modules are built (Workbench L3, Recycler L3, Foundry L2/L3, Research Bench L2). Placeholder `ArmorStandPanel` + `RepairBenchPanel` — buildable shells so the structure is in place when their functionality lands. `Location.specializedDrops` field with per-location pools (Warehouse / Subway / Drone Graveyard / Datacenter / Biolab); `pickItemForLocation` rolls a 4% chance to swap a regular roll for a specialized item from the location's pool. `HideoutPanel` grew from 4 cards to 11 (Stash, Loadout, Recycler, Foundry, Workbench, Research Bench, Armory, Generator, Armor Stand, Repair Bench, Medbay).
+
+**Locked decisions honored:** components reuse existing items where possible (no parallel "Refined Scrap"), foundry stores metals as numeric values not items, hideout state lives at game-state top level under `construction`, research progresses on tile-moves not actions or raids, components are flat-tier, no weapon crafting, pockets capacity upgrades cut. **Deferred:** generator effective-tier degradation, in-stash scrap/smelt hint chips, drop-weight micro-tuning, Repair Bench functionality (waits on weapon-condition), Armor Stand loadout presets, research queue. See the 2026-05-11 parking-lot section above.
+
+**Test count:** 183 → 226 (+43 across recycle / foundry / workbench / research / rewritten upgrades).
 
 ### Bag sections + chest rig EquipSlot (2026-05-10)
 

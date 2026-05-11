@@ -1,10 +1,14 @@
-# HOLDOUT — Components + Construction System
+# HOLDOUT — Components + Construction System (archived 2026-05-11)
 
-Implementation spec for the unified components economy + hideout construction modules. Designed in conversation 2026-05-10. Slated for implementation in one push (no playable intermediates required); each section below is meant to be implementation-ready.
+> **Archived snapshot.** This is the implementation spec that drove the construction-system rollout. Designed 2026-05-10, implemented 2026-05-11 in 6 stages (see `docs/BACKLOG.md` Changelog → "Construction system — components + 8 hideout modules (2026-05-11)" for what shipped per stage, and the "Parked during construction-system implementation (2026-05-11)" parking-lot section for items intentionally deferred).
+>
+> Kept here as a record of the design intent at the time of the build. The codebase is now the source of truth; if a section here disagrees with the code, the code wins.
+
+---
+
+# Implementation spec (original 2026-05-10 doc preserved below)
 
 For the high-level motivation + parking-lot of ideas not in scope, see the corresponding section in `docs/BACKLOG.md`. For the locked design constraints this system must respect (no real-world clock, pure engine, schema versioning, etc.), see `docs/DESIGN.md`.
-
-This doc is a one-off feature spec. Once implemented, the load-bearing parts get folded into `DESIGN.md`/`CLAUDE.md` and this file moves to `docs/archive/` with a date prefix.
 
 ---
 
