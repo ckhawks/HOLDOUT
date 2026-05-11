@@ -27,6 +27,22 @@ export function tierColorFor(itemId: string | undefined): string {
   return tier ? TIER_COLOR[tier] : TIER_COLOR.common;
 }
 
+// Background-color equivalents of TIER_COLOR. Used for small rarity dots
+// next to item names where applying the tier color to the text itself
+// would be too loud (cost checklists, etc.).
+export const TIER_DOT: Record<ItemTier, string> = {
+  common: "bg-zinc-200",
+  uncommon: "bg-sky-400",
+  rare: "bg-violet-400",
+  experimental: "bg-amber-400",
+};
+
+export function tierDotFor(itemId: string | undefined): string {
+  if (!itemId) return TIER_DOT.common;
+  const tier = ITEMS[itemId]?.tier;
+  return tier ? TIER_DOT[tier] : TIER_DOT.common;
+}
+
 // 2-3 letter monogram for an item — used as the inner label on inventory
 // tiles where the full name doesn't fit. Multi-word names get one letter
 // per word (up to 3); single-word names get the first 3 letters.

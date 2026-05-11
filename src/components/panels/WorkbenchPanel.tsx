@@ -1,20 +1,20 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArrowLeft, FlaskConical, Shirt } from "lucide-react";
+import { ArrowLeft, FlaskConical, Hammer, Shirt } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ITEMS } from "@/lib/data/items";
 import { CRAFT_RECIPES, type CraftRecipe } from "@/lib/data/recipes";
-import { METAL_DISPLAY_NAME } from "@/lib/data/smelt";
-import { tierColorFor } from "@/lib/itemDisplay";
+import { tierDotFor } from "@/lib/itemDisplay";
 import { renderCategoryIcon } from "@/lib/itemIcon";
 import { inputSatisfactions } from "@/lib/engine/workbench";
+import { CostList } from "@/components/hideout/UpgradeCostDisplay";
 import { NotBuiltStub } from "./NotBuiltStub";
 import { toast } from "@/lib/toast";
-import type { MetalId } from "@/lib/types";
+import type { MetalId, UpgradeCost } from "@/lib/types";
 
 type Category = "apparel" | "medical";
 
@@ -110,6 +110,19 @@ export function WorkbenchPanel() {
   );
 }
 
+// Recipe inputs use a different shape than UpgradeCost; coerce to the
+// shared {cash, items, metals} so CostList renders the same checklist
+// it does on the hideout cards. Cash is always 0 for crafting.
+function recipeCost(recipe: CraftRecipe): UpgradeCost {
+  const items: Array<{ id: string; count: number }> = [];
+  const metals: Array<{ id: MetalId; count: number }> = [];
+  for (const inp of recipe.inputs) {
+    if (inp.type === "item") items.push({ id: inp.id as string, count: inp.count });
+    else metals.push({ id: inp.id as MetalId, count: inp.count });
+  }
+  return { cash: 0, items, metals };
+}
+
 function RecipeSection({
   icon,
   title,
@@ -131,50 +144,51 @@ function RecipeSection({
         {icon}
         {title}
       </div>
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
         {recipes.map((r) => {
           const out = ITEMS[r.output.itemId];
           if (!out) return null;
           const sats = inputSatisfactions(r, stash, foundry);
           const canMake = sats.every((s) => s.satisfied);
+          const cost = recipeCost(r);
+          const affordances = {
+            items: sats
+              .filter((s) => s.type === "item")
+              .map((s) => ({ id: s.id as string, need: s.count, have: s.have })),
+            metals: sats
+              .filter((s) => s.type === "metal")
+              .map((s) => ({ id: s.id as MetalId, need: s.count, have: s.have })),
+          };
           return (
-            <div key={r.id} className="flex flex-col gap-2 rounded-sm border border-border bg-card/40 p-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {renderCategoryIcon(r.output.itemId, "size-3.5")}
-                  <span className={cn("font-medium", tierColorFor(r.output.itemId))}>{out.name}</span>
-                </div>
-                <span className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground">
-                  T{r.minWorkbenchTier}
+            <div key={r.id} className="flex h-full flex-col gap-2 rounded-sm border border-border bg-card/40 p-4 text-sm">
+              <div className="flex items-center gap-2">
+                {renderCategoryIcon(r.output.itemId, "size-4 shrink-0")}
+                <span className="font-mono text-xs uppercase tracking-widest text-foreground">
+                  {out.name}
                 </span>
+                {/* Rarity dot mirrors the cost-row treatment so the player
+                    can tell at a glance what tier the output rolls at. */}
+                <span
+                  className={cn("inline-block size-1.5 shrink-0 rounded-full", tierDotFor(r.output.itemId))}
+                  aria-hidden
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const result = onCraft(r.id);
+                    if (!result.ok) toast(`Can't craft: ${result.reason ?? "unknown"}`);
+                  }}
+                  disabled={!canMake}
+                  className="ml-auto rounded-sm"
+                >
+                  <Hammer className="size-3.5" />
+                  Craft
+                </Button>
               </div>
-              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-                {sats.map((s, i) => {
-                  const label =
-                    s.type === "metal"
-                      ? METAL_DISPLAY_NAME[s.id as MetalId] ?? String(s.id)
-                      : ITEMS[s.id as string]?.name ?? String(s.id);
-                  return (
-                    <span
-                      key={i}
-                      className={cn("tabular-nums", s.satisfied ? "text-foreground/85" : "text-red-300")}
-                    >
-                      {s.have}/{s.count} {label}
-                    </span>
-                  );
-                })}
+              <div className="mt-auto flex flex-col gap-3 border-t border-border/50 pt-3">
+                <CostList cost={cost} affordances={affordances} />
               </div>
-              <Button
-                size="sm"
-                onClick={() => {
-                  const result = onCraft(r.id);
-                  if (!result.ok) toast(`Can't craft: ${result.reason ?? "unknown"}`);
-                }}
-                disabled={!canMake}
-                className="rounded-sm"
-              >
-                Craft
-              </Button>
             </div>
           );
         })}

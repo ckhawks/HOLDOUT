@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { Check } from "lucide-react";
 import { ITEMS } from "@/lib/data/items";
 import { METAL_DISPLAY_NAME } from "@/lib/data/smelt";
-import { tierColorFor } from "@/lib/itemDisplay";
+import { tierDotFor } from "@/lib/itemDisplay";
+import { renderCategoryIcon } from "@/lib/itemIcon";
 import { cn } from "@/lib/utils";
 import type { MetalId, UpgradeCost } from "@/lib/types";
 
@@ -14,7 +15,10 @@ import type { MetalId, UpgradeCost } from "@/lib/types";
 export interface CostAffordance {
   items?: ReadonlyArray<{ id: string; need: number; have: number }>;
   metals?: ReadonlyArray<{ id: MetalId; need: number; have: number }>;
-  cashShort?: number;
+  // Actual current credits balance — NOT clamped to cost.cash, so the
+  // numerator can show "¤500 / ¤300" when the player has more than the
+  // requirement (helps gauge runway across multiple potential purchases).
+  cashHave?: number;
   // Free-form extra requirements (e.g. "Schematic recovered"). Rendered as
   // additional rows after cash/items/metals. Use sparingly — most gates fit
   // the regular item/metal cost shape.
@@ -37,12 +41,23 @@ function rowsFor(cost: UpgradeCost, affordances?: CostAffordance): Row[] {
   const rows: Row[] = [];
 
   if (cost.cash > 0) {
-    const cashHave = Math.max(0, cost.cash - (affordances?.cashShort ?? 0));
+    const cashHave = Math.max(0, affordances?.cashHave ?? 0);
     const satisfied = cashHave >= cost.cash;
     rows.push({
       key: "cash",
-      label: <span>Credits</span>,
+      label: (
+        <span className="inline-flex items-center gap-1.5">
+          {/* Project-wide credits glyph (see Header.tsx) — not an icon, the
+              ¤ character itself is the brand mark for currency. */}
+          <span className={cn("inline-flex size-3.5 shrink-0 items-center justify-center font-mono", satisfied ? "text-foreground/85" : "text-muted-foreground/60")}>
+            ¤
+          </span>
+          Credits
+        </span>
+      ),
       // Show currency glyph in the quantity column so the unit is visible.
+      // Numerator reflects the player's actual balance — uncapped — so they
+      // can see how comfortable they are vs the requirement.
       quantity: `¤${cashHave.toLocaleString()} / ¤${cost.cash.toLocaleString()}`,
       have: cashHave,
       need: cost.cash,
@@ -56,12 +71,26 @@ function rowsFor(cost: UpgradeCost, affordances?: CostAffordance): Row[] {
     const satisfied = have >= req.count;
     // Item tier color only renders when we have at least one — otherwise the
     // row reads as a muted "still need this" rather than advertising a tier
-    // colour for something we don't possess.
+    // colour for something we don't possess. Category icon prefixes the
+    // name so the row visually echoes the stash row treatment.
     rows.push({
       key: `item:${req.id}`,
       label: (
-        <span className={satisfied ? tierColorFor(req.id) : "text-muted-foreground"}>
-          {ITEMS[req.id]?.name ?? req.id}
+        <span className="inline-flex items-center gap-1.5">
+          {renderCategoryIcon(req.id, cn("size-3.5 shrink-0", satisfied ? "" : "text-muted-foreground/60"))}
+          <span className={satisfied ? "text-foreground/90" : "text-muted-foreground"}>
+            {ITEMS[req.id]?.name ?? req.id}
+          </span>
+          {/* Rarity-tier dot. Kept on the row even when unsatisfied so the
+              player can still see what tier they're hunting for. */}
+          <span
+            className={cn(
+              "inline-block size-1.5 shrink-0 rounded-full",
+              tierDotFor(req.id),
+              satisfied ? "" : "opacity-60",
+            )}
+            aria-hidden
+          />
         </span>
       ),
       quantity: `${have} / ${req.count}`,
@@ -128,7 +157,7 @@ export function CostList({
                       : "bg-border/40 text-muted-foreground/70",
                   )}
                 >
-                  {r.satisfied ? <Check className="size-3" strokeWidth={3} /> : <X className="size-3" strokeWidth={3} />}
+                  {r.satisfied && <Check className="size-3" strokeWidth={3} />}
                 </span>
               </td>
               <td

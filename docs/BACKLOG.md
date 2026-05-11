@@ -68,11 +68,17 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - DONE: rig names need to be more clear they are chest rigs/extra storage equippables
 - DONE: make empty loot button also take apparel out of the inventory (not unequip it)
 
-- drag to swap backpacks (try to swap items, reject if can't)
-- toast when rejecting unequipping bag/rig if items are in, toast when rejecting moving bag/rig if cant for some reason
+- DONE: drag to swap backpacks (try to swap items, reject if can't)
+- DONE: toast when rejecting unequipping bag/rig if items are in, toast when rejecting moving bag/rig if cant for some reason
 - backpacks/rigs need <-- Kit button that equips them or something
 - choose operative name when you first start the save
 - return back to stash after end-of-raid screen
+- add toast when constructing hideout thing or upgrading
+- look for other places where toasts would be beneficial?
+- rework stash item list (lots of buttons rn)
+- move stash value out of top bar into stash screen
+- add toast whenever something becomes upgradable/constructable (whenever receive new items post-raid or from recycling/crafting)
+- see what all is recyclable :think:
 
 - more weight on character = higher per turn energy consumption
 - buy multiple quantity in market

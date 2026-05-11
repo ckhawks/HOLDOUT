@@ -180,7 +180,7 @@ function affordanceFor(
     itemCounts[si.itemId] = (itemCounts[si.itemId] ?? 0) + 1;
   }
   return {
-    cashShort: Math.max(0, cost.cash - cash),
+    cashHave: cash,
     items: (cost.items ?? []).map((req) => ({
       id: req.id,
       need: req.count,
@@ -341,7 +341,7 @@ export function HideoutPanel() {
   return (
     <section className="flex min-h-0 flex-1 flex-col">
       <PanelHeader title="Hideout" subtitle="Your concealed position. Where the kit gets built." />
-      <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto px-6 py-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid flex-1 grid-cols-1 gap-3 overflow-y-auto px-6 py-6 lg:grid-cols-2 2xl:grid-cols-3">
         <ModuleCardShell
           Icon={Package}
           name="Stash"
