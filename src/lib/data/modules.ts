@@ -124,6 +124,34 @@ export const MODULE_BUILD_COSTS: Record<ModuleId, UpgradeCost> = {
   },
 };
 
+// Short prose describing what landing at the given tier unlocks. Keyed by
+// `${moduleId}:${tier}` (or `stash:${level}`). Tier 1 strings describe what
+// building the module does; tier 2+ describe the upgrade effect. Used by
+// the hideout card "construct" / "upgrade · tier N" footer to show why the
+// player would spend on it.
+export const MODULE_TIER_EFFECTS: Record<string, string> = {
+  // Build effects (tier 1)
+  "recycler:1": "Scrap common items into base components.",
+  "workbench:1": "Craft apparel + medical recipes from components.",
+  "research_bench:1": "Spend docs + components to unlock locked recipes; progress ticks per tile moved in raids.",
+  "foundry:1": "Smelt metallic items into vessel-stored Steel, Copper, and Titanium.",
+  "armory:1": "Specialized 8-slot storage for equippable gear; doesn't count against stash.",
+  "armor_stand:1": "Placeholder shell. 1 preset slot (loadout save/swap coming later).",
+  "repair_bench:1": "Placeholder shell. Repair functionality lands with the weapon-condition system.",
+  "generator:1": "Stores up to 20 power cells, consumed at raid start by high-tier modules.",
+  // Upgrades
+  "recycler:2": "+15% to every yield chance. Bulk-scrap a whole stack with one click. Tier-2 items scrappable.",
+  "recycler:3": "+30% to every yield chance. 20% chance per output to roll a doubled stack. Tier-3 items scrappable.",
+  "workbench:2": "Unlocks tier-2 recipes (Tactical Pack, Combat Stim, etc.).",
+  "workbench:3": "Unlocks tier-3 recipes (Raider Rucksack, Nano-Clot).",
+  "research_bench:2": "Reserved for future research queue / acceleration.",
+  "foundry:2": "3× vessel capacity (1,500 / 600 / —). Bulk-smelt enabled. Tier-2 items smeltable.",
+  "foundry:3": "~10× vessel capacity (5,000 / 2,000 / 500). Chromite + Voidsteel storage unlocked.",
+  "armory:2": "Armory capacity 8 → 16.",
+  "armor_stand:2": "3 preset slots (was 1).",
+  "generator:2": "Cell capacity 20 → 60.",
+};
+
 // Tier-up costs keyed by `${moduleId}:${nextTier}`. Indexed lookup keeps the
 // engine helper simple.
 export const MODULE_TIER_COSTS: Record<string, UpgradeCost> = {

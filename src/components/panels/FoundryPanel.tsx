@@ -1,11 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, ChevronUp, Flame } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
 import { ITEMS } from "@/lib/data/items";
 import {
@@ -13,84 +12,14 @@ import {
   METAL_SELL_PRICE,
   SMELT_RECIPES,
 } from "@/lib/data/smelt";
-import { MODULE_BUILD_COSTS, MODULE_DEFS, MODULE_TIER_COSTS } from "@/lib/data/modules";
 import { tierColorFor } from "@/lib/itemDisplay";
 import { renderCategoryIcon } from "@/lib/itemIcon";
 import { vesselCapacity } from "@/lib/engine/foundry";
+import { NotBuiltStub } from "./NotBuiltStub";
 import { toast } from "@/lib/toast";
-import type { MetalId, UpgradeCost } from "@/lib/types";
+import type { MetalId } from "@/lib/types";
 
 const METAL_ORDER: MetalId[] = ["steel", "copper", "titanium", "chromite", "voidsteel"];
-
-function CostLine({ cost }: { cost: UpgradeCost }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-      <span className="font-mono">¤{cost.cash.toLocaleString()}</span>
-      {(cost.items ?? []).map((req) => (
-        <span key={req.id} className="text-muted-foreground">
-          {req.count}× <span className={tierColorFor(req.id)}>{ITEMS[req.id]?.name ?? req.id}</span>
-        </span>
-      ))}
-      {(cost.metals ?? []).map((req) => (
-        <span key={req.id} className="text-muted-foreground">
-          {req.count} {METAL_DISPLAY_NAME[req.id as MetalId] ?? req.id}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function UnbuiltView() {
-  const setPanel = useGame((s) => s.setPanel);
-  const build = useGame((s) => s.buildModule);
-  const cost = MODULE_BUILD_COSTS.foundry;
-  return (
-    <section className="flex min-h-0 flex-1 flex-col">
-      <PanelHeader title="Foundry" subtitle="Not built yet." />
-      <div className="flex-1 px-6 py-6">
-        <Button variant="outline" size="sm" onClick={() => setPanel("hideout")} className="mb-6 rounded-sm">
-          <ArrowLeft className="size-3.5" />
-          Back to hideout
-        </Button>
-        <div className="max-w-md space-y-4 rounded-sm border border-border bg-card/40 p-5">
-          <div className="flex items-center gap-2">
-            <Flame className="size-5" />
-            <span className="font-mono text-sm uppercase tracking-widest">Foundry · Build</span>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Smelt metallic items into base metals stored in vessels. Sell raw
-            or save them for upgrade-gating costs. Higher tiers add titanium,
-            chromite, and voidsteel storage.
-          </div>
-          <div>
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              build cost
-            </div>
-            <CostLine cost={cost} />
-          </div>
-          <Button
-            onClick={() => {
-              const r = build("foundry");
-              if (!r.ok) {
-                toast(
-                  r.reason === "missing_items" ? "Missing required parts." :
-                  r.reason === "missing_metals" ? "Foundry has insufficient metal." :
-                  r.reason === "missing_cash" ? "Not enough cash." :
-                  "Cannot build right now.",
-                );
-              } else {
-                toast("Foundry built.");
-              }
-            }}
-            className="w-full"
-          >
-            Build Foundry
-          </Button>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 interface SmeltRow {
   itemId: string;
@@ -105,11 +34,9 @@ export function FoundryPanel() {
   const vessels = useGame((s) => s.construction.foundry.vessels);
   const stash = useGame((s) => s.stash);
   const log = useGame((s) => s.construction.log.foundry);
-  const cash = useGame((s) => s.cash);
   const smeltOne = useGame((s) => s.smeltStashItem);
   const smeltStack = useGame((s) => s.smeltStackByItemId);
   const sellMetal = useGame((s) => s.sellMetal);
-  const upgrade = useGame((s) => s.upgradeModule);
   const setPanel = useGame((s) => s.setPanel);
 
   const [sellAmounts, setSellAmounts] = useState<Partial<Record<MetalId, string>>>({});
@@ -135,11 +62,9 @@ export function FoundryPanel() {
     return result;
   }, [built, stash, tier]);
 
-  if (!built) return <UnbuiltView />;
+  if (!built) return <NotBuiltStub name="Foundry" />;
 
   const t = tier as 1 | 2 | 3;
-  const nextTier = t < (MODULE_DEFS.foundry.maxTier as 3) ? ((t + 1) as 2 | 3) : null;
-  const upgradeCost = nextTier ? MODULE_TIER_COSTS[`foundry:${nextTier}`] : null;
   const bulkAvailable = t >= 2;
 
   return (
@@ -297,43 +222,6 @@ export function FoundryPanel() {
         </div>
 
         <aside className="flex w-64 shrink-0 flex-col gap-3">
-          {nextTier && upgradeCost && (
-            <div className="rounded-sm border border-border bg-card/40 p-3">
-              <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                <ChevronUp className="size-3.5" />
-                Upgrade · tier {nextTier}
-              </div>
-              <CostLine cost={upgradeCost} />
-              <Tooltip
-                text={
-                  nextTier === 2
-                    ? "L2: 3× vessel capacity, bulk-smelt enabled. Tungsten gear and exo servos accepted."
-                    : "L3: ~10× vessel capacity, chromite + voidsteel storage unlocked. Reactor Plates smeltable."
-                }
-              >
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const r = upgrade("foundry");
-                    if (!r.ok) {
-                      toast(
-                        r.reason === "missing_items" ? "Missing required parts." :
-                        r.reason === "missing_metals" ? "Foundry has insufficient metal." :
-                        r.reason === "missing_cash" ? "Not enough cash." :
-                        "Cannot upgrade right now.",
-                      );
-                    }
-                  }}
-                  disabled={cash < upgradeCost.cash}
-                  className="mt-3 w-full rounded-sm"
-                >
-                  Upgrade
-                </Button>
-              </Tooltip>
-            </div>
-          )}
-
           <div className="flex min-h-0 flex-1 flex-col rounded-sm border border-border bg-card/40 p-3">
             <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
               Recent activity

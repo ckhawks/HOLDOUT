@@ -1,9 +1,13 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useGame } from "@/store/game";
+import { Button } from "@/components/ui/button";
 import { LOCATIONS } from "@/lib/data/locations";
 import { ROOM_EVENT_BIAS } from "@/lib/data/events";
 import { ITEMS } from "@/lib/data/items";
+import { tierColorFor } from "@/lib/itemDisplay";
+import { toast } from "@/lib/toast";
 import { ACTIONS, chipsFor } from "@/lib/engine/actions";
 import type { ActionId } from "@/lib/types";
 import {
@@ -50,6 +54,10 @@ export function DataPanel() {
         subtitle="Operator-debug view. Live engine values for tuning and sanity checks."
       />
       <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6 text-sm">
+        <Section title="Admin · spawn items + cash">
+          <AdminSpawner />
+        </Section>
+
         <Section title="Save & runtime">
           <KV k="Save schema version" v={SCHEMA_VERSION} />
           <KV k="RNG seed" v={rngSeed} />
@@ -291,5 +299,116 @@ function Table({ head, rows }: { head: string[]; rows: (string | number)[][] }) 
 
 function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
+}
+
+// Debug-only admin tool: searchable item picker + count input, plus cash
+// shortcuts. Lives behind the debugMode flag (the Data panel itself is
+// already gated). Use sparingly — bypasses raid acquisition entirely.
+function AdminSpawner() {
+  const spawn = useGame((s) => s.debugSpawnItem);
+  const addCash = useGame((s) => s.debugAddCash);
+  const [query, setQuery] = useState("");
+  const [count, setCount] = useState("1");
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const all = Object.values(ITEMS);
+    if (!q) {
+      // No query → show the construction-system items first since that's
+      // what's most likely being tested right now.
+      return all
+        .slice()
+        .sort((a, b) => {
+          const sa = a.specialized ? 0 : a.component ? 1 : 2;
+          const sb = b.specialized ? 0 : b.component ? 1 : 2;
+          if (sa !== sb) return sa - sb;
+          return a.name.localeCompare(b.name);
+        })
+        .slice(0, 40);
+    }
+    return all
+      .filter((i) => i.id.toLowerCase().includes(q) || i.name.toLowerCase().includes(q))
+      .slice(0, 40);
+  }, [query]);
+
+  const n = Math.max(1, Math.floor(Number(count) || 1));
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Credits</div>
+        <div className="flex flex-wrap gap-2">
+          {[100, 500, 1000, 5000, 25000].map((amt) => (
+            <Button
+              key={amt}
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                addCash(amt);
+                toast(`+¤${amt.toLocaleString()}`);
+              }}
+              className="rounded-sm font-mono"
+            >
+              +¤{amt.toLocaleString()}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Items</div>
+        <div className="mb-2 flex items-center gap-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="search by id or name…"
+            className="h-8 flex-1 rounded-sm border border-border bg-background px-2 font-mono text-xs"
+          />
+          <input
+            type="number"
+            min={1}
+            value={count}
+            onChange={(e) => setCount(e.target.value)}
+            className="h-8 w-20 rounded-sm border border-border bg-background px-2 font-mono text-xs"
+          />
+        </div>
+        <div className="max-h-72 overflow-y-auto rounded-sm border border-border/60 bg-background/40">
+          {matches.length === 0 ? (
+            <div className="p-3 text-xs text-muted-foreground">no matches</div>
+          ) : (
+            <ul>
+              {matches.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between border-b border-border/30 px-2 py-1.5 last:border-0"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={tierColorFor(item.id)}>{item.name}</span>
+                    <span className="truncate font-mono text-[10px] text-muted-foreground">
+                      {item.id} · {item.tier} · {item.category}
+                      {item.specialized && " · specialized"}
+                      {item.component && !item.specialized && " · component"}
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      spawn(item.id, n);
+                      toast(`+${n}× ${item.name}`);
+                    }}
+                    className="ml-2 rounded-sm"
+                  >
+                    +{n}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 

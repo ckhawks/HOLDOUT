@@ -49,6 +49,12 @@ export interface EconomySlice {
   // Debug-only: re-roll the shop offers immediately. Wired to a button in
   // the Marketplace panel that's only shown when debugMode is on.
   debugResetShop: () => void;
+  // Debug-only: spawn N copies of an item into stash (with proper
+  // acquiredAt + valueMod stamping). Skips capacity checks intentionally —
+  // it's a testing tool. Wired into the Data panel's admin section.
+  debugSpawnItem: (itemId: string, count?: number) => void;
+  // Debug-only: credit cash directly. Same audience as debugSpawnItem.
+  debugAddCash: (amount: number) => void;
 }
 
 export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> = (set, get) => ({
@@ -119,6 +125,29 @@ export const createEconomySlice: StateCreator<GameState, [], [], EconomySlice> =
   debugResetShop: () => {
     const seed = Math.floor(Math.random() * 0xffffffff);
     set({ shop: refreshShop(makeRng(seed), Date.now()) });
+  },
+
+  debugSpawnItem: (itemId, count = 1) => {
+    if (!ITEMS[itemId]) return;
+    const n = Math.max(1, Math.floor(count));
+    const { stash } = get();
+    const now = Date.now();
+    const fresh: StashItem[] = [];
+    for (let i = 0; i < n; i++) {
+      fresh.push({
+        uid: `${now}-${Math.random().toString(36).slice(2, 8)}-${i}`,
+        itemId,
+        acquiredAt: now,
+        valueMod: rollValueMod(Math.random),
+      });
+    }
+    set({ stash: [...stash, ...fresh] });
+  },
+
+  debugAddCash: (amount) => {
+    const n = Math.floor(amount);
+    if (!Number.isFinite(n) || n === 0) return;
+    set({ cash: Math.max(0, get().cash + n) });
   },
 
   buyStashUpgrade: () => {

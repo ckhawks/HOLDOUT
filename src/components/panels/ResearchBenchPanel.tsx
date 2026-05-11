@@ -1,83 +1,18 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArrowLeft, ChevronUp, FlaskConical, Microscope } from "lucide-react";
+import { ArrowLeft, FlaskConical } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
 import { ITEMS } from "@/lib/data/items";
 import { CRAFT_RECIPES, type CraftRecipe } from "@/lib/data/recipes";
-import { MODULE_BUILD_COSTS, MODULE_DEFS, MODULE_TIER_COSTS } from "@/lib/data/modules";
 import { tierColorFor } from "@/lib/itemDisplay";
 import { renderCategoryIcon } from "@/lib/itemIcon";
 import { researchStatus } from "@/lib/engine/research";
+import { NotBuiltStub } from "./NotBuiltStub";
 import { toast } from "@/lib/toast";
-import type { UpgradeCost } from "@/lib/types";
-
-function CostLine({ cost }: { cost: UpgradeCost }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-      <span className="font-mono">¤{cost.cash.toLocaleString()}</span>
-      {(cost.items ?? []).map((req) => (
-        <span key={req.id} className="text-muted-foreground">
-          {req.count}× <span className={tierColorFor(req.id)}>{ITEMS[req.id]?.name ?? req.id}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function UnbuiltView() {
-  const setPanel = useGame((s) => s.setPanel);
-  const build = useGame((s) => s.buildModule);
-  const cost = MODULE_BUILD_COSTS.research_bench;
-  return (
-    <section className="flex min-h-0 flex-1 flex-col">
-      <PanelHeader title="Research Bench" subtitle="Not built yet." />
-      <div className="flex-1 px-6 py-6">
-        <Button variant="outline" size="sm" onClick={() => setPanel("hideout")} className="mb-6 rounded-sm">
-          <ArrowLeft className="size-3.5" />
-          Back to hideout
-        </Button>
-        <div className="max-w-md space-y-4 rounded-sm border border-border bg-card/40 p-5">
-          <div className="flex items-center gap-2">
-            <Microscope className="size-5" />
-            <span className="font-mono text-sm uppercase tracking-widest">Research Bench · Build</span>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Unlock locked craft recipes by spending intel docs + components.
-            Research progresses while the operative moves through raid tiles.
-          </div>
-          <div>
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              build cost
-            </div>
-            <CostLine cost={cost} />
-          </div>
-          <Button
-            onClick={() => {
-              const r = build("research_bench");
-              if (!r.ok) {
-                toast(
-                  r.reason === "missing_items" ? "Missing required parts." :
-                  r.reason === "missing_cash" ? "Not enough cash." :
-                  "Cannot build right now.",
-                );
-              } else {
-                toast("Research Bench built.");
-              }
-            }}
-            className="w-full"
-          >
-            Build Research Bench
-          </Button>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 export function ResearchBenchPanel() {
   const built = useGame((s) => s.construction.modules.research_bench.built);
@@ -86,9 +21,7 @@ export function ResearchBenchPanel() {
   const foundry = useGame((s) => s.construction.foundry);
   const research = useGame((s) => s.construction.research);
   const log = useGame((s) => s.construction.log.research);
-  const cash = useGame((s) => s.cash);
   const start = useGame((s) => s.startResearch);
-  const upgrade = useGame((s) => s.upgradeModule);
   const setPanel = useGame((s) => s.setPanel);
 
   const lockedRecipes = useMemo(() => {
@@ -97,11 +30,9 @@ export function ResearchBenchPanel() {
     );
   }, [research.unlockedRecipes]);
 
-  if (!built) return <UnbuiltView />;
+  if (!built) return <NotBuiltStub name="Research Bench" />;
 
   const t = tier as 1 | 2;
-  const nextTier = t < (MODULE_DEFS.research_bench.maxTier as 2) ? 2 : null;
-  const upgradeCost = nextTier ? MODULE_TIER_COSTS[`research_bench:${nextTier}`] : null;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">
@@ -134,36 +65,6 @@ export function ResearchBenchPanel() {
         </div>
 
         <aside className="flex w-64 shrink-0 flex-col gap-3">
-          {nextTier && upgradeCost && (
-            <div className="rounded-sm border border-border bg-card/40 p-3">
-              <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                <ChevronUp className="size-3.5" />
-                Upgrade · tier {nextTier}
-              </div>
-              <CostLine cost={upgradeCost} />
-              <Tooltip text="L2: stub for future research queue / acceleration.">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const r = upgrade("research_bench");
-                    if (!r.ok) {
-                      toast(
-                        r.reason === "missing_items" ? "Missing required parts." :
-                        r.reason === "missing_cash" ? "Not enough cash." :
-                        "Cannot upgrade right now.",
-                      );
-                    }
-                  }}
-                  disabled={cash < upgradeCost.cash}
-                  className="mt-3 w-full rounded-sm"
-                >
-                  Upgrade
-                </Button>
-              </Tooltip>
-            </div>
-          )}
-
           <div className="flex min-h-0 flex-1 flex-col rounded-sm border border-border bg-card/40 p-3">
             <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
               Recent activity

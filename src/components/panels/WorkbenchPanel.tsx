@@ -1,90 +1,20 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArrowLeft, ChevronUp, Hammer, FlaskConical, Shirt } from "lucide-react";
+import { ArrowLeft, FlaskConical, Shirt } from "lucide-react";
 import { useGame } from "@/store/game";
 import { PanelHeader } from "./PanelHeader";
 import { Button } from "@/components/ui/button";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
 import { ITEMS } from "@/lib/data/items";
 import { CRAFT_RECIPES, type CraftRecipe } from "@/lib/data/recipes";
 import { METAL_DISPLAY_NAME } from "@/lib/data/smelt";
-import { MODULE_BUILD_COSTS, MODULE_DEFS, MODULE_TIER_COSTS } from "@/lib/data/modules";
 import { tierColorFor } from "@/lib/itemDisplay";
 import { renderCategoryIcon } from "@/lib/itemIcon";
 import { inputSatisfactions } from "@/lib/engine/workbench";
+import { NotBuiltStub } from "./NotBuiltStub";
 import { toast } from "@/lib/toast";
-import type { MetalId, UpgradeCost } from "@/lib/types";
-
-function CostLine({ cost }: { cost: UpgradeCost }) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-      <span className="font-mono">¤{cost.cash.toLocaleString()}</span>
-      {(cost.items ?? []).map((req) => (
-        <span key={req.id} className="text-muted-foreground">
-          {req.count}× <span className={tierColorFor(req.id)}>{ITEMS[req.id]?.name ?? req.id}</span>
-        </span>
-      ))}
-      {(cost.metals ?? []).map((req) => (
-        <span key={req.id} className="text-muted-foreground">
-          {req.count} {METAL_DISPLAY_NAME[req.id as MetalId] ?? req.id}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function UnbuiltView() {
-  const setPanel = useGame((s) => s.setPanel);
-  const build = useGame((s) => s.buildModule);
-  const cost = MODULE_BUILD_COSTS.workbench;
-  return (
-    <section className="flex min-h-0 flex-1 flex-col">
-      <PanelHeader title="Workbench" subtitle="Not built yet." />
-      <div className="flex-1 px-6 py-6">
-        <Button variant="outline" size="sm" onClick={() => setPanel("hideout")} className="mb-6 rounded-sm">
-          <ArrowLeft className="size-3.5" />
-          Back to hideout
-        </Button>
-        <div className="max-w-md space-y-4 rounded-sm border border-border bg-card/40 p-5">
-          <div className="flex items-center gap-2">
-            <Hammer className="size-5" />
-            <span className="font-mono text-sm uppercase tracking-widest">Workbench · Build</span>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Craft apparel and medical items from components + foundry metals.
-            Requires a Schematic: Workbench (find one on a raid).
-          </div>
-          <div>
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              build cost
-            </div>
-            <CostLine cost={cost} />
-          </div>
-          <Button
-            onClick={() => {
-              const r = build("workbench");
-              if (!r.ok) {
-                toast(
-                  r.reason === "missing_items" ? "Missing required parts (including the schematic)." :
-                  r.reason === "missing_metals" ? "Foundry has insufficient metal." :
-                  r.reason === "missing_cash" ? "Not enough cash." :
-                  "Cannot build right now.",
-                );
-              } else {
-                toast("Workbench built.");
-              }
-            }}
-            className="w-full"
-          >
-            Build Workbench
-          </Button>
-        </div>
-      </div>
-    </section>
-  );
-}
+import type { MetalId } from "@/lib/types";
 
 type Category = "apparel" | "medical";
 
@@ -101,9 +31,7 @@ export function WorkbenchPanel() {
   const foundry = useGame((s) => s.construction.foundry);
   const unlocked = useGame((s) => s.construction.research.unlockedRecipes);
   const log = useGame((s) => s.construction.log.workbench);
-  const cash = useGame((s) => s.cash);
   const craft = useGame((s) => s.craftRecipe);
-  const upgrade = useGame((s) => s.upgradeModule);
   const setPanel = useGame((s) => s.setPanel);
 
   const recipes = useMemo(() => {
@@ -114,11 +42,9 @@ export function WorkbenchPanel() {
     });
   }, [built, unlocked, tier]);
 
-  if (!built) return <UnbuiltView />;
+  if (!built) return <NotBuiltStub name="Workbench" />;
 
   const t = tier as 1 | 2 | 3;
-  const nextTier = t < (MODULE_DEFS.workbench.maxTier as 3) ? ((t + 1) as 2 | 3) : null;
-  const upgradeCost = nextTier ? MODULE_TIER_COSTS[`workbench:${nextTier}`] : null;
 
   const apparelRecipes = recipes.filter((r) => categoryOf(r) === "apparel");
   const medRecipes = recipes.filter((r) => categoryOf(r) === "medical");
@@ -162,43 +88,6 @@ export function WorkbenchPanel() {
         </div>
 
         <aside className="flex w-64 shrink-0 flex-col gap-3">
-          {nextTier && upgradeCost && (
-            <div className="rounded-sm border border-border bg-card/40 p-3">
-              <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                <ChevronUp className="size-3.5" />
-                Upgrade · tier {nextTier}
-              </div>
-              <CostLine cost={upgradeCost} />
-              <Tooltip
-                text={
-                  nextTier === 2
-                    ? "L2: tier-2 recipes (Tactical Pack, Combat Stim, etc.) become craftable."
-                    : "L3: tier-3 recipes (Raider Rucksack, Nano-Clot) become craftable."
-                }
-              >
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const r = upgrade("workbench");
-                    if (!r.ok) {
-                      toast(
-                        r.reason === "missing_items" ? "Missing required parts." :
-                        r.reason === "missing_metals" ? "Foundry has insufficient metal." :
-                        r.reason === "missing_cash" ? "Not enough cash." :
-                        "Cannot upgrade right now.",
-                      );
-                    }
-                  }}
-                  disabled={cash < upgradeCost.cash}
-                  className="mt-3 w-full rounded-sm"
-                >
-                  Upgrade
-                </Button>
-              </Tooltip>
-            </div>
-          )}
-
           <div className="flex min-h-0 flex-1 flex-col rounded-sm border border-border bg-card/40 p-3">
             <div className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
               Recent activity
