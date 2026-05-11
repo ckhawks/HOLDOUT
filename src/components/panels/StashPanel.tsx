@@ -225,7 +225,7 @@ export function StashPanel() {
     // (the visual feedback cares about consumable-ness, not the flag itself).
     setOverVitals(isInside(vitalsRef.current, e.clientX, e.clientY));
     setDrag((cur) => (cur ? { ...cur, mouseX: e.clientX, mouseY: e.clientY } : cur));
-  }, [equipment, slotRefs]);
+  }, [equipment, containers, slotRefs]);
 
   const onUp = useCallback((e: PointerEvent, d: Drag) => {
     let played = false;
@@ -327,7 +327,7 @@ export function StashPanel() {
     setKitHover(null);
     setOverStash(false);
     setOverVitals(false);
-  }, [equipment, equipFromStash, unequipToStash, swapContainerFromStash, kitFromStash, stashFromKit, moveKitItem, consumeOnOperative, slotRefs]);
+  }, [equipment, containers, equipFromStash, unequipToStash, swapContainerFromStash, kitFromStash, stashFromKit, moveKitItem, consumeOnOperative, slotRefs]);
 
   const rotateInPlace = useCallback(() => {
     setDrag((d) => {
@@ -726,7 +726,6 @@ export function StashPanel() {
                       const repItems = row.kind === "stack" ? row.items : [row.si];
                       const repFree = repItems.find((s) => !s.pinned) ?? repItems[0];
                       const allPinned = repItems.every((s) => s.pinned);
-                      const anyPinned = repItems.some((s) => s.pinned);
                       const equippable = item.slot != null;
                       const equippableNow =
                         !inRaid && equippable && (

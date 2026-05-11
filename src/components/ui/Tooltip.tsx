@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useNow } from "@/lib/useNow";
 import { ITEMS } from "@/lib/data/items";
 import { tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { renderCategoryIcon } from "@/lib/itemIcon";
@@ -140,6 +141,7 @@ export function ItemTooltip({
   disabled?: boolean;
 }) {
   const item = ITEMS[itemId];
+  const now = useNow();
   if (!item) return <>{children}</>;
   const fg = tierColorFor(itemId);
   const bg = tileBgFor(itemId);
@@ -211,7 +213,7 @@ export function ItemTooltip({
         )}
         {acquiredAt != null && (
           <div className="text-muted-foreground/70">
-            acquired {formatAcquiredAge(acquiredAt, Date.now())}
+            acquired {formatAcquiredAge(acquiredAt, now)}
           </div>
         )}
         {hint && <div className="mt-0.5 text-muted-foreground/70">{hint}</div>}

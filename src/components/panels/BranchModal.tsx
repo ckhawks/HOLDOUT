@@ -7,7 +7,7 @@ import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { splitItemText, tierColorFor } from "@/lib/itemDisplay";
-import type { BranchEffects, BranchOption } from "@/lib/types";
+import type { BranchEffects, BranchOption, PendingChoice } from "@/lib/types";
 
 interface Chip {
   text: string;
@@ -54,6 +54,15 @@ function chipsFor(opt: BranchOption): Chip[] {
 
 export function BranchModal() {
   const choice = useGame((s) => s.currentRaid?.pendingChoice ?? null);
+  if (!choice) return null;
+  // Keyed remount on each new choice: lets the inner component seed
+  // selectedIdx from `choice.defaultId` via useState's lazy initializer
+  // instead of an in-effect setState (which the React Compiler flags as a
+  // cascading render).
+  return <BranchModalInner key={`${choice.eventId}-${choice.startedAt}`} choice={choice} />;
+}
+
+function BranchModalInner({ choice }: { choice: PendingChoice }) {
   const paused = useGame((s) => s.currentRaid?.pausedAt ?? null);
   const resolve = useGame((s) => s.resolvePendingChoice);
   // Wall-clock subscription via useSyncExternalStore — fresh on every render,
@@ -63,23 +72,22 @@ export function BranchModal() {
   const now = paused ?? wallNow;
 
   useEffect(() => {
-    if (!choice || paused) return;
+    if (paused) return;
     if (wallNow >= choice.startedAt + choice.timerMs) {
       resolve(choice.defaultId);
     }
   }, [choice, paused, wallNow, resolve]);
 
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const selectedIdxRef = useRef(0);
-  selectedIdxRef.current = selectedIdx;
-  useEffect(() => {
-    if (!choice) return;
+  const [selectedIdx, setSelectedIdx] = useState(() => {
     const def = choice.options.findIndex((o) => o.id === choice.defaultId);
-    setSelectedIdx(def >= 0 ? def : 0);
-  }, [choice]);
+    return def >= 0 ? def : 0;
+  });
+  const selectedIdxRef = useRef(selectedIdx);
+  useEffect(() => {
+    selectedIdxRef.current = selectedIdx;
+  }, [selectedIdx]);
 
   useEffect(() => {
-    if (!choice) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (
