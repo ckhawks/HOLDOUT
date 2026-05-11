@@ -23,6 +23,7 @@ function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
   const equipment = {
     pockets: { grid: { width: 4, height: 4 }, items: [] },
     bag: null,
+    rig: null,
     weapon: null,
     armor: null,
     helmet: null,
@@ -381,6 +382,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("antiseptic_vial", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -397,6 +399,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("med_syrette", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -415,6 +418,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("nano_clot", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -432,6 +436,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("ration_pack", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -452,6 +457,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("bandage_pack", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -468,6 +474,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("bandage_pack", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -484,6 +491,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("med_syrette", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -500,6 +508,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("ration_pack", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -514,6 +523,7 @@ describe("applyConsumable", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [packed("scrap_metal", "u1")] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -530,9 +540,16 @@ describe("applyConsumable", () => {
         pockets: { grid: { width: 4, height: 4 }, items: [] },
         bag: {
           slot: { uid: "bag", itemId: "canvas_satchel" },
-          grid: { width: 4, height: 4 },
-          items: [packed("antiseptic_vial", "u1")],
+          sections: [
+            {
+              id: "main",
+              label: "Main",
+              grid: { width: 4, height: 4 },
+              items: [packed("antiseptic_vial", "u1")],
+            },
+          ],
         },
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -540,6 +557,6 @@ describe("applyConsumable", () => {
     });
     const next = applyConsumable(raid, "u1", 0, makeRng(1));
     expect(next.runState.health).toBe(60);
-    expect(next.equipment.bag?.items).toHaveLength(0);
+    expect(next.equipment.bag?.sections[0].items).toHaveLength(0);
   });
 });

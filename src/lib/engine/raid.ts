@@ -10,6 +10,7 @@ import { ITEMS, pickItemForLocation } from "@/lib/data/items";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 import { generateMap, revealFrom, stepForward } from "@/lib/engine/map";
 import { makeLogger, makeUid } from "./logging";
+import { iterKitItems } from "./equipment";
 import { lootVerb } from "./flavor";
 
 export const TICK_MIN_MS = 3000;
@@ -96,7 +97,7 @@ export function nextTickDelay(rand: () => number): number {
   return TICK_MIN_MS + Math.floor(rand() * (TICK_MAX_MS - TICK_MIN_MS));
 }
 
-export const ENERGY_BASE_DRAIN = 3;
+export const ENERGY_BASE_DRAIN = 2;
 // HP loss per tick when energy is at 0. Phase K — gives energy real teeth.
 export const EXHAUSTION_DRAIN = 2;
 
@@ -121,8 +122,7 @@ export const WEIGHT_HEAT_PER_KG = 0.025;
 
 export function carriedWeight(equipment: import("@/lib/types").Equipment): number {
   let w = 0;
-  for (const p of equipment.pockets.items) w += ITEMS[p.itemId]?.weight ?? 0;
-  if (equipment.bag) for (const p of equipment.bag.items) w += ITEMS[p.itemId]?.weight ?? 0;
+  for (const p of iterKitItems(equipment)) w += ITEMS[p.itemId]?.weight ?? 0;
   return w;
 }
 
@@ -310,6 +310,9 @@ interface DeltaAccum {
   consumedLoot: boolean;
   breachedLocked: boolean;
   extractedNow: boolean;
+  // uid of an equipment item the action consumed (currently: bypass_key on
+  // use_key). The store splices it out of pockets/bag after the tick.
+  consumedKeyUid?: string;
   combatOutcome?: CombatOutcome;
 }
 
@@ -464,6 +467,51 @@ function handleBreachLocked(ctx: TickCtx, d: DeltaAccum): void {
   );
 }
 
+function handleUseKey(ctx: TickCtx, d: DeltaAccum): void {
+  const { raid, currentTile, log, rand } = ctx;
+  const target = currentTile?.lockedContainers[0];
+  if (!target) {
+    d.logs.push(log("flavor", pick(rand, NO_LOCKED_LINES), undefined));
+    return;
+  }
+  // Find a bypass_key — walk pockets, then every bag/rig section.
+  let keyUid: string | undefined;
+  for (const p of iterKitItems(raid.equipment)) {
+    if (p.itemId === "bypass_key") {
+      keyUid = p.uid;
+      break;
+    }
+  }
+  if (!keyUid) {
+    d.logs.push(log("flavor", `No bypass key on hand. Can't quietly open the ${target.name}.`, undefined));
+    return;
+  }
+  // Quiet open: no ammo cost, +2 heat. Container is consumed from the tile
+  // via the same breachedLocked path; the key is consumed by the store via
+  // consumedKeyUid.
+  d.heatDelta = 2;
+  d.breachedLocked = true;
+  d.consumedKeyUid = keyUid;
+  // Same odds as breach (25% empty / 40% common / 35% rare). The cost is the
+  // key, not a worse roll.
+  const r = rand();
+  if (r < 0.25) {
+    d.logs.push(log("flavor", `Slipped the key into the ${target.name}. Empty inside.`, undefined));
+    return;
+  }
+  const isRare = r >= 0.65;
+  const drop = rollLoot(ctx, isRare);
+  if (!drop) {
+    d.logs.push(log("flavor", `Slipped the key into the ${target.name}. Empty inside.`, undefined));
+    return;
+  }
+  d.droppedItem = drop;
+  const item = ITEMS[drop.itemId];
+  d.logs.push(
+    log("loot", `Slipped the key into the ${target.name}. ⟦${item?.name ?? drop.itemId}⟧ inside.`, drop.itemId),
+  );
+}
+
 function handleFight(ctx: TickCtx, d: DeltaAccum): void {
   const { rand, log } = ctx;
   // Three outcomes:
@@ -564,6 +612,9 @@ export interface ActionTickResult {
   // True if the operative just executed the "leave" action on the extract
   // tile. The store reads this to schedule a successful raid end.
   extractedNow: boolean;
+  // uid of an equipment item consumed by the action (currently: bypass_key
+  // on use_key). The store splices it from pockets/bag after the tick.
+  consumedKeyUid?: string;
   // Forced-choice modal raised by this action (e.g. patrol encounter on a
   // move). When set, the store sets pendingChoice and the action that
   // would have been applied is suppressed.
@@ -623,6 +674,7 @@ export function tickAction(
     case "stay": handleStay(ctx, d); break;
     case "loot": handleLootAction(ctx, d); break;
     case "breach_locked": handleBreachLocked(ctx, d); break;
+    case "use_key": handleUseKey(ctx, d); break;
     case "fight": handleFight(ctx, d); break;
     case "flee": handleFlee(ctx, d); break;
   }
@@ -652,6 +704,7 @@ export function tickAction(
     consumedLoot: d.consumedLoot,
     breachedLocked: d.breachedLocked,
     extractedNow: d.extractedNow,
+    consumedKeyUid: d.consumedKeyUid,
     combatOutcome: d.combatOutcome,
   };
 }

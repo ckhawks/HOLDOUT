@@ -104,6 +104,7 @@ function initialEquipment(upgrades: Upgrades): Equipment {
   return {
     pockets: { grid: pocketsDimensions(upgrades), items: [] },
     bag: null,
+    rig: null,
     weapon: null,
     armor: null,
     helmet: null,

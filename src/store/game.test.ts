@@ -40,6 +40,7 @@ function makeEquipment(upgrades: Upgrades): Equipment {
   return {
     pockets: { grid: pocketsDimensions(upgrades), items: [] },
     bag: null,
+    rig: null,
     weapon: null,
     armor: null,
     helmet: null,
@@ -385,15 +386,22 @@ describe("kit / equipment flow", () => {
           ...op.equipment,
           bag: {
             ...op.equipment.bag!,
-            items: [
-              {
-                uid: "stashed",
-                itemId: "bandage_pack",
-                x: 0,
-                y: 0,
-                rotation: 0,
-              },
-            ],
+            sections: op.equipment.bag!.sections.map((s, i) =>
+              i === 0
+                ? {
+                    ...s,
+                    items: [
+                      {
+                        uid: "stashed",
+                        itemId: "bandage_pack",
+                        x: 0,
+                        y: 0,
+                        rotation: 0,
+                      },
+                    ],
+                  }
+                : s,
+            ),
           },
         },
       },

@@ -7,6 +7,7 @@
 // Phase K's hunger/thirst loop.
 
 import type { CurrentRaid, Equipment, Operative, StashItem } from "@/lib/types";
+import { findInKit, iterKitItems, removeFromKit } from "./equipment";
 import { makeLogger } from "./logging";
 
 export interface ConsumableEffect {
@@ -40,15 +41,9 @@ export function applyConsumable(
   now: number,
   rand: () => number,
 ): CurrentRaid {
-  // Find the item by uid in pockets first, then bag.
-  const eq = raid.equipment;
-  const pocketIdx = eq.pockets.items.findIndex((p) => p.uid === uid);
-  const bagIdx =
-    pocketIdx === -1 && eq.bag ? eq.bag.items.findIndex((p) => p.uid === uid) : -1;
-  if (pocketIdx === -1 && bagIdx === -1) return raid;
-  const placement =
-    pocketIdx !== -1 ? eq.pockets.items[pocketIdx] : eq.bag!.items[bagIdx];
-  const effect = CONSUMABLE_EFFECTS[placement.itemId];
+  const loc = findInKit(raid.equipment, uid);
+  if (!loc) return raid;
+  const effect = CONSUMABLE_EFFECTS[loc.placement.itemId];
   if (!effect) return raid;
 
   // Don't consume an item that wouldn't actually do anything. Bandage with
@@ -62,30 +57,8 @@ export function applyConsumable(
   const bleedHelps = !!effect.clearBleed && hasBleed;
   if (!hpHelps && !energyHelps && !bleedHelps) return raid;
 
-  const equipment: Equipment =
-    pocketIdx !== -1
-      ? {
-          ...eq,
-          pockets: {
-            ...eq.pockets,
-            items: [
-              ...eq.pockets.items.slice(0, pocketIdx),
-              ...eq.pockets.items.slice(pocketIdx + 1),
-            ],
-          },
-        }
-      : {
-          ...eq,
-          bag: eq.bag
-            ? {
-                ...eq.bag,
-                items: [
-                  ...eq.bag.items.slice(0, bagIdx),
-                  ...eq.bag.items.slice(bagIdx + 1),
-                ],
-              }
-            : null,
-        };
+  const removed = removeFromKit(raid.equipment, uid);
+  if (!removed) return raid;
 
   let flags = raid.runState.flags;
   if (effect.clearBleed) {
@@ -102,7 +75,7 @@ export function applyConsumable(
 
   return {
     ...raid,
-    equipment,
+    equipment: removed.next,
     runState: { ...raid.runState, health, energy, flags },
     log: [
       ...raid.log,
@@ -119,44 +92,25 @@ export function applyBandage(
   const hadMinor = raid.runState.flags.includes("bleeding_minor");
   const hadMajor = raid.runState.flags.includes("bleeding_major");
   if (!hadMinor && !hadMajor) return raid;
-  // Pull a bandage from pockets first (closer to hand), then bag.
-  const eq = raid.equipment;
-  const pocketIdx = eq.pockets.items.findIndex((p) => p.itemId === "bandage_pack");
-  const bagIdx =
-    pocketIdx === -1 && eq.bag
-      ? eq.bag.items.findIndex((p) => p.itemId === "bandage_pack")
-      : -1;
-  if (pocketIdx === -1 && bagIdx === -1) return raid;
+  // Pull the first bandage we find. Pockets is iterated before bag, so
+  // pockets-bandages are preferred (closer to hand) which matches the old
+  // behavior.
+  let bandageUid: string | null = null;
+  for (const p of iterKitItems(raid.equipment)) {
+    if (p.itemId === "bandage_pack") {
+      bandageUid = p.uid;
+      break;
+    }
+  }
+  if (!bandageUid) return raid;
+  const removed = removeFromKit(raid.equipment, bandageUid);
+  if (!removed) return raid;
   const flags = raid.runState.flags.filter(
     (f) => f !== "bleeding_minor" && f !== "bleeding_major",
   );
-  const equipment: Equipment =
-    pocketIdx !== -1
-      ? {
-          ...eq,
-          pockets: {
-            ...eq.pockets,
-            items: [
-              ...eq.pockets.items.slice(0, pocketIdx),
-              ...eq.pockets.items.slice(pocketIdx + 1),
-            ],
-          },
-        }
-      : {
-          ...eq,
-          bag: eq.bag
-            ? {
-                ...eq.bag,
-                items: [
-                  ...eq.bag.items.slice(0, bagIdx),
-                  ...eq.bag.items.slice(bagIdx + 1),
-                ],
-              }
-            : null,
-        };
   return {
     ...raid,
-    equipment,
+    equipment: removed.next,
     runState: { ...raid.runState, flags },
     log: [
       ...raid.log,
@@ -182,21 +136,11 @@ export function applyConsumableToOperative(
 ): { operative: Operative; stash: StashItem[]; consumed: boolean; itemId: string | null } {
   const noChange = { operative, stash: [...stash], consumed: false, itemId: null };
 
-  // Locate the item.
-  const eq = operative.equipment;
-  const pocketIdx = eq.pockets.items.findIndex((p) => p.uid === uid);
-  const bagIdx =
-    pocketIdx === -1 && eq.bag ? eq.bag.items.findIndex((p) => p.uid === uid) : -1;
-  const stashIdx =
-    pocketIdx === -1 && bagIdx === -1 ? stash.findIndex((s) => s.uid === uid) : -1;
-  if (pocketIdx === -1 && bagIdx === -1 && stashIdx === -1) return noChange;
+  const loc = findInKit(operative.equipment, uid);
+  const stashIdx = loc ? -1 : stash.findIndex((s) => s.uid === uid);
+  if (!loc && stashIdx === -1) return noChange;
 
-  const itemId =
-    pocketIdx !== -1
-      ? eq.pockets.items[pocketIdx].itemId
-      : bagIdx !== -1
-        ? eq.bag!.items[bagIdx].itemId
-        : stash[stashIdx].itemId;
+  const itemId = loc ? loc.placement.itemId : stash[stashIdx].itemId;
   const effect = CONSUMABLE_EFFECTS[itemId];
   if (!effect) return noChange;
 
@@ -206,33 +150,12 @@ export function applyConsumableToOperative(
   const energyHelps = (effect.energy ?? 0) > 0 && operative.energy < 100;
   if (!hpHelps && !energyHelps) return noChange;
 
-  // Remove from source.
-  let nextEquipment: Equipment = eq;
+  let nextEquipment: Equipment = operative.equipment;
   let nextStash: StashItem[] = [...stash];
-  if (pocketIdx !== -1) {
-    nextEquipment = {
-      ...eq,
-      pockets: {
-        ...eq.pockets,
-        items: [
-          ...eq.pockets.items.slice(0, pocketIdx),
-          ...eq.pockets.items.slice(pocketIdx + 1),
-        ],
-      },
-    };
-  } else if (bagIdx !== -1) {
-    nextEquipment = {
-      ...eq,
-      bag: eq.bag
-        ? {
-            ...eq.bag,
-            items: [
-              ...eq.bag.items.slice(0, bagIdx),
-              ...eq.bag.items.slice(bagIdx + 1),
-            ],
-          }
-        : null,
-    };
+  if (loc) {
+    const removed = removeFromKit(operative.equipment, uid);
+    if (!removed) return noChange;
+    nextEquipment = removed.next;
   } else {
     nextStash = [...stash.slice(0, stashIdx), ...stash.slice(stashIdx + 1)];
   }

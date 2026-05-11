@@ -1,4 +1,5 @@
 import type { Equipment, Upgrades } from "@/lib/types";
+import { kitCellCapacity } from "@/lib/engine/equipment";
 
 export const STASH_BASE_SLOTS = 30;
 export const STASH_SLOTS_PER_LEVEL = 10;
@@ -13,13 +14,10 @@ export function pocketsDimensions(u: Upgrades): { width: number; height: number 
   return { width: POCKETS_WIDTH, height: POCKETS_BASE_HEIGHT + u.pocketsLevel };
 }
 
-// Total cells across pockets + equipped bag. Used by the kit summary chip.
+// Total cells across pockets + every equipped container (bag + rig).
+// Used by the kit summary chip.
 export function totalEquipmentCells(equipment: Equipment): number {
-  const p = equipment.pockets.grid.width * equipment.pockets.grid.height;
-  const b = equipment.bag
-    ? equipment.bag.grid.width * equipment.bag.grid.height
-    : 0;
-  return p + b;
+  return kitCellCapacity(equipment);
 }
 
 export function stashCapacity(u: Upgrades): number {

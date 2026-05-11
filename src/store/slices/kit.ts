@@ -8,6 +8,7 @@ import type {
 } from "@/lib/types";
 import {
   equipItem,
+  iterKitItems,
   moveBetweenSlots,
   placeIntoSlot,
   removeFromKit,
@@ -27,13 +28,38 @@ import type { GameState } from "../game";
 // engine/equipment.ts helpers — this slice's job is just routing between
 // "in raid" (currentRaid.equipment + tile floor) and "idle" (operative.equipment
 // + stash) state containers.
+//
+// The optional `sectionId` parameter on bag-targeting actions picks which
+// sub-grid inside a multi-section bag (Tarkov rig). Undefined falls back to
+// the bag's first section so single-section bags don't have to thread it.
 export interface KitSlice {
-  pickupFromFloor: (uid: string, slot: KitSlot, x: number, y: number, rotation: Rotation) => boolean;
+  pickupFromFloor: (
+    uid: string,
+    slot: KitSlot,
+    x: number,
+    y: number,
+    rotation: Rotation,
+    sectionId?: string,
+  ) => boolean;
   dropToFloor: (uid: string) => void;
   trashFromFloor: (uid: string) => void;
   trashFromKit: (uid: string) => void;
-  moveKitItem: (uid: string, slot: KitSlot, x: number, y: number, rotation: Rotation) => boolean;
-  kitFromStash: (uid: string, slot: KitSlot, x: number, y: number, rotation: Rotation) => boolean;
+  moveKitItem: (
+    uid: string,
+    slot: KitSlot,
+    x: number,
+    y: number,
+    rotation: Rotation,
+    sectionId?: string,
+  ) => boolean;
+  kitFromStash: (
+    uid: string,
+    slot: KitSlot,
+    x: number,
+    y: number,
+    rotation: Rotation,
+    sectionId?: string,
+  ) => boolean;
   stashFromKit: (uid: string) => boolean;
   equipFromStash: (uid: string) => boolean;
   unequipToStash: (slot: EquipSlot) => boolean;
@@ -51,13 +77,13 @@ export interface KitSlice {
 }
 
 export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, get) => ({
-  pickupFromFloor: (uid, slot, x, y, rotation) => {
+  pickupFromFloor: (uid, slot, x, y, rotation, sectionId) => {
     const { currentRaid } = get();
     if (!currentRaid) return false;
     const tile = tileAt(currentRaid.map, currentRaid.operativePos.x, currentRaid.operativePos.y);
     const item = tile?.contents.find((c) => c.uid === uid);
     if (!item) return false;
-    const placed = placeIntoSlot(currentRaid.equipment, slot, item, x, y, rotation);
+    const placed = placeIntoSlot(currentRaid.equipment, slot, item, x, y, rotation, sectionId);
     if (!placed) return false;
     const { map: nextMap } = removeFromTileContents(
       currentRaid.map,
@@ -69,10 +95,10 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
     return true;
   },
 
-  moveKitItem: (uid, slot, x, y, rotation) => {
+  moveKitItem: (uid, slot, x, y, rotation, sectionId) => {
     const { currentRaid, operative } = get();
     const eq = currentRaid?.equipment ?? operative.equipment;
-    const moved = moveBetweenSlots(eq, uid, slot, x, y, rotation);
+    const moved = moveBetweenSlots(eq, uid, slot, x, y, rotation, sectionId);
     if (!moved) return false;
     if (currentRaid) {
       set({ currentRaid: { ...currentRaid, equipment: moved } });
@@ -125,13 +151,13 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
     }
   },
 
-  kitFromStash: (uid, slot, x, y, rotation) => {
+  kitFromStash: (uid, slot, x, y, rotation, sectionId) => {
     const { currentRaid, operative, stash } = get();
     if (currentRaid) return false; // pre-raid only
     const idx = stash.findIndex((s) => s.uid === uid);
     if (idx === -1) return false;
     const item = stash[idx];
-    const placed = placeIntoSlot(operative.equipment, slot, item, x, y, rotation);
+    const placed = placeIntoSlot(operative.equipment, slot, item, x, y, rotation, sectionId);
     if (!placed) return false;
     const nextStash = [...stash.slice(0, idx), ...stash.slice(idx + 1)];
     set({ stash: nextStash, operative: { ...operative, equipment: placed } });
@@ -245,25 +271,29 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
     const cap = hideout.modules.stash.capacity ?? Infinity;
     const nextStash = [...stash];
     const now = Date.now();
-    let pockets = operative.equipment.pockets;
-    let bag = operative.equipment.bag;
-    // Drain pockets first, then bag. Stop on capacity — don't silently lose.
-    const drain = (items: PackPlacement[]) => {
-      const remaining: PackPlacement[] = [];
-      for (const p of items) {
-        if (nextStash.length >= cap) {
-          remaining.push(p);
-          continue;
-        }
-        nextStash.push({ uid: p.uid, itemId: p.itemId, flavor: p.flavor, acquiredAt: now });
-      }
-      return remaining;
-    };
-    pockets = { ...pockets, items: drain(pockets.items) };
-    if (bag) bag = { ...bag, items: drain(bag.items) };
+    // Snapshot every uid in kit first (pockets, then bag sections, then
+    // rig sections), then drain via removeFromKit. We snapshot upfront
+    // because the equipment object mutates each iteration and a live
+    // generator would be invalidated. removeFromKit handles the section
+    // routing so we don't repeat that walk here. Stops at stash capacity
+    // — leftover items stay where they are rather than disappearing.
+    const allUids = Array.from(iterKitItems(operative.equipment), (p) => p.uid);
+    let eq = operative.equipment;
+    for (const uid of allUids) {
+      if (nextStash.length >= cap) break;
+      const r = removeFromKit(eq, uid);
+      if (!r) continue;
+      eq = r.next;
+      nextStash.push({
+        uid: r.item.uid,
+        itemId: r.item.itemId,
+        flavor: r.item.flavor,
+        acquiredAt: now,
+      });
+    }
     set({
       stash: nextStash,
-      operative: { ...operative, equipment: { ...operative.equipment, pockets, bag } },
+      operative: { ...operative, equipment: eq },
     });
   },
 
@@ -273,28 +303,26 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
     const cap = hideout.modules.stash.capacity ?? Infinity;
     const nextStash = [...stash];
     const now = Date.now();
-    let pockets = operative.equipment.pockets;
-    let bag = operative.equipment.bag;
-    const drainJunk = (items: PackPlacement[]) => {
-      const remaining: PackPlacement[] = [];
-      for (const p of items) {
-        if (!isJunk(ITEMS[p.itemId])) {
-          remaining.push(p);
-          continue;
-        }
-        if (nextStash.length >= cap) {
-          remaining.push(p);
-          continue;
-        }
-        nextStash.push({ uid: p.uid, itemId: p.itemId, flavor: p.flavor, acquiredAt: now });
-      }
-      return remaining;
-    };
-    pockets = { ...pockets, items: drainJunk(pockets.items) };
-    if (bag) bag = { ...bag, items: drainJunk(bag.items) };
+    const junkUids: PackPlacement[] = [];
+    for (const p of iterKitItems(operative.equipment)) {
+      if (isJunk(ITEMS[p.itemId])) junkUids.push(p);
+    }
+    let eq = operative.equipment;
+    for (const p of junkUids) {
+      if (nextStash.length >= cap) break;
+      const r = removeFromKit(eq, p.uid);
+      if (!r) continue;
+      eq = r.next;
+      nextStash.push({
+        uid: r.item.uid,
+        itemId: r.item.itemId,
+        flavor: r.item.flavor,
+        acquiredAt: now,
+      });
+    }
     set({
       stash: nextStash,
-      operative: { ...operative, equipment: { ...operative.equipment, pockets, bag } },
+      operative: { ...operative, equipment: eq },
     });
   },
 });

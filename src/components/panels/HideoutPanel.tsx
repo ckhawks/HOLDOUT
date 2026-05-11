@@ -55,9 +55,16 @@ export function HideoutPanel() {
   const equipment = useGame((s) => s.operative.equipment);
 
   const stashCost = stashUpgradeCost(upgrades);
-  const bagSummary = equipment.bag
-    ? `${equipment.bag.grid.width}×${equipment.bag.grid.height} bag equipped`
-    : "no bag equipped";
+  const summarizeContainer = (label: string, c: typeof equipment.bag): string => {
+    if (!c) return `no ${label} equipped`;
+    if (c.sections.length === 1) {
+      const s = c.sections[0];
+      return `${s.grid.width}×${s.grid.height} ${label} equipped`;
+    }
+    const dims = c.sections.map((s) => `${s.grid.width}×${s.grid.height}`).join(" + ");
+    return `${c.sections.length} sections (${dims}) ${label} equipped`;
+  };
+  const bagSummary = `${summarizeContainer("bag", equipment.bag)} · ${summarizeContainer("rig", equipment.rig)}`;
 
   return (
     <section className="flex min-h-0 flex-1 flex-col">

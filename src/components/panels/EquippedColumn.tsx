@@ -1,6 +1,6 @@
 "use client";
 
-import { Backpack, HardHat, Shield, Swords } from "lucide-react";
+import { Backpack, HardHat, Shield, ShieldHalf, Swords } from "lucide-react";
 import type { Equipment, EquipSlot, SlotItem } from "@/lib/types";
 import { ITEMS } from "@/lib/data/items";
 import { cn } from "@/lib/utils";
@@ -11,12 +11,13 @@ const SLOT_META: Record<EquipSlot, { label: string; Icon: typeof Backpack }> = {
   helmet: { label: "Helmet", Icon: HardHat },
   armor: { label: "Armor", Icon: Shield },
   weapon: { label: "Weapon", Icon: Swords },
+  rig: { label: "Rig", Icon: ShieldHalf },
   bag: { label: "Bag", Icon: Backpack },
 };
 
-// Top-to-bottom order. Bag at the bottom because it's the most-used / closest
-// to the kit grids visually.
-export const SLOT_ORDER: EquipSlot[] = ["helmet", "armor", "weapon", "bag"];
+// Top-to-bottom order. Container slots (rig, bag) at the bottom because
+// they're the most-used / closest to the kit grids visually.
+export const SLOT_ORDER: EquipSlot[] = ["helmet", "armor", "weapon", "rig", "bag"];
 
 export type SlotRefMap = Record<EquipSlot, React.RefObject<HTMLDivElement | null>>;
 
@@ -36,6 +37,7 @@ export interface EquippedColumnProps {
 
 function slotItem(eq: Equipment, slot: EquipSlot): SlotItem | null {
   if (slot === "bag") return eq.bag?.slot ?? null;
+  if (slot === "rig") return eq.rig?.slot ?? null;
   return eq[slot];
 }
 

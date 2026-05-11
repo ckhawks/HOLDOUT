@@ -11,15 +11,16 @@ export type ItemCategory =
   | "experimental"
   | "apparel";
 
-// Equipment slots an item can occupy. `bag` is functional (defines the
-// secondary grid). `weapon`/`armor`/`helmet` are reserved — slots exist but
-// nothing reads stat effects yet.
-export type EquipSlot = "bag" | "weapon" | "armor" | "helmet";
+// Equipment slots an item can occupy. `bag` and `rig` are functional —
+// each defines its own secondary grid (sectioned, see BagState). The
+// operative wears one of each at most. `weapon`/`armor`/`helmet` are
+// reserved — slots exist but nothing reads stat effects yet.
+export type EquipSlot = "bag" | "rig" | "weapon" | "armor" | "helmet";
 
 // Which kit grid an item lives in. Distinct from EquipSlot — pockets isn't
-// a slot, it's a built-in grid; "bag" here means the equipped bag's grid,
-// not the bag-equip slot.
-export type KitSlot = "pockets" | "bag";
+// a slot, it's a built-in grid; "bag"/"rig" here mean the equipped item's
+// own grid, not the equip slots themselves.
+export type KitSlot = "pockets" | "bag" | "rig";
 
 export type Cell = readonly [number, number];
 export type ShapeCells = ReadonlyArray<Cell>;
@@ -35,8 +36,19 @@ export interface Item {
   shape: ShapeCells;
   // Which equip slot this item occupies when equipped. Undefined = not equippable.
   slot?: EquipSlot;
-  // Bag items: the grid the bag provides when equipped.
-  bagGrid?: { width: number; height: number };
+  // Bag items: one or more sections the bag provides when equipped. Each
+  // section is its own independent grid (Tarkov-rig style — a 2×3 main
+  // pocket + a 3×3 admin pocket, etc.). Single-element arrays render as a
+  // single grid in the UI. `id` is the stable handle used in placements
+  // and drag routing — keep it stable across rebalances.
+  bagSections?: BagSectionDef[];
+}
+
+export interface BagSectionDef {
+  id: string;
+  label?: string;
+  width: number;
+  height: number;
 }
 
 export interface StashItem {
@@ -61,6 +73,16 @@ export interface PackPlacement extends StashItem {
   x: number;
   y: number;
   rotation: Rotation;
+}
+
+// One physical sub-grid within a bag. `id` matches the BagSectionDef id on
+// the equipped item. Items live inside a section; moving across sections
+// works just like moving across slots — same algebra, different target.
+export interface BagSection {
+  id: string;
+  label?: string;
+  grid: { width: number; height: number };
+  items: PackPlacement[];
 }
 
 export interface PendingItem extends StashItem {
@@ -116,18 +138,20 @@ export interface PocketsState {
   items: PackPlacement[];
 }
 
-// Equipped bag carries its own grid (from the item's bagGrid) and contents.
-// On bag swap, the old bag's contents return to stash (or refuse if stash
-// can't hold them).
+// Equipped bag carries one or more independent sections (from the item's
+// bagSections). On bag swap, the old bag's contents return to stash (or
+// refuse if stash can't hold them).
 export interface BagState {
   slot: SlotItem;
-  grid: { width: number; height: number };
-  items: PackPlacement[];
+  sections: BagSection[];
 }
 
 export interface Equipment {
   pockets: PocketsState;
+  // Two container slots: bag (back) + rig (chest). Both share BagState's
+  // multi-section shape; the operative can wear one of each.
   bag: BagState | null;
+  rig: BagState | null;
   // Reserved slots — no stat effects yet. Persisted so future phases can
   // wire them in without another migration.
   weapon: SlotItem | null;
@@ -385,7 +409,8 @@ export type ActionId =
   | "extract_now"
   | "fight"
   | "flee"
-  | "breach_locked";
+  | "breach_locked"
+  | "use_key";
 
 export interface Unlocks {
   workbench: boolean;

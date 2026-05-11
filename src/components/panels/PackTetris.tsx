@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Backpack, Pill, Shirt } from "lucide-react";
+import { Backpack, Pill, ShieldHalf, Shirt } from "lucide-react";
 import { useGame, type KitSlot } from "@/store/game";
 import { CONSUMABLE_EFFECTS } from "@/lib/engine/consumables";
-import type { EquipSlot, PocketsState, BagState, Rotation } from "@/lib/types";
+import type { EquipSlot, Rotation } from "@/lib/types";
 import { EquippedColumn, SLOT_ORDER, type SlotHover, type SlotRefMap } from "./EquippedColumn";
-import { KitDragGhost, KitGrid, KIT_CELL } from "./KitGrid";
+import { KitDragGhost, KitGrid, KIT_CELL, type KitGridSource } from "./KitGrid";
 import { ItemTooltip } from "@/components/ui/Tooltip";
 import { gridCellAt, isInside, slotUnder } from "@/lib/dnd";
 import { useDragDrop } from "@/lib/useDragDrop";
 import { ITEMS } from "@/lib/data/items";
+import { iterContainers } from "@/lib/engine/equipment";
 import { playSfx } from "@/lib/sfx";
 import {
   buildOccupancy,
@@ -24,11 +25,15 @@ import { categoryIconFor } from "@/lib/itemIcon";
 
 const CELL = KIT_CELL;
 
-// "bag" = the kit bag grid; "slot:bag"/"slot:weapon" etc. = the equipped slots.
-type DragSource = "floor" | "pockets" | "bag" | `slot:${EquipSlot}`;
+// Source string for a drag in flight. "pockets"/"bag"/"rig" are the kit
+// grids; "slot:..." identifies an equipped slot tile being dragged out.
+type ContainerKitSlot = Exclude<KitSlot, "pockets">;
+type DragSource = "floor" | "pockets" | ContainerKitSlot | `slot:${EquipSlot}`;
 
 type DragState = {
   source: DragSource;
+  // For container sources (bag/rig): the section id the item came from.
+  sourceSectionId?: string;
   uid: string;
   itemId: string;
   rotation: Rotation;
@@ -39,8 +44,16 @@ type DragState = {
 };
 
 type HoverState =
-  | { slot: KitSlot; x: number; y: number; valid: boolean }
+  | { slot: KitSlot; sectionId?: string; x: number; y: number; valid: boolean }
   | null;
+
+// Container-section ref key. Bag and rig can each have a "main" section
+// (the section ids are scoped to the item def, not globally unique), so
+// we namespace by slot in the ref map. Without this, both "main" grids
+// would clobber each other and only one would receive drag-target hits.
+function refKey(slot: ContainerKitSlot, sectionId: string): string {
+  return `${slot}:${sectionId}`;
+}
 
 export function PackTetris() {
   const raid = useGame((s) => s.currentRaid);
@@ -54,7 +67,15 @@ export function PackTetris() {
   const consume = useGame((s) => s.useConsumable);
 
   const pocketsRef = useRef<HTMLDivElement>(null);
-  const bagRef = useRef<HTMLDivElement>(null);
+  // One ref per (containerSlot, sectionId) pair. Bag and rig sections are
+  // namespaced by slot so their section ids can collide.
+  const sectionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const setSectionRef = useCallback(
+    (slot: ContainerKitSlot, id: string) => (el: HTMLDivElement | null) => {
+      sectionRefs.current.set(refKey(slot, id), el);
+    },
+    [],
+  );
   const consumeZoneRef = useRef<HTMLDivElement>(null);
   const floorRef = useRef<HTMLDivElement>(null);
   // Stable refs (declared individually) so the hook count never changes
@@ -64,8 +85,15 @@ export function PackTetris() {
   const armorRef = useRef<HTMLDivElement>(null);
   const weaponRef = useRef<HTMLDivElement>(null);
   const bagSlotRef = useRef<HTMLDivElement>(null);
+  const rigSlotRef = useRef<HTMLDivElement>(null);
   const slotRefs = useMemo<SlotRefMap>(
-    () => ({ helmet: helmetRef, armor: armorRef, weapon: weaponRef, bag: bagSlotRef }),
+    () => ({
+      helmet: helmetRef,
+      armor: armorRef,
+      weapon: weaponRef,
+      bag: bagSlotRef,
+      rig: rigSlotRef,
+    }),
     [],
   );
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -74,12 +102,17 @@ export function PackTetris() {
 
   // Ctrl/Cmd+click fast-move on a floor item:
   //  - If equippable (item has `slot`) and that slot is empty → equip directly.
-  //  - Otherwise → first-fit pickup into pockets, then bag.
+  //  - Otherwise → first-fit pickup into pockets, then each container section.
   const ctrlPickup = (uid: string, itemId: string) => {
     if (!raid) return;
     const def = ITEMS[itemId];
     if (def?.slot) {
-      const slotEmpty = def.slot === "bag" ? !raid.equipment.bag : !raid.equipment[def.slot];
+      const slotEmpty =
+        def.slot === "bag"
+          ? !raid.equipment.bag
+          : def.slot === "rig"
+            ? !raid.equipment.rig
+            : !raid.equipment[def.slot];
       if (slotEmpty) {
         if (equipFromFloor(uid)) {
           playSfx("inventory");
@@ -87,7 +120,11 @@ export function PackTetris() {
         }
       }
     }
-    const tryGrid = (grid: PocketsState | BagState | null, slot: KitSlot): boolean => {
+    const tryGrid = (
+      grid: KitGridSource | null,
+      slot: KitSlot,
+      sectionId?: string,
+    ): boolean => {
       if (!grid) return false;
       for (let r = 0; r < 4; r++) {
         const cells = shapeFor(itemId, r as Rotation);
@@ -95,7 +132,7 @@ export function PackTetris() {
         for (let y = 0; y < grid.grid.height; y++) {
           for (let x = 0; x < grid.grid.width; x++) {
             if (canPlace(cells, x, y, grid.grid.width, grid.grid.height, occ)) {
-              if (pickupFromFloor(uid, slot, x, y, r as Rotation)) {
+              if (pickupFromFloor(uid, slot, x, y, r as Rotation, sectionId)) {
                 playSfx("inventory");
                 return true;
               }
@@ -106,7 +143,11 @@ export function PackTetris() {
       return false;
     };
     if (tryGrid(raid.equipment.pockets, "pockets")) return;
-    tryGrid(raid.equipment.bag, "bag");
+    for (const { slot, container } of iterContainers(raid.equipment)) {
+      for (const s of container.sections) {
+        if (tryGrid(s, slot, s.id)) return;
+      }
+    }
   };
 
   const currentTile = raid
@@ -114,17 +155,25 @@ export function PackTetris() {
     : undefined;
   const roomContents = currentTile?.contents ?? [];
   const pockets = raid?.equipment.pockets;
-  const bag = raid?.equipment.bag;
+  const containers = useMemo(
+    () => (raid ? Array.from(iterContainers(raid.equipment)) : []),
+    [raid],
+  );
 
   const onMove = useCallback((e: PointerEvent, d: DragState) => {
     if (!raid) return;
-    const evalDrop = (slot: KitSlot, eq: PocketsState | BagState, ox: number, oy: number): boolean => {
+    const evalDrop = (
+      slot: KitSlot,
+      sectionId: string | undefined,
+      eq: KitGridSource,
+      ox: number,
+      oy: number,
+    ): boolean => {
       const cells = shapeFor(d.itemId, d.rotation);
-      const ignoreUid =
+      const sameTarget =
         (d.source === "pockets" && slot === "pockets") ||
-        (d.source === "bag" && slot === "bag")
-          ? d.uid
-          : undefined;
+        (d.source === slot && d.sourceSectionId === sectionId);
+      const ignoreUid = sameTarget ? d.uid : undefined;
       const occ = buildOccupancy(eq.items, eq.grid.width, eq.grid.height, ignoreUid);
       return canPlace(cells, ox, oy, eq.grid.width, eq.grid.height, occ);
     };
@@ -133,6 +182,7 @@ export function PackTetris() {
         const def = ITEMS[d.itemId];
         if (def?.slot !== s) return false;
         if (s === "bag") return !raid.equipment.bag;
+        if (s === "rig") return !raid.equipment.rig;
         return !raid.equipment[s];
       }
       if (d.source === `slot:${s}`) return true;
@@ -148,21 +198,37 @@ export function PackTetris() {
       if (pCell && pockets) {
         const ox = pCell.x - d.grabDx;
         const oy = pCell.y - d.grabDy;
-        h = { slot: "pockets", x: ox, y: oy, valid: evalDrop("pockets", pockets, ox, oy) };
-      } else if (bag) {
-        const bCell = gridCellAt(bagRef.current, KIT_CELL, e.clientX, e.clientY);
-        if (bCell) {
-          const ox = bCell.x - d.grabDx;
-          const oy = bCell.y - d.grabDy;
-          h = { slot: "bag", x: ox, y: oy, valid: evalDrop("bag", bag, ox, oy) };
+        h = { slot: "pockets", x: ox, y: oy, valid: evalDrop("pockets", undefined, pockets, ox, oy) };
+      } else {
+        outer: for (const { slot, container } of containers) {
+          for (const section of container.sections) {
+            const ref = sectionRefs.current.get(refKey(slot, section.id)) ?? null;
+            const cell = gridCellAt(ref, KIT_CELL, e.clientX, e.clientY);
+            if (cell) {
+              const ox = cell.x - d.grabDx;
+              const oy = cell.y - d.grabDy;
+              h = {
+                slot,
+                sectionId: section.id,
+                x: ox,
+                y: oy,
+                valid: evalDrop(slot, section.id, section, ox, oy),
+              };
+              break outer;
+            }
+          }
         }
       }
     }
     setHover(h);
     setSlotHover(sh);
     setDrag((cur) => (cur ? { ...cur, mouseX: e.clientX, mouseY: e.clientY } : cur));
-  }, [raid, pockets, bag, slotRefs]);
+  }, [raid, pockets, containers, slotRefs]);
 
+  // Drop resolution priority (top to bottom): equipped slot tile > Use
+  // zone > Floor zone > kit grid (pockets / bag section / rig section).
+  // First match wins, no fall-through. If none of those zones is under
+  // the cursor the drop just cancels and the item snaps back.
   const onUp = useCallback((e: PointerEvent, d: DragState) => {
     let played = false;
     const sUnder = slotUnder(slotRefs, SLOT_ORDER, e.clientX, e.clientY);
@@ -171,14 +237,18 @@ export function PackTetris() {
         if (equipFromFloor(d.uid)) played = true;
       }
     } else if (isInside(consumeZoneRef.current, e.clientX, e.clientY)) {
-      // Use-zone: only consumables in pockets/bag with a CONSUMABLE_EFFECTS
-      // entry. Other items dropped here just fall back to drag-cancel.
-      if ((d.source === "pockets" || d.source === "bag") && CONSUMABLE_EFFECTS[d.itemId]) {
+      // Use-zone: only consumables in pockets / bag / rig with a
+      // CONSUMABLE_EFFECTS entry. Other items dropped here just fall back
+      // to drag-cancel.
+      if (
+        (d.source === "pockets" || d.source === "bag" || d.source === "rig") &&
+        CONSUMABLE_EFFECTS[d.itemId]
+      ) {
         consume(d.uid);
         played = true;
       }
     } else if (isInside(floorRef.current, e.clientX, e.clientY)) {
-      if (d.source === "pockets" || d.source === "bag") {
+      if (d.source === "pockets" || d.source === "bag" || d.source === "rig") {
         dropToFloor(d.uid);
         played = true;
       } else if (d.source.startsWith("slot:")) {
@@ -186,17 +256,48 @@ export function PackTetris() {
         if (unequipToFloor(slot)) played = true;
       }
     } else {
+      // Kit-grid drop. Try pockets first, then walk every container
+      // section in declared order. `gridCellAt` returns the (col, row)
+      // the cursor is over, or null if outside that grid's bounds — so
+      // the first non-null cell is the winning target. The break-label
+      // is just to escape both loops at once.
+      let target: { slot: KitSlot; sectionId?: string; cell: { x: number; y: number } } | null = null;
       const pCell = pockets ? gridCellAt(pocketsRef.current, KIT_CELL, e.clientX, e.clientY) : null;
-      const bCell = !pCell && bag ? gridCellAt(bagRef.current, KIT_CELL, e.clientX, e.clientY) : null;
-      const slot: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
-      const cell = pCell ?? bCell;
-      if (slot && cell && (d.source === "floor" || d.source === "pockets" || d.source === "bag")) {
-        const ox = cell.x - d.grabDx;
-        const oy = cell.y - d.grabDy;
+      if (pCell) {
+        target = { slot: "pockets", cell: pCell };
+      } else {
+        outer: for (const { slot, container } of containers) {
+          for (const section of container.sections) {
+            const ref = sectionRefs.current.get(refKey(slot, section.id)) ?? null;
+            const cell = gridCellAt(ref, KIT_CELL, e.clientX, e.clientY);
+            if (cell) {
+              target = { slot, sectionId: section.id, cell };
+              break outer;
+            }
+          }
+        }
+      }
+      // Equipped-slot tiles ("slot:weapon" etc.) can't drop into a kit
+      // grid — they're meant to fly back to their slot or to the floor.
+      // The source check below filters those out.
+      if (
+        target &&
+        (d.source === "floor" ||
+          d.source === "pockets" ||
+          d.source === "bag" ||
+          d.source === "rig")
+      ) {
+        // grabDx/grabDy is the offset within the item's shape that the
+        // user grabbed (which sub-cell they clicked). Subtracting it
+        // means the item's anchor cell lands under the cursor instead
+        // of the item's top-left corner snapping there — feels right
+        // when you're dragging by, say, the middle of an L-piece.
+        const ox = target.cell.x - d.grabDx;
+        const oy = target.cell.y - d.grabDy;
         const ok =
           d.source === "floor"
-            ? pickupFromFloor(d.uid, slot, ox, oy, d.rotation)
-            : moveKitItem(d.uid, slot, ox, oy, d.rotation);
+            ? pickupFromFloor(d.uid, target.slot, ox, oy, d.rotation, target.sectionId)
+            : moveKitItem(d.uid, target.slot, ox, oy, d.rotation, target.sectionId);
         if (ok) played = true;
       }
     }
@@ -204,7 +305,7 @@ export function PackTetris() {
     setDrag(null);
     setHover(null);
     setSlotHover(null);
-  }, [pockets, bag, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, equipFromFloor, unequipToFloor, consume]);
+  }, [pockets, containers, slotRefs, pickupFromFloor, moveKitItem, dropToFloor, equipFromFloor, unequipToFloor, consume]);
 
   const rotateInPlace = useCallback(() => {
     setDrag((d) => {
@@ -232,15 +333,21 @@ export function PackTetris() {
 
   const pocketsTotal = pockets.grid.width * pockets.grid.height;
   const pocketsUsed = pockets.items.length;
-  const bagTotal = bag ? bag.grid.width * bag.grid.height : 0;
-  const bagUsed = bag ? bag.items.length : 0;
+  let containerTotal = 0;
+  let containerUsed = 0;
+  for (const { container } of containers) {
+    for (const s of container.sections) {
+      containerTotal += s.grid.width * s.grid.height;
+      containerUsed += s.items.length;
+    }
+  }
 
   return (
     <aside className="flex shrink-0 flex-col border-l border-border/60">
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
         <span>Kit</span>
         <span className="tabular-nums text-foreground">
-          {pocketsUsed + bagUsed}/{pocketsTotal + bagTotal}
+          {pocketsUsed + containerUsed}/{pocketsTotal + containerTotal}
         </span>
       </div>
 
@@ -302,7 +409,9 @@ export function PackTetris() {
             className={cn(
               "flex flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-border/60 bg-background/30 py-8 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors",
               // Light up green only when a consumable is being dragged.
-              drag && CONSUMABLE_EFFECTS[drag.itemId] && (drag.source === "pockets" || drag.source === "bag") &&
+              drag &&
+                CONSUMABLE_EFFECTS[drag.itemId] &&
+                (drag.source === "pockets" || drag.source === "bag" || drag.source === "rig") &&
                 "border-emerald-500/70 bg-emerald-950/30 text-emerald-300",
             )}
             title="Drag a consumable here to use it"
@@ -312,7 +421,7 @@ export function PackTetris() {
           </div>
         </div>
 
-        {/* Right side: pockets above, bag below */}
+        {/* Right side: pockets above, then each equipped container */}
         <div className="flex flex-col gap-3">
           <KitGrid
             slot="pockets"
@@ -340,39 +449,58 @@ export function PackTetris() {
               playSfx("inventory");
             }}
           />
-          {bag ? (
-            <KitGrid
-              slot="bag"
-              label={`Bag · ${ITEMS[bag.slot.itemId]?.name ?? bag.slot.itemId}`}
-              Icon={Backpack}
-              grid={bag}
-              gridRef={bagRef}
-              drag={drag ? { uid: drag.uid, itemId: drag.itemId, rotation: drag.rotation } : null}
-              draggingFromThisGrid={drag?.source === "bag"}
-              hover={hover && hover.slot === "bag" ? { x: hover.x, y: hover.y, valid: hover.valid } : null}
-              onPick={(uid, itemId, rotation, dx, dy, mouseX, mouseY) =>
-                setDrag({
-                  source: "bag",
-                  uid,
-                  itemId,
-                  rotation,
-                  grabDx: dx,
-                  grabDy: dy,
-                  mouseX,
-                  mouseY,
-                })
-              }
-              onCtrlClick={(uid) => {
-                dropToFloor(uid);
-                playSfx("inventory");
-              }}
-            />
-          ) : (
+          {containers.length === 0 && (
             <div className="rounded-sm border border-dashed border-border/40 px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">
               <Backpack className="mr-2 inline size-3" />
-              no bag equipped
+              no bag or rig equipped
             </div>
           )}
+          {containers.map(({ slot, container }) => {
+            const Icon = slot === "rig" ? ShieldHalf : Backpack;
+            const containerName = ITEMS[container.slot.itemId]?.name ?? container.slot.itemId;
+            return (
+              <div key={slot} className="flex flex-col gap-2">
+                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
+                  <Icon className="mr-1 inline size-3" />
+                  {containerName}
+                </div>
+                {container.sections.map((section) => (
+                  <KitGrid
+                    key={section.id}
+                    slot={slot}
+                    label={section.label ?? section.id}
+                    Icon={Icon}
+                    grid={section}
+                    refCallback={setSectionRef(slot, section.id)}
+                    drag={drag ? { uid: drag.uid, itemId: drag.itemId, rotation: drag.rotation } : null}
+                    draggingFromThisGrid={drag?.source === slot && drag.sourceSectionId === section.id}
+                    hover={
+                      hover && hover.slot === slot && hover.sectionId === section.id
+                        ? { x: hover.x, y: hover.y, valid: hover.valid }
+                        : null
+                    }
+                    onPick={(uid, itemId, rotation, dx, dy, mouseX, mouseY) =>
+                      setDrag({
+                        source: slot,
+                        sourceSectionId: section.id,
+                        uid,
+                        itemId,
+                        rotation,
+                        grabDx: dx,
+                        grabDy: dy,
+                        mouseX,
+                        mouseY,
+                      })
+                    }
+                    onCtrlClick={(uid) => {
+                      dropToFloor(uid);
+                      playSfx("inventory");
+                    }}
+                  />
+                ))}
+              </div>
+            );
+          })}
           <div className="font-mono text-[9px] uppercase tracking-widest text-muted-foreground/60">
             drag · R or right-click to rotate
           </div>
@@ -388,7 +516,12 @@ export function PackTetris() {
               drag?.source === "floor" ? (ITEMS[drag.itemId]?.slot ?? null) : null
             }
             onSlotPointerDown={(slot, e) => {
-              const item = slot === "bag" ? raid.equipment.bag?.slot : raid.equipment[slot];
+              const item =
+                slot === "bag"
+                  ? raid.equipment.bag?.slot
+                  : slot === "rig"
+                    ? raid.equipment.rig?.slot
+                    : raid.equipment[slot];
               if (!item) return;
               // Ctrl/Cmd+click on an equipped slot fast-unequips to floor.
               if (e.ctrlKey || e.metaKey) {
@@ -484,4 +617,3 @@ function FloorTile({
     </ItemTooltip>
   );
 }
-

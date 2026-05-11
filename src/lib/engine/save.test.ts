@@ -29,6 +29,7 @@ function freshState(): PersistedState {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -100,6 +101,7 @@ describe("save round-trip", () => {
       equipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,
@@ -116,6 +118,7 @@ describe("save round-trip", () => {
       startingEquipment: {
         pockets: { grid: { width: 4, height: 4 }, items: [] },
         bag: null,
+        rig: null,
         weapon: null,
         armor: null,
         helmet: null,

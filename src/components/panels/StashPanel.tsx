@@ -8,11 +8,11 @@ import { cn } from "@/lib/utils";
 import { TIER_COLOR, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { categoryIconFor } from "@/lib/itemIcon";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Backpack, Coins, Crosshair, FolderTree, Heart, PackageOpen, Pin, PillBottle, Shirt, Zap } from "lucide-react";
+import { ArrowLeft, Backpack, Coins, Crosshair, FolderTree, Heart, PackageOpen, Pin, PillBottle, ShieldHalf, Shirt, Zap } from "lucide-react";
 import { isConsumable } from "@/lib/engine/consumables";
 import { effectiveSellValue, isJunk } from "@/store/slices/economy";
 import { buildOccupancy, canPlace, shapeFor } from "@/lib/engine/shapes";
-import { findFit } from "@/lib/engine/equipment";
+import { findFit, iterContainers, iterKitItems } from "@/lib/engine/equipment";
 import { gridCellAt, isInside, slotUnder } from "@/lib/dnd";
 import { useDragDrop } from "@/lib/useDragDrop";
 import type { EquipSlot, ItemCategory, Rotation, StashItem } from "@/lib/types";
@@ -51,6 +51,8 @@ export function StashPanel() {
     | {
         kind: "kit";
         from: KitSlot;
+        // For from === "bag": the bag section the item came from.
+        fromSectionId?: string;
         uid: string;
         itemId: string;
         rotation: Rotation;
@@ -59,7 +61,7 @@ export function StashPanel() {
       };
   const [drag, setDrag] = useState<(DragSource & { mouseX: number; mouseY: number }) | null>(null);
   const [slotHover, setSlotHover] = useState<SlotHover>(null);
-  const [kitHover, setKitHover] = useState<{ slot: KitSlot } & KitHover | null>(null);
+  const [kitHover, setKitHover] = useState<({ slot: KitSlot; sectionId?: string } & KitHover) | null>(null);
   const [overStash, setOverStash] = useState(false);
   // Stash display prefs. State only — not persisted; defaults are fine on
   // reload. Default Date desc is what most players expect ("show me what
@@ -74,13 +76,33 @@ export function StashPanel() {
   const armorRef = useRef<HTMLDivElement>(null);
   const weaponRef = useRef<HTMLDivElement>(null);
   const bagSlotRef = useRef<HTMLDivElement>(null);
+  const rigSlotRef = useRef<HTMLDivElement>(null);
   const slotRefs = useMemo<SlotRefMap>(
-    () => ({ helmet: helmetRef, armor: armorRef, weapon: weaponRef, bag: bagSlotRef }),
+    () => ({
+      helmet: helmetRef,
+      armor: armorRef,
+      weapon: weaponRef,
+      bag: bagSlotRef,
+      rig: rigSlotRef,
+    }),
     [],
   );
   const stashListRef = useRef<HTMLDivElement>(null);
   const pocketsRef = useRef<HTMLDivElement>(null);
-  const bagRef = useRef<HTMLDivElement>(null);
+  // One ref per (containerSlot, sectionId) pair. Bag and rig sections are
+  // namespaced by slot so identical section ids ("main") don't collide.
+  const sectionRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const sectionRefKey = (slot: "bag" | "rig", id: string) => `${slot}:${id}`;
+  const setSectionRef = useCallback(
+    (slot: "bag" | "rig", id: string) => (el: HTMLDivElement | null) => {
+      sectionRefs.current.set(`${slot}:${id}`, el);
+    },
+    [],
+  );
+  const containers = useMemo(
+    () => Array.from(iterContainers(equipment)),
+    [equipment],
+  );
   const vitalsRef = useRef<HTMLDivElement>(null);
   const [overVitals, setOverVitals] = useState(false);
 
@@ -92,18 +114,34 @@ export function StashPanel() {
         const def = ITEMS[d.itemId];
         if (def?.slot !== s) return false;
         if (s === "bag") return !equipment.bag;
+        if (s === "rig") return !equipment.rig;
         return !equipment[s];
       }
       return s === (d.kind === "slot" ? d.slot : null);
     };
-    const evalKitDrop = (target: KitSlot, ox: number, oy: number): boolean => {
-      const grid = target === "pockets" ? equipment.pockets : equipment.bag;
+    const evalKitDrop = (
+      target: KitSlot,
+      sectionId: string | undefined,
+      ox: number,
+      oy: number,
+    ): boolean => {
+      let grid: { grid: { width: number; height: number }; items: typeof equipment.pockets.items } | null = null;
+      if (target === "pockets") {
+        grid = equipment.pockets;
+      } else {
+        const container = target === "bag" ? equipment.bag : equipment.rig;
+        grid = container?.sections.find((s) => s.id === sectionId) ?? null;
+      }
       if (!grid) return false;
       const itemId = d.kind === "stash" || d.kind === "kit" ? d.itemId : null;
       if (!itemId) return false;
       const rotation = d.kind === "kit" ? d.rotation : 0;
       const cells = shapeFor(itemId, rotation);
-      const ignoreUid = d.kind === "kit" && d.from === target ? d.uid : undefined;
+      const sameTarget =
+        d.kind === "kit" &&
+        d.from === target &&
+        (target === "pockets" || d.fromSectionId === sectionId);
+      const ignoreUid = sameTarget ? d.uid : undefined;
       const occ = buildOccupancy(grid.items, grid.grid.width, grid.grid.height, ignoreUid);
       return canPlace(cells, ox, oy, grid.grid.width, grid.grid.height, occ);
     };
@@ -119,18 +157,31 @@ export function StashPanel() {
       const grabDx = d.kind === "kit" ? d.grabDx : 0;
       const grabDy = d.kind === "kit" ? d.grabDy : 0;
       const pCell = dragHasShape ? gridCellAt(pocketsRef.current, KIT_CELL, e.clientX, e.clientY) : null;
-      const bCell = !pCell && dragHasShape && equipment.bag
-        ? gridCellAt(bagRef.current, KIT_CELL, e.clientX, e.clientY)
-        : null;
+      let hovered: { slot: KitSlot; sectionId?: string; cell: { x: number; y: number } } | null = null;
       if (pCell) {
-        const ox = pCell.x - grabDx;
-        const oy = pCell.y - grabDy;
-        setKitHover({ slot: "pockets", x: ox, y: oy, valid: evalKitDrop("pockets", ox, oy) });
-        setOverStash(false);
-      } else if (bCell) {
-        const ox = bCell.x - grabDx;
-        const oy = bCell.y - grabDy;
-        setKitHover({ slot: "bag", x: ox, y: oy, valid: evalKitDrop("bag", ox, oy) });
+        hovered = { slot: "pockets", cell: pCell };
+      } else if (dragHasShape) {
+        outer: for (const { slot, container } of containers) {
+          for (const section of container.sections) {
+            const ref = sectionRefs.current.get(sectionRefKey(slot, section.id)) ?? null;
+            const cell = gridCellAt(ref, KIT_CELL, e.clientX, e.clientY);
+            if (cell) {
+              hovered = { slot, sectionId: section.id, cell };
+              break outer;
+            }
+          }
+        }
+      }
+      if (hovered) {
+        const ox = hovered.cell.x - grabDx;
+        const oy = hovered.cell.y - grabDy;
+        setKitHover({
+          slot: hovered.slot,
+          sectionId: hovered.sectionId,
+          x: ox,
+          y: oy,
+          valid: evalKitDrop(hovered.slot, hovered.sectionId, ox, oy),
+        });
         setOverStash(false);
       } else {
         setKitHover(null);
@@ -150,11 +201,23 @@ export function StashPanel() {
     const grabDx = d.kind === "kit" ? d.grabDx : 0;
     const grabDy = d.kind === "kit" ? d.grabDy : 0;
     const pCell = gridCellAt(pocketsRef.current, KIT_CELL, e.clientX, e.clientY);
-    const bCell = !pCell && equipment.bag
-      ? gridCellAt(bagRef.current, KIT_CELL, e.clientX, e.clientY)
-      : null;
-    const kitTarget: KitSlot | null = pCell ? "pockets" : bCell ? "bag" : null;
-    const cell = pCell ?? bCell;
+    let kitTarget: KitSlot | null = pCell ? "pockets" : null;
+    let kitSectionId: string | undefined;
+    let cell: { x: number; y: number } | null = pCell;
+    if (!cell) {
+      outer: for (const { slot, container } of containers) {
+        for (const section of container.sections) {
+          const ref = sectionRefs.current.get(sectionRefKey(slot, section.id)) ?? null;
+          const c = gridCellAt(ref, KIT_CELL, e.clientX, e.clientY);
+          if (c) {
+            kitTarget = slot;
+            kitSectionId = section.id;
+            cell = c;
+            break outer;
+          }
+        }
+      }
+    }
     const onStashList = isInside(stashListRef.current, e.clientX, e.clientY);
     const onVitals = isInside(vitalsRef.current, e.clientX, e.clientY);
 
@@ -181,7 +244,7 @@ export function StashPanel() {
       if (s) {
         if (equipFromStash(d.uid)) played = true;
       } else if (kitTarget && cell) {
-        if (kitFromStash(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, 0)) {
+        if (kitFromStash(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, 0, kitSectionId)) {
           played = true;
         }
       }
@@ -189,7 +252,7 @@ export function StashPanel() {
       if (s) {
         // kit → slot: no-op
       } else if (kitTarget && cell) {
-        if (moveKitItem(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, d.rotation)) {
+        if (moveKitItem(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, d.rotation, kitSectionId)) {
           played = true;
         }
       } else if (onStashList) {
@@ -217,12 +280,13 @@ export function StashPanel() {
   const junkCount = junkItems.length;
 
   const stashFull = stash.length >= cap;
-  const kitItemCount =
-    equipment.pockets.items.length + (equipment.bag?.items.length ?? 0);
+  let kitItemCount = 0;
+  let kitJunkCount = 0;
+  for (const p of iterKitItems(equipment)) {
+    kitItemCount += 1;
+    if (isJunk(ITEMS[p.itemId])) kitJunkCount += 1;
+  }
   const canEmptyAll = !inRaid && kitItemCount > 0;
-  const kitJunkCount =
-    equipment.pockets.items.filter((p) => isJunk(ITEMS[p.itemId])).length +
-    (equipment.bag?.items.filter((p) => isJunk(ITEMS[p.itemId])).length ?? 0);
   const canEmptyJunk = !inRaid && kitJunkCount > 0;
 
   const sortedStash = useMemo(() => {
@@ -287,7 +351,12 @@ export function StashPanel() {
                 drag?.kind === "stash" ? (ITEMS[drag.itemId]?.slot ?? null) : null
               }
               onSlotPointerDown={(slot, e) => {
-                const item = slot === "bag" ? equipment.bag?.slot : equipment[slot];
+                const item =
+                  slot === "bag"
+                    ? equipment.bag?.slot
+                    : slot === "rig"
+                      ? equipment.rig?.slot
+                      : equipment[slot];
                 if (!item) return;
                 // Ctrl/Cmd+click on an equipped slot fast-unequips back to stash.
                 if (e.ctrlKey || e.metaKey) {
@@ -342,47 +411,68 @@ export function StashPanel() {
                 if (stashFromKit(uid)) playSfx("inventory");
               }}
             />
-            {equipment.bag ? (
-              <KitGrid
-                slot="bag"
-                label={`Bag · ${ITEMS[equipment.bag.slot.itemId]?.name ?? "Bag"}`}
-                Icon={Backpack}
-                grid={equipment.bag}
-                gridRef={bagRef}
-                drag={
-                  drag && (drag.kind === "kit" || drag.kind === "stash")
-                    ? {
-                        uid: drag.kind === "kit" ? drag.uid : drag.uid,
-                        itemId: drag.itemId,
-                        rotation: drag.kind === "kit" ? drag.rotation : 0,
-                      }
-                    : null
-                }
-                draggingFromThisGrid={drag?.kind === "kit" && drag.from === "bag"}
-                hover={kitHover && kitHover.slot === "bag" ? { x: kitHover.x, y: kitHover.y, valid: kitHover.valid } : null}
-                onPick={(uid, itemId, rotation, dx, dy, mouseX, mouseY) =>
-                  setDrag({
-                    kind: "kit",
-                    from: "bag",
-                    uid,
-                    itemId,
-                    rotation,
-                    grabDx: dx,
-                    grabDy: dy,
-                    mouseX,
-                    mouseY,
-                  })
-                }
-                onCtrlClick={(uid) => {
-                  if (stashFromKit(uid)) playSfx("inventory");
-                }}
-              />
-            ) : (
+            {containers.length === 0 && (
               <div className="rounded-sm border border-dashed border-border/40 p-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground/60">
                 <Backpack className="mr-2 inline size-3" />
-                no bag equipped · drag from stash
+                no bag or rig equipped · drag from stash
               </div>
             )}
+            {containers.map(({ slot, container }) => {
+              const Icon = slot === "rig" ? ShieldHalf : Backpack;
+              const containerName = ITEMS[container.slot.itemId]?.name ?? container.slot.itemId;
+              return (
+                <div key={slot} className="flex flex-col gap-2">
+                  <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground/80">
+                    <Icon className="mr-1 inline size-3" />
+                    {containerName}
+                  </div>
+                  {container.sections.map((section) => (
+                    <KitGrid
+                      key={section.id}
+                      slot={slot}
+                      label={section.label ?? section.id}
+                      Icon={Icon}
+                      grid={section}
+                      refCallback={setSectionRef(slot, section.id)}
+                      drag={
+                        drag && (drag.kind === "kit" || drag.kind === "stash")
+                          ? {
+                              uid: drag.uid,
+                              itemId: drag.itemId,
+                              rotation: drag.kind === "kit" ? drag.rotation : 0,
+                            }
+                          : null
+                      }
+                      draggingFromThisGrid={
+                        drag?.kind === "kit" && drag.from === slot && drag.fromSectionId === section.id
+                      }
+                      hover={
+                        kitHover && kitHover.slot === slot && kitHover.sectionId === section.id
+                          ? { x: kitHover.x, y: kitHover.y, valid: kitHover.valid }
+                          : null
+                      }
+                      onPick={(uid, itemId, rotation, dx, dy, mouseX, mouseY) =>
+                        setDrag({
+                          kind: "kit",
+                          from: slot,
+                          fromSectionId: section.id,
+                          uid,
+                          itemId,
+                          rotation,
+                          grabDx: dx,
+                          grabDy: dy,
+                          mouseX,
+                          mouseY,
+                        })
+                      }
+                      onCtrlClick={(uid) => {
+                        if (stashFromKit(uid)) playSfx("inventory");
+                      }}
+                    />
+                  ))}
+                </div>
+              );
+            })}
             <Tooltip
               text={
                 !canEmptyJunk
@@ -486,13 +576,17 @@ export function StashPanel() {
                       const equippable = item.slot != null;
                       const equippableNow =
                         !inRaid && equippable && (
-                          item.slot === "bag" ? !equipment.bag : !equipment[item.slot!]
+                          item.slot === "bag"
+                            ? !equipment.bag
+                            : item.slot === "rig"
+                              ? !equipment.rig
+                              : !equipment[item.slot!]
                         );
                       const fit = !inRaid && !equippable ? findFit(equipment, si) : null;
                       const ctrlClickAction = equippableNow
                         ? () => equipFromStash(si.uid)
                         : fit
-                          ? () => kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
+                          ? () => kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation, fit.sectionId)
                           : null;
                       const ctrlHint = equippableNow
                         ? `Ctrl+click to equip · drag to ${item.slot} slot`
@@ -558,7 +652,7 @@ export function StashPanel() {
                                 <Tooltip text={`Move to ${fit.slot}`}>
                                   <button
                                     onClick={() =>
-                                      kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation)
+                                      kitFromStash(si.uid, fit.slot, fit.x, fit.y, fit.rotation, fit.sectionId)
                                     }
                                     className="inline-flex cursor-pointer items-center gap-0.5 rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
                                   >

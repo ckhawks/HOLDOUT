@@ -21,6 +21,7 @@ import { BranchModal } from "./BranchModal";
 import { NextActionCard } from "./NextActionCard";
 import { RaidMap } from "./RaidMap";
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
+import { iterKitItems } from "@/lib/engine/equipment";
 
 export function FeedPanel() {
   const raid = useGame((s) => s.currentRaid);
@@ -48,9 +49,13 @@ export function FeedPanel() {
   const hasBleed =
     rs.flags.includes("bleeding_minor") || rs.flags.includes("bleeding_major");
   const hasMajor = rs.flags.includes("bleeding_major");
-  const hasBandage =
-    raid.equipment.pockets.items.some((p) => p.itemId === "bandage_pack") ||
-    !!raid.equipment.bag?.items.some((p) => p.itemId === "bandage_pack");
+  let hasBandage = false;
+  for (const p of iterKitItems(raid.equipment)) {
+    if (p.itemId === "bandage_pack") {
+      hasBandage = true;
+      break;
+    }
+  }
   const extracting = rs.flags.includes("extracting");
   const exhausted = rs.energy <= 0;
 

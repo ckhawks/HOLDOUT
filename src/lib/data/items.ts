@@ -75,6 +75,9 @@ export const ITEMS: Record<string, Item> = {
   shipping_manifest:{ id: "shipping_manifest",name: "Shipping Manifest", tier: "common",       category: "intel",       sellValue: 14,  weight: 1, shape: S.horiz2 },
   corp_id:          { id: "corp_id",          name: "Corp ID Badge",     tier: "uncommon",     category: "intel",       sellValue: 38,  weight: 1, shape: S.one },
   redacted_dossier: { id: "redacted_dossier", name: "Redacted Dossier",  tier: "uncommon",     category: "intel",       sellValue: 55,  weight: 1, shape: S.horiz2 },
+  // Single-use bypass key. Quiet alternative to breach_locked — consumes one
+  // on use, no ammo cost, minimal heat. Drops in the regular intel pool.
+  bypass_key:       { id: "bypass_key",       name: "Bypass Key",        tier: "uncommon",     category: "intel",       sellValue: 70,  weight: 1, shape: S.one },
   encrypted_drive:  { id: "encrypted_drive",  name: "Encrypted Drive",   tier: "rare",         category: "intel",       sellValue: 140, weight: 1, shape: S.horiz2 },
   patrol_schedule:  { id: "patrol_schedule",  name: "Patrol Schedule",   tier: "rare",         category: "intel",       sellValue: 130, weight: 1, shape: S.horiz2 },
   datacenter_keycard:{ id: "datacenter_keycard", name: "Keycard: Datacenter", tier: "rare",     category: "intel",       sellValue: 0,   weight: 1, shape: S.horiz2 },
@@ -100,12 +103,42 @@ export const ITEMS: Record<string, Item> = {
   bio_synth_sample: { id: "bio_synth_sample", name: "Bio-Synth Sample",  tier: "experimental", category: "experimental", sellValue: 380, weight: 1, shape: S.vert2 },
   workbench_schematic:{ id: "workbench_schematic", name: "Schematic: Workbench", tier: "experimental", category: "experimental", sellValue: 0, weight: 1, shape: S.s4 },
 
-  // bags — equippable apparel. Provides a secondary grid alongside built-in
-  // pockets. Drop via the `apparel` category weight on each location (eventual
-  // home for armor/helmet items too).
-  canvas_satchel:   { id: "canvas_satchel",   name: "Canvas Satchel",     tier: "common",   category: "apparel", sellValue: 60,  weight: 2, shape: S.square2, slot: "bag", bagGrid: { width: 4, height: 2 } },
-  tactical_pack:    { id: "tactical_pack",    name: "Tactical Pack",      tier: "uncommon", category: "apparel", sellValue: 220, weight: 3, shape: S.square2, slot: "bag", bagGrid: { width: 5, height: 5 } },
-  raider_rucksack:  { id: "raider_rucksack",  name: "Raider Rucksack",    tier: "rare",     category: "apparel", sellValue: 540, weight: 4, shape: S.square2, slot: "bag", bagGrid: { width: 6, height: 6 } },
+  // bags — equippable apparel into the `bag` slot. Provides one or more
+  // independent sub-grids alongside built-in pockets. Single-section bags
+  // render as one grid; multi-section bags render stacked sub-grids.
+  canvas_satchel:   { id: "canvas_satchel",   name: "Canvas Satchel",     tier: "common",   category: "apparel", sellValue: 60,  weight: 2, shape: S.square2, slot: "bag", bagSections: [
+    { id: "main", label: "Main", width: 4, height: 2 },
+  ] },
+  tactical_pack:    { id: "tactical_pack",    name: "Tactical Pack",      tier: "uncommon", category: "apparel", sellValue: 220, weight: 3, shape: S.square2, slot: "bag", bagSections: [
+    { id: "main", label: "Main", width: 5, height: 5 },
+  ] },
+  // Modular pack: a wide main compartment + a side pocket. Sits between
+  // tactical_pack and raider_rucksack on the value curve.
+  modular_pack:     { id: "modular_pack",     name: "Modular Pack",       tier: "uncommon", category: "apparel", sellValue: 320, weight: 3, shape: S.square2, slot: "bag", bagSections: [
+    { id: "main", label: "Main", width: 4, height: 4 },
+    { id: "side", label: "Side", width: 2, height: 3 },
+  ] },
+  raider_rucksack:  { id: "raider_rucksack",  name: "Raider Rucksack",    tier: "rare",     category: "apparel", sellValue: 540, weight: 4, shape: S.square2, slot: "bag", bagSections: [
+    { id: "main", label: "Main", width: 6, height: 7 },
+  ] },
+
+  // chest rigs — equippable apparel into the new `rig` slot. Worn alongside
+  // a bag (not instead of). Always multi-section (it's the rig fantasy);
+  // smaller cell counts than bags but the split layout makes loadout
+  // organization meaningful (admin pouch for meds, main pouch for ammo).
+  light_rig:        { id: "light_rig",        name: "Scrap Webbing",      tier: "common",   category: "apparel", sellValue: 90,  weight: 1, shape: S.horiz2,  slot: "rig", bagSections: [
+    { id: "main",  label: "Main",  width: 3, height: 2 },
+    { id: "admin", label: "Admin", width: 2, height: 1 },
+  ] },
+  combat_rig:       { id: "combat_rig",       name: "Skirmisher Rig",     tier: "uncommon", category: "apparel", sellValue: 240, weight: 2, shape: S.square2, slot: "rig", bagSections: [
+    { id: "main",  label: "Main",  width: 4, height: 2 },
+    { id: "admin", label: "Admin", width: 2, height: 2 },
+  ] },
+  recon_rig:        { id: "recon_rig",        name: "Ghost Harness",      tier: "rare",     category: "apparel", sellValue: 480, weight: 2, shape: S.square2, slot: "rig", bagSections: [
+    { id: "main",  label: "Main",  width: 4, height: 3 },
+    { id: "admin", label: "Admin", width: 3, height: 2 },
+    { id: "side",  label: "Side",  width: 2, height: 2 },
+  ] },
 };
 
 export const ITEM_IDS = Object.keys(ITEMS);

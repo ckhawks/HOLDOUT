@@ -14,6 +14,7 @@ import {
   tickAction,
 } from "@/lib/engine/raid";
 import { applyBandage, applyConsumable } from "@/lib/engine/consumables";
+import { removeFromKit } from "@/lib/engine/equipment";
 import { entranceLog } from "@/lib/engine/flavor";
 import { makeLog } from "@/lib/engine/logging";
 import { autoPickAction } from "@/lib/engine/actions";
@@ -181,6 +182,11 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       );
       nextMap = afterBreach;
     }
+    let nextEquipment = currentRaid.equipment;
+    if (t.consumedKeyUid) {
+      const removed = removeFromKit(nextEquipment, t.consumedKeyUid);
+      if (removed) nextEquipment = removed.next;
+    }
     if (t.droppedItem) {
       nextMap = addToTileContents(
         nextMap,
@@ -226,6 +232,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       log: [...currentRaid.log, ...allLogs],
       operativePos: nextPos,
       map: nextMap,
+      equipment: nextEquipment,
       nextStep,
       tally,
       runState: {
@@ -487,7 +494,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     const eq = currentRaid.equipment;
     const placement =
       eq.pockets.items.find((p) => p.uid === uid) ??
-      eq.bag?.items.find((p) => p.uid === uid);
+      eq.bag?.sections.flatMap((s) => s.items).find((p) => p.uid === uid);
     const itemId = placement?.itemId;
     const next = applyConsumable(currentRaid, uid, Date.now(), Math.random);
     if (next === currentRaid) return;
@@ -580,7 +587,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       const eq = currentRaid.equipment;
       const allItems = [
         ...eq.pockets.items,
-        ...(eq.bag?.items ?? []),
+        ...(eq.bag?.sections.flatMap((s) => s.items) ?? []),
       ];
       if (allItems.some((i) => i.itemId === "workbench_schematic")) {
         nextUnlocks = { ...nextUnlocks, workbench: true };
@@ -614,6 +621,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
             items: [],
           },
           bag: null,
+          rig: null,
           weapon: null,
           armor: null,
           helmet: null,
@@ -709,10 +717,13 @@ function buildRaidReport(
 }
 
 function flattenEquipment(eq: import("@/lib/types").Equipment) {
-  return [
-    ...eq.pockets.items.map((i) => ({ uid: i.uid, itemId: i.itemId, valueMod: i.valueMod })),
-    ...(eq.bag?.items.map((i) => ({ uid: i.uid, itemId: i.itemId, valueMod: i.valueMod })) ?? []),
-  ];
+  const out = eq.pockets.items.map((i) => ({ uid: i.uid, itemId: i.itemId, valueMod: i.valueMod }));
+  if (eq.bag) {
+    for (const s of eq.bag.sections) {
+      for (const i of s.items) out.push({ uid: i.uid, itemId: i.itemId, valueMod: i.valueMod });
+    }
+  }
+  return out;
 }
 
 function toReportItem(i: { uid: string; itemId: string; valueMod?: number }): RaidReportItem {

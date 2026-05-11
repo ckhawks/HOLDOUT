@@ -9,8 +9,17 @@ import { shapeBounds, shapeFor } from "@/lib/engine/shapes";
 import { abbreviate, tierColorFor, tileBgFor } from "@/lib/itemDisplay";
 import { categoryIconFor } from "@/lib/itemIcon";
 import { cn } from "@/lib/utils";
-import type { BagState, PocketsState, Rotation } from "@/lib/types";
+import type { PackPlacement, Rotation } from "@/lib/types";
 import type { KitSlot } from "@/store/game";
+
+// KitGrid renders a single grid cell (pockets or one bag section). It used
+// to be polymorphic over PocketsState | BagState, but with bag sections the
+// minimum shared shape is `{ grid, items }` — both PocketsState and
+// BagSection match it.
+export interface KitGridSource {
+  grid: { width: number; height: number };
+  items: PackPlacement[];
+}
 
 export const KIT_CELL = 32;
 
@@ -32,6 +41,7 @@ export function KitGrid({
   Icon,
   grid,
   gridRef,
+  refCallback,
   drag,
   draggingFromThisGrid,
   hover,
@@ -41,8 +51,11 @@ export function KitGrid({
   slot: KitSlot;
   label: string;
   Icon: typeof Backpack;
-  grid: PocketsState | BagState;
-  gridRef: React.RefObject<HTMLDivElement | null>;
+  grid: KitGridSource;
+  gridRef?: React.RefObject<HTMLDivElement | null>;
+  // Callback ref alternative for callers managing many grids in a Map (one
+  // bag section per id, etc.). If both are provided, refCallback wins.
+  refCallback?: (el: HTMLDivElement | null) => void;
   drag: KitDragHint | null;
   draggingFromThisGrid: boolean;
   hover: KitHover | null;
@@ -71,7 +84,7 @@ export function KitGrid({
         </span>
       </div>
       <div
-        ref={gridRef}
+        ref={refCallback ?? gridRef}
         className="relative select-none border border-border/80 bg-background/40"
         style={{ width: w * KIT_CELL, height: h * KIT_CELL }}
       >

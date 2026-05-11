@@ -175,25 +175,38 @@ export function ItemTooltip({
             <ItemEffectChips itemId={itemId} />
           </div>
         )}
-        {item.bagGrid && (
+        {item.bagSections && item.bagSections.length > 0 && (
           <div className="text-muted-foreground">
-            {item.bagGrid.width}×{item.bagGrid.height} inventory · {item.bagGrid.width * item.bagGrid.height} cells
+            {item.bagSections.length === 1
+              ? `${item.bagSections[0].width}×${item.bagSections[0].height} inventory · ${item.bagSections[0].width * item.bagSections[0].height} cells`
+              : `${item.bagSections.length} sections · ${item.bagSections.reduce((n, s) => n + s.width * s.height, 0)} cells total`}
           </div>
         )}
-        {item.bagGrid && (
-          <div
-            className="mt-1 border border-border/60 bg-background/40"
-            style={{ width: item.bagGrid.width * cellPx, height: item.bagGrid.height * cellPx }}
-          >
-            <div
-              className="size-full"
-              style={{
-                backgroundImage:
-                  `linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px),` +
-                  `linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)`,
-                backgroundSize: `${cellPx}px ${cellPx}px`,
-              }}
-            />
+        {item.bagSections && item.bagSections.length > 0 && (
+          <div className="mt-1 flex flex-col gap-1">
+            {item.bagSections.map((s) => (
+              <div key={s.id} className="flex items-center gap-1.5">
+                <div
+                  className="border border-border/60 bg-background/40"
+                  style={{ width: s.width * cellPx, height: s.height * cellPx }}
+                >
+                  <div
+                    className="size-full"
+                    style={{
+                      backgroundImage:
+                        `linear-gradient(to right, rgba(255,255,255,0.12) 1px, transparent 1px),` +
+                        `linear-gradient(to bottom, rgba(255,255,255,0.12) 1px, transparent 1px)`,
+                      backgroundSize: `${cellPx}px ${cellPx}px`,
+                    }}
+                  />
+                </div>
+                {item.bagSections!.length > 1 && (
+                  <span className="text-[9px] text-muted-foreground/80">
+                    {s.label ?? s.id} · {s.width}×{s.height}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         )}
         {acquiredAt != null && (

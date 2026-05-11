@@ -9,7 +9,7 @@ import type {
 } from "@/lib/types";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 29;
 
 export interface PersistedState {
   cash: number;
@@ -224,6 +224,7 @@ export function migrateSave(saved: SavedGame): SavedGame {
         op.equipment = {
           pockets: { grid: { width: 4, height: 4 }, items: [] },
           bag: null,
+          rig: null,
           weapon: null,
           armor: null,
           helmet: null,
@@ -251,6 +252,7 @@ export function migrateSave(saved: SavedGame): SavedGame {
         equipment: {
           pockets: { grid: { width: 6, height: 1 }, items: [] },
           bag: null,
+          rig: null,
           weapon: null,
           armor: null,
           helmet: null,
@@ -358,6 +360,50 @@ export function migrateSave(saved: SavedGame): SavedGame {
   if (saved.schemaVersion < 27) {
     if (typeof (s as unknown as { debugMode?: unknown }).debugMode !== "boolean") {
       (s as unknown as { debugMode: boolean }).debugMode = false;
+    }
+  }
+  // v29: chest rig EquipSlot added. Equipment now has both `bag` and `rig`
+  // container slots. Backfill `rig: null` on existing operatives so the
+  // type contract holds. Drop in-progress raid since its equipment object
+  // would otherwise be missing the rig field.
+  if (saved.schemaVersion < 29) {
+    s.currentRaid = null;
+    if (s.operative?.equipment) {
+      const eq = s.operative.equipment as unknown as { rig?: unknown };
+      if (!("rig" in eq)) {
+        eq.rig = null;
+      }
+    }
+  }
+  // v28: bags split into multiple sections (Tarkov-rig style). Old shape
+  // was `{ slot, grid, items }`; new shape is `{ slot, sections: [...] }`.
+  // Wrap a legacy single-grid bag into a one-section bag so existing bags
+  // and their contents survive intact (positions unchanged). Drop the
+  // in-progress raid since its bag would otherwise have to be migrated too
+  // — safer to start fresh.
+  if (saved.schemaVersion < 28) {
+    s.currentRaid = null;
+    if (s.operative?.equipment) {
+      const bag = s.operative.equipment.bag as unknown as
+        | { slot: { uid: string; itemId: string; flavor?: string }; grid?: { width: number; height: number }; items?: unknown[]; sections?: unknown[] }
+        | null;
+      if (bag && !Array.isArray(bag.sections) && bag.grid && Array.isArray(bag.items)) {
+        const next = {
+          slot: bag.slot,
+          sections: [
+            {
+              id: "main",
+              label: "Main",
+              grid: bag.grid,
+              items: bag.items,
+            },
+          ],
+        };
+        s.operative = {
+          ...s.operative,
+          equipment: { ...s.operative.equipment, bag: next as unknown as typeof s.operative.equipment.bag },
+        };
+      }
     }
   }
   // Defensive shape check, version-independent: a save can end up with the

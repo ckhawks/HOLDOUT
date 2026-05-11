@@ -1,5 +1,6 @@
 import type { ActionId, CurrentRaid, MapTile, RoomType } from "@/lib/types";
 import { tileAt } from "@/lib/engine/map";
+import { iterKitItems } from "@/lib/engine/equipment";
 
 export interface ActionDef {
   id: ActionId;
@@ -77,7 +78,26 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
       return !!tile && tile.lockedContainers.length > 0;
     },
   },
+  use_key: {
+    id: "use_key",
+    label: "Use bypass key",
+    description: "Quietly open a locked container. Consumes one Bypass Key.",
+    isEligible: (raid) => {
+      if (raid.runState.flags.includes("combat_engaged")) return false;
+      const tile = currentTile(raid);
+      if (!tile || tile.lockedContainers.length === 0) return false;
+      return hasItemId(raid.equipment, "bypass_key");
+    },
+  },
 };
+
+// Equipment scan helper — walks pockets, then every bag/rig section.
+function hasItemId(eq: CurrentRaid["equipment"], itemId: string): boolean {
+  for (const p of iterKitItems(eq)) {
+    if (p.itemId === itemId) return true;
+  }
+  return false;
+}
 
 // Static effect chips for each action, used to preview "what happens if I
 // queue this." Each chip is { kind, value, tone } where kind drives the
@@ -123,6 +143,11 @@ const STATIC_CHIPS: Record<ActionId, ActionChip[]> = {
     { kind: "ammo", value: "-2", tone: "bad" },
     { kind: "heat", value: "+14", tone: "bad" },
     { kind: "loot", value: "70%", tone: "loot" },
+  ],
+  use_key: [
+    { kind: "heat", value: "+2", tone: "neutral" },
+    { kind: "loot", value: "75%", tone: "loot" },
+    { kind: "misc", value: "-1 key", tone: "bad" },
   ],
 };
 
@@ -207,7 +232,7 @@ export function primaryActionOrder(raid: CurrentRaid): ActionId[] {
 // Context actions only appear (under a divider) when their isEligible
 // returns true. They're the "this room has X" interactions: breach a
 // locked container, future lockpick, future use-key.
-const CONTEXT_ACTION_IDS: ActionId[] = ["extract_now", "breach_locked"];
+const CONTEXT_ACTION_IDS: ActionId[] = ["extract_now", "breach_locked", "use_key"];
 export function contextActions(raid: CurrentRaid): ActionDef[] {
   if (raid.runState.flags.includes("combat_engaged")) return [];
   return CONTEXT_ACTION_IDS.map((id) => ACTIONS[id]).filter((a) =>

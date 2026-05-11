@@ -11,6 +11,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/utils";
 import type { Location, PackPlacement, StashItem, Unlocks } from "@/lib/types";
 import { isJunk } from "@/store/slices/economy";
+import { iterContainers, iterKitItems } from "@/lib/engine/equipment";
 
 interface AccessState {
   accessible: boolean;
@@ -78,18 +79,23 @@ export function OpsPanel() {
   const eq = op.equipment;
   const pUsed = eq.pockets.items.length;
   const pTotal = eq.pockets.grid.width * eq.pockets.grid.height;
-  const bUsed = eq.bag?.items.length ?? 0;
-  const bTotal = eq.bag ? eq.bag.grid.width * eq.bag.grid.height : 0;
-  const kitValue =
-    eq.pockets.items.reduce((s, p) => s + (ITEMS[p.itemId]?.sellValue ?? 0), 0) +
-    (eq.bag?.items.reduce((s, p) => s + (ITEMS[p.itemId]?.sellValue ?? 0), 0) ?? 0);
+  let bUsed = 0;
+  let bTotal = 0;
+  for (const { container } of iterContainers(eq)) {
+    for (const s of container.sections) {
+      bUsed += s.items.length;
+      bTotal += s.grid.width * s.grid.height;
+    }
+  }
+  let kitValue = 0;
   // Junk left on the operative — implies they came back from a raid with
   // unsold loot still on them. Surface as a yellow warning so the player
-  // doesn't burn pocket / bag space heading back out.
-  const kitJunk: PackPlacement[] = [
-    ...eq.pockets.items.filter((p) => isJunk(ITEMS[p.itemId])),
-    ...(eq.bag?.items.filter((p) => isJunk(ITEMS[p.itemId])) ?? []),
-  ];
+  // doesn't burn pocket / bag / rig space heading back out.
+  const kitJunk: PackPlacement[] = [];
+  for (const p of iterKitItems(eq)) {
+    kitValue += ITEMS[p.itemId]?.sellValue ?? 0;
+    if (isJunk(ITEMS[p.itemId])) kitJunk.push(p);
+  }
   const kitJunkValue = kitJunk.reduce(
     (s, p) => s + (ITEMS[p.itemId]?.sellValue ?? 0),
     0,
