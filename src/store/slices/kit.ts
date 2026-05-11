@@ -12,6 +12,7 @@ import {
   moveBetweenSlots,
   placeIntoSlot,
   removeFromKit,
+  tryRepackContainer,
   unequipItem,
 } from "@/lib/engine/equipment";
 import { applyConsumableToOperative } from "@/lib/engine/consumables";
@@ -63,6 +64,12 @@ export interface KitSlice {
   stashFromKit: (uid: string) => boolean;
   equipFromStash: (uid: string) => boolean;
   unequipToStash: (slot: EquipSlot) => boolean;
+  // Swap the equipped bag/rig with a stash bag/rig of the matching slot,
+  // repacking contents into the new container's sections. Returns a code
+  // so the UI can surface the failure reason in a toast.
+  swapContainerFromStash: (
+    uid: string,
+  ) => "ok" | "wrong-slot" | "slot-empty" | "no-fit" | "not-found";
   equipFromFloor: (uid: string) => boolean;
   unequipToFloor: (slot: EquipSlot) => boolean;
   emptyKitToStash: () => void;
@@ -218,6 +225,43 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
     return true;
   },
 
+  swapContainerFromStash: (uid) => {
+    const { currentRaid, operative, stash } = get();
+    if (currentRaid) return "not-found";
+    const idx = stash.findIndex((s) => s.uid === uid);
+    if (idx === -1) return "not-found";
+    const newItem = stash[idx];
+    const def = ITEMS[newItem.itemId];
+    if (!def?.slot || (def.slot !== "bag" && def.slot !== "rig")) return "wrong-slot";
+    const current = def.slot === "bag" ? operative.equipment.bag : operative.equipment.rig;
+    if (!current) return "slot-empty";
+    const packed = tryRepackContainer(current, {
+      uid: newItem.uid,
+      itemId: newItem.itemId,
+      flavor: newItem.flavor,
+    });
+    if (!packed) return "no-fit";
+    const oldSlotStashItem: StashItem = {
+      uid: current.slot.uid,
+      itemId: current.slot.itemId,
+      flavor: current.slot.flavor,
+      acquiredAt: Date.now(),
+    };
+    const nextStash = [...stash];
+    // Replace the stash entry at idx with the old container — keeps the
+    // visual position stable rather than appending to the bottom.
+    nextStash[idx] = oldSlotStashItem;
+    const nextEquipment =
+      def.slot === "bag"
+        ? { ...operative.equipment, bag: packed }
+        : { ...operative.equipment, rig: packed };
+    set({
+      stash: nextStash,
+      operative: { ...operative, equipment: nextEquipment },
+    });
+    return "ok";
+  },
+
   equipFromFloor: (uid) => {
     const { currentRaid } = get();
     if (!currentRaid) return false;
@@ -305,7 +349,11 @@ export const createKitSlice: StateCreator<GameState, [], [], KitSlice> = (set, g
     const now = Date.now();
     const junkUids: PackPlacement[] = [];
     for (const p of iterKitItems(operative.equipment)) {
-      if (isJunk(ITEMS[p.itemId])) junkUids.push(p);
+      const def = ITEMS[p.itemId];
+      // "Loot" = junk + loose apparel (extra rigs/bags/armor/helmets sitting
+      // in containers as picked-up gear). The equipped pieces in the body
+      // slots aren't walked by iterKitItems so they stay on the operative.
+      if (isJunk(def) || def?.category === "apparel") junkUids.push(p);
     }
     let eq = operative.equipment;
     for (const p of junkUids) {

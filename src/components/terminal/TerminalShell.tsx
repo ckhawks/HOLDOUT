@@ -13,6 +13,7 @@ import { SettingsPanel } from "@/components/panels/SettingsPanel";
 import { ManualPanel } from "@/components/panels/ManualPanel";
 import { DataPanel } from "@/components/panels/DataPanel";
 import { RaidOutcomeModal } from "@/components/panels/RaidOutcomeModal";
+import { Toaster } from "@/components/Toaster";
 import { useRaidLoop } from "@/components/terminal/useRaidLoop";
 import { initSfx, playSfx } from "@/lib/sfx";
 import { dumpRaid } from "@/lib/engine/debug";
@@ -159,6 +160,7 @@ export function TerminalShell() {
         </main>
       </div>
       <RaidOutcomeModal />
+      <Toaster />
     </div>
   );
 }

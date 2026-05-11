@@ -22,6 +22,7 @@ import { ItemTooltip, Tooltip } from "@/components/ui/Tooltip";
 import { KitDragGhost, KitGrid, KIT_CELL, type KitHover } from "./KitGrid";
 import type { KitSlot } from "@/store/game";
 import { playSfx } from "@/lib/sfx";
+import { toast } from "@/lib/toast";
 
 // A row in the stash list. `single` = one equippable instance. `stack` =
 // 1..N non-equippable items of the same itemId collapsed for display. Both
@@ -60,6 +61,7 @@ export function StashPanel() {
   const moveKitItem = useGame((s) => s.moveKitItem);
   const equipFromStash = useGame((s) => s.equipFromStash);
   const unequipToStash = useGame((s) => s.unequipToStash);
+  const swapContainerFromStash = useGame((s) => s.swapContainerFromStash);
   const emptyKit = useGame((s) => s.emptyKitToStash);
   const emptyJunk = useGame((s) => s.emptyJunkToStash);
   const consumeOnOperative = useGame((s) => s.useConsumableOnOperative);
@@ -143,9 +145,9 @@ export function StashPanel() {
       if (d.kind === "stash") {
         const def = ITEMS[d.itemId];
         if (def?.slot !== s) return false;
-        if (s === "bag") return !equipment.bag;
-        if (s === "rig") return !equipment.rig;
-        return !equipment[s];
+        // Bag/rig over an occupied slot is still "valid" hover — onUp tries
+        // a content-repacking swap and surfaces failure via toast.
+        return true;
       }
       return s === (d.kind === "slot" ? d.slot : null);
     };
@@ -268,11 +270,41 @@ export function StashPanel() {
 
     if (d.kind === "slot") {
       if (!s) {
-        if (unequipToStash(d.slot)) played = true;
+        if (unequipToStash(d.slot)) {
+          played = true;
+        } else if (d.slot === "bag" || d.slot === "rig") {
+          // Engine refuses unequip-with-contents; everything else (slot
+          // empty, stash full) is rare or surfaces elsewhere.
+          const container = d.slot === "bag" ? equipment.bag : equipment.rig;
+          const hasItems = container?.sections.some((sec) => sec.items.length > 0);
+          if (hasItems) {
+            toast(
+              `Empty the ${d.slot === "bag" ? "bag" : "chest rig"} before unequipping it.`,
+              "warn",
+            );
+          }
+        }
       }
     } else if (d.kind === "stash") {
       if (s) {
-        if (equipFromStash(d.uid)) played = true;
+        const def = ITEMS[d.itemId];
+        const isContainer = def?.slot === "bag" || def?.slot === "rig";
+        const slotOccupied =
+          (def?.slot === "bag" && !!equipment.bag) ||
+          (def?.slot === "rig" && !!equipment.rig);
+        if (isContainer && slotOccupied) {
+          const result = swapContainerFromStash(d.uid);
+          if (result === "ok") {
+            played = true;
+          } else if (result === "no-fit") {
+            toast(
+              `Contents don't fit in the new ${def!.slot === "bag" ? "bag" : "chest rig"}.`,
+              "warn",
+            );
+          }
+        } else if (equipFromStash(d.uid)) {
+          played = true;
+        }
       } else if (kitTarget && cell) {
         if (kitFromStash(d.uid, kitTarget, cell.x - grabDx, cell.y - grabDy, d.rotation, kitSectionId)) {
           played = true;
@@ -295,7 +327,7 @@ export function StashPanel() {
     setKitHover(null);
     setOverStash(false);
     setOverVitals(false);
-  }, [equipment, equipFromStash, unequipToStash, kitFromStash, stashFromKit, moveKitItem, consumeOnOperative, slotRefs]);
+  }, [equipment, equipFromStash, unequipToStash, swapContainerFromStash, kitFromStash, stashFromKit, moveKitItem, consumeOnOperative, slotRefs]);
 
   const rotateInPlace = useCallback(() => {
     setDrag((d) => {
@@ -342,7 +374,8 @@ export function StashPanel() {
   let kitJunkCount = 0;
   for (const p of iterKitItems(equipment)) {
     kitItemCount += 1;
-    if (isJunk(ITEMS[p.itemId])) kitJunkCount += 1;
+    const def = ITEMS[p.itemId];
+    if (isJunk(def) || def?.category === "apparel") kitJunkCount += 1;
   }
   const canEmptyAll = !inRaid && kitItemCount > 0;
   const canEmptyJunk = !inRaid && kitJunkCount > 0;

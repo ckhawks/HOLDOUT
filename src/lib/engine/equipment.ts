@@ -282,6 +282,60 @@ export function unequipItem(
   return { next: { ...eq, [slot]: null }, removed: cur };
 }
 
+// Try to repack every item from `source` into a fresh container built from
+// the new container item's bagSections. Used for drag-to-swap of bags/rigs:
+// the old container's contents have to find a home in the new container's
+// sections, or the swap is rejected.
+//
+// Strategy: pack larger items first (by cell-area) and try each section in
+// def order with all rotations. First-fit per item, no backtracking — good
+// enough in practice given how few items live in a single container, and
+// matches the rest of the codebase's fit heuristics (findFit, applyConsumable
+// placement). Returns the packed BagState on success, null if any item
+// couldn't be placed.
+export function tryRepackContainer(
+  source: BagState,
+  newSlotItem: SlotItem,
+): BagState | null {
+  const def = ITEMS[newSlotItem.itemId];
+  if (!def?.bagSections || def.bagSections.length === 0) return null;
+  const sections: BagSection[] = def.bagSections.map((s) => ({
+    id: s.id,
+    label: s.label,
+    grid: { width: s.width, height: s.height },
+    items: [],
+  }));
+  const allItems: PackPlacement[] = [];
+  for (const s of source.sections) allItems.push(...s.items);
+  // Largest first — small items tile around big ones better than the reverse.
+  allItems.sort((a, b) => {
+    const ca = shapeFor(a.itemId, 0).length;
+    const cb = shapeFor(b.itemId, 0).length;
+    return cb - ca;
+  });
+  for (const item of allItems) {
+    let placed = false;
+    for (const section of sections) {
+      for (let r = 0; r < 4 && !placed; r++) {
+        const rotation = r as Rotation;
+        const cells = shapeFor(item.itemId, rotation);
+        const occ = buildOccupancy(section.items, section.grid.width, section.grid.height);
+        for (let y = 0; y < section.grid.height && !placed; y++) {
+          for (let x = 0; x < section.grid.width && !placed; x++) {
+            if (canPlace(cells, x, y, section.grid.width, section.grid.height, occ)) {
+              section.items = [...section.items, { ...item, x, y, rotation }];
+              placed = true;
+            }
+          }
+        }
+      }
+      if (placed) break;
+    }
+    if (!placed) return null;
+  }
+  return { slot: newSlotItem, sections };
+}
+
 // First-fit placement search. Walks pockets, then rig, then bag — matching
 // the inventory display order (pockets at top, rig above bag) so ctrl+click
 // pickup fills from the top of the visible list down. Within each container

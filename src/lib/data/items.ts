@@ -130,7 +130,7 @@ export const ITEMS: Record<string, Item> = {
   // a bag (not instead of). Always multi-section (it's the rig fantasy);
   // smaller cell counts than bags but the split layout makes loadout
   // organization meaningful (admin pouch for meds, main pouch for ammo).
-  light_rig:        { id: "light_rig",        name: "Scrap Webbing",      tier: "common",   category: "apparel", sellValue: 90,  weight: 1, shape: S.rect2x3, slot: "rig", bagSections: [
+  light_rig:        { id: "light_rig",        name: "Scrap Chest Rig",    tier: "common",   category: "apparel", sellValue: 90,  weight: 1, shape: S.rect2x3, slot: "rig", bagSections: [
     { id: "main",  label: "Main",  width: 3, height: 2 },
     { id: "admin", label: "Admin", width: 2, height: 1 },
   ] },
