@@ -866,6 +866,17 @@ export function StashPanel() {
                                   </button>
                                 </Tooltip>
                               )}
+                              {equippableNow && (
+                                <Tooltip text={`Equip to ${item.slot} slot`}>
+                                  <button
+                                    onClick={() => equipFromStash(repFree.uid)}
+                                    className="inline-flex cursor-pointer items-center gap-0.5 rounded-sm border border-transparent px-2 py-0.5 text-xs text-muted-foreground transition hover:border-border hover:text-foreground"
+                                  >
+                                    <ArrowLeft className="size-3" />
+                                    kit
+                                  </button>
+                                </Tooltip>
+                              )}
                               {sellable && (
                                 <>
                                   <Tooltip

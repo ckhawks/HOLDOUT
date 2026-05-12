@@ -67,12 +67,12 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - DONE: room tile color if loot on ground (and/or slight icon?)
 - DONE: rig names need to be more clear they are chest rigs/extra storage equippables
 - DONE: make empty loot button also take apparel out of the inventory (not unequip it)
-
 - DONE: drag to swap backpacks (try to swap items, reject if can't)
 - DONE: toast when rejecting unequipping bag/rig if items are in, toast when rejecting moving bag/rig if cant for some reason
-- backpacks/rigs need <-- Kit button that equips them or something
+- DONE: backpacks/rigs need <-- Kit button that equips them or something
+- DONE: return back to stash after end-of-raid screen
+
 - choose operative name when you first start the save
-- return back to stash after end-of-raid screen
 - add toast when constructing hideout thing or upgrading
 - look for other places where toasts would be beneficial?
 - rework stash item list (lots of buttons rn)
@@ -105,6 +105,10 @@ Open wishlist from the player. DONE items have been moved to the Changelog at th
 - post hideout changes: show notification pulse thing (red) when there's action needing to be done in the hideout (like things that have raid-timer-related things)
 
 - revisit loot weights/rarity system
+
+- **Combat revamp — multi-round, stance-based, probabilistic survival.** Full spec in `docs/2026-05-11-combat-revamp.md`. Replaces today's one-shot `handleFight` with multi-round combat: stance picks per round (Press / Suppress / Reposition / Disengage), distance bands, layered damage resolution (hit → location → pen → damage), seam-shot crit slot for ~2% lucky-kill chance, visible odds on every chip. Introduces weapons / armor / helmets as a real item class (none today). Three v1 archetypes (Grunt / Sniper / Brawler) as data presets. Recon info on tile entry — unordered pieces, better observability = more pieces. Sliced 0-9, each shippable. Folds in "opponent quality preview" wishlist item.
+
+- **Wheel-of-fortune modifier item (Balatro-flavor).** Found/rolled throughout the game (not combat-specific). Player triggers it for a 25%-ish chance to roll a meaningful modifier — could be a temp buff, a cash payout, a loot reroll, a free craft, etc. Idea is a high-variance gamba pull that adds Balatro-style "what's the next pull do" texture to the meta loop.
 
 ### From the older IDEAS.md (carried over)
 
