@@ -171,7 +171,7 @@ function BranchModalInner({ choice }: { choice: PendingChoice }) {
         </div>
         <div className="flex flex-col gap-2 px-5 py-4">
           {choice.options.map((opt, idx) => {
-            const chips = chipsFor(opt);
+            const chips = opt.chips ?? chipsFor(opt);
             const isSelected = idx === selectedIdx;
             return (
               <Button

@@ -13,7 +13,14 @@ import {
   startRaid,
   tickAction,
 } from "@/lib/engine/raid";
-import { initCombat } from "@/lib/engine/combat";
+import {
+  initCombat,
+  makeStancePickChoice,
+  resolveCombatRound,
+  resolveDisengage,
+} from "@/lib/engine/combat";
+import { pickItemForLocation } from "@/lib/data/items";
+import type { Stance, StashItem } from "@/lib/types";
 import {
   applyBandage,
   applyConsumable,
@@ -43,6 +50,145 @@ import {
 import { LOCATIONS_BY_ID } from "@/lib/data/locations";
 import { ITEMS } from "@/lib/data/items";
 import type { GameState, RaidOutcome, RaidReportItem } from "../game";
+
+// Combat-revamp Slice 2 — dispatcher for stance_pick pendingChoice
+// resolution. Lives outside the slice closure so it can call get/set
+// without spaghetti through the slice interface. Mutates currentRaid:
+// applies combat-round deltas (HP / ammo / heat / logs), folds in any
+// loot drop on target_down, raises the next stance picker if combat
+// continues, schedules pendingEnd on death.
+function resolveStanceChoice(
+  get: () => GameState,
+  set: (partial: Partial<GameState>) => void,
+  stance: Stance,
+): void {
+  const state = get();
+  const cr = state.currentRaid;
+  if (!cr || !cr.combat) return;
+  const rand = makeRng(state.rngSeed + cr.log.length);
+  const now = Date.now();
+
+  // Disengage path is its own resolver (binary success/fail). Other
+  // stances go through the round resolver.
+  let damageToPlayer = 0;
+  let ammoSpent = 0;
+  let heatDelta = 0;
+  let nextCombat: CurrentRaid["combat"] = cr.combat;
+  let outcomeTag: "ongoing" | "target_down" | "broke_contact" = "ongoing";
+  const logLines: { kind: import("@/lib/types").LogKind; text: string }[] = [];
+
+  if (stance === "disengage") {
+    const r = resolveDisengage(cr.combat, cr.runState.heat, rand);
+    damageToPlayer = r.damageToPlayer;
+    ammoSpent = r.ammoSpent;
+    heatDelta = r.heatDelta;
+    nextCombat = r.combat;
+    outcomeTag = r.success ? "broke_contact" : "ongoing";
+    logLines.push(...r.logs);
+  } else {
+    const r = resolveCombatRound(cr.combat, cr.equipment, stance, rand);
+    damageToPlayer = r.damageToPlayer;
+    ammoSpent = r.ammoSpent;
+    heatDelta = r.heatDelta;
+    nextCombat = r.combat;
+    outcomeTag =
+      r.outcome === "target_down"
+        ? "target_down"
+        : r.outcome === "ongoing"
+        ? "ongoing"
+        : "ongoing";
+    logLines.push(...r.logs);
+  }
+
+  // Loot drop on target_down — pulled from the location's loot table.
+  // Mirrors the slice 1 handleFight rollLoot path.
+  let droppedItem: StashItem | undefined;
+  if (outcomeTag === "target_down") {
+    const loc = LOCATIONS_BY_ID[cr.locationId];
+    if (loc && rand() < 0.65) {
+      const itemId = pickItemForLocation(rand, loc, false, cr.runState.depth);
+      if (itemId) {
+        const valueMod = 0.85 + rand() * 0.3;
+        droppedItem = {
+          itemId,
+          uid: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+          valueMod,
+          acquiredAt: now,
+        };
+        const def = ITEMS[itemId];
+        logLines.push({
+          kind: "loot",
+          text: `Looted ⟦${def?.name ?? itemId}⟧ off them.`,
+        });
+      }
+    }
+  }
+
+  // Build log entries from the round.
+  const logs = logLines.map((l) =>
+    makeLog(l.kind, l.text, undefined, now, Math.random),
+  );
+
+  let nextMap = cr.map;
+  if (droppedItem) {
+    nextMap = addToTileContents(nextMap, cr.operativePos.x, cr.operativePos.y, droppedItem);
+  }
+
+  const nextHealth = Math.max(
+    0,
+    Math.min(100, cr.runState.health - damageToPlayer),
+  );
+  const nextAmmo = Math.max(0, cr.runState.ammo - ammoSpent);
+  const nextHeat = Math.max(0, Math.min(100, cr.runState.heat + heatDelta));
+
+  // Raise the next stance picker if combat continues. Otherwise clear.
+  const stancePick = nextCombat
+    ? makeStancePickChoice(nextCombat, cr.equipment, nextHeat, now)
+    : null;
+
+  // Tally updates: damage taken, heat peak, combat outcome counters.
+  const tally: typeof cr.tally = {
+    ...cr.tally,
+    damageTaken: cr.tally.damageTaken + damageToPlayer,
+    heatPeak: Math.max(cr.tally.heatPeak, nextHeat),
+    combatTargetsDown:
+      cr.tally.combatTargetsDown + (outcomeTag === "target_down" ? 1 : 0),
+    combatBrokeContact:
+      cr.tally.combatBrokeContact + (outcomeTag === "broke_contact" ? 1 : 0),
+  };
+
+  let raid: CurrentRaid = {
+    ...cr,
+    log: [...cr.log, ...logs],
+    map: nextMap,
+    combat: nextCombat,
+    pendingChoice: stancePick,
+    tally,
+    runState: {
+      ...cr.runState,
+      health: nextHealth,
+      ammo: nextAmmo,
+      heat: nextHeat,
+    },
+  };
+
+  // Death check — schedule pendingEnd as the regular tick path does.
+  if (nextHealth <= 0) {
+    raid = {
+      ...raid,
+      log: [
+        ...raid.log,
+        makeLog("system", "Vital signs flat. Operative is down.", undefined, now, Math.random),
+      ],
+      pendingChoice: null,
+      combat: null,
+      active: false,
+      pendingEnd: { at: now + 800, success: false },
+    };
+  }
+
+  set({ currentRaid: raid });
+}
 
 // Raid lifecycle slice. Owns currentRaid + raidOutcome state and every action
 // that mutates a raid in flight: begin, tick, override, choice resolution,
@@ -416,6 +562,17 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
         (o) => o.id === currentRaid.pendingChoice!.defaultId,
       ) ??
       currentRaid.pendingChoice.options[0];
+
+    // Combat-revamp Slice 2: stance_pick has its own dispatch path —
+    // BranchEffects don't apply (stance numbers come from the combat
+    // resolver, not declarative effects). Routes the chosen stance to
+    // resolveCombatRound / resolveDisengage and raises the next stance
+    // picker if combat continues.
+    if (currentRaid.pendingChoice.eventId === "stance_pick") {
+      resolveStanceChoice(get, set, choice.id as Stance);
+      return;
+    }
+
     const fx = choice.effects ?? {};
     const rs = currentRaid.runState;
 
@@ -498,10 +655,25 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
         },
       ],
     };
+    // Combat-revamp Slice 2: when Engage just initialized combat, raise
+    // the first stance picker immediately so the player picks their
+    // opening move (Press / Suppress / Reposition / Disengage). Skipping
+    // the picker would let the tick loop autopick `stay` and stall in
+    // combat — the picker is the actual driver of combat now.
+    const stancePick =
+      isEngageChoice && nextCombat
+        ? makeStancePickChoice(
+            nextCombat,
+            currentRaid.equipment,
+            choiceHeat,
+            Date.now(),
+          )
+        : null;
+
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, ...choiceLogs],
-      pendingChoice: null,
+      pendingChoice: stancePick,
       operativePos: nextPos,
       map: nextMap,
       nextStep,

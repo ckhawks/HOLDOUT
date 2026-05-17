@@ -224,68 +224,13 @@ describe("tickAction loot", () => {
 });
 
 describe("combat sub-mode", () => {
-  it("autoPickAction picks fight when raid.combat is active", () => {
+  it("autoPickAction returns 'stay' when raid.combat is active (modal owns combat)", () => {
     const raid = makeRaid({ combat: activeCombat() });
-    expect(autoPickAction(raid)).toBe("fight");
-  });
-
-  it("fight ticks damage the enemy and eventually drop them (target_down)", () => {
-    // Equip the Scavenged Pistol so a fight resolves in a handful of
-    // rounds rather than the bare-fists ~12-round average. The test still
-    // verifies that combatNext goes null when the enemy hits 0 HP across
-    // many seeds.
-    const armedEquipment = {
-      pockets: { grid: { width: 4, height: 4 }, items: [] },
-      bag: null,
-      rig: null,
-      weapon: { uid: "w1", itemId: "scavenged_pistol" },
-      armor: null,
-      helmet: null,
-    };
-    let downs = 0;
-    for (let seed = 1; seed < 200; seed++) {
-      let raid = makeRaid({
-        queuedAction: "fight",
-        combat: activeCombat(),
-        equipment: armedEquipment,
-        startingEquipment: armedEquipment,
-      });
-      for (let round = 0; round < 12 && raid.combat; round++) {
-        const result = tickAction(raid, makeRng(seed + round * 31), 0);
-        const nextCombat =
-          result.combatNext === undefined ? raid.combat : result.combatNext;
-        raid = {
-          ...raid,
-          combat: nextCombat,
-          runState: {
-            ...raid.runState,
-            health: Math.max(0, raid.runState.health + result.healthDelta),
-          },
-        };
-      }
-      if (!raid.combat) downs++;
-    }
-    expect(downs).toBeGreaterThan(150);
-  });
-
-  it("flee tick clears combat on success or applies damage + leaves combat running on fail", () => {
-    let breaks = 0;
-    let fails = 0;
-    for (let seed = 1; seed < 200; seed++) {
-      const raid = makeRaid({
-        queuedAction: "flee",
-        combat: activeCombat(),
-        runState: freshRunState({ heat: 30 }),
-      });
-      const result = tickAction(raid, makeRng(seed), 0);
-      if (result.combatNext === null) {
-        breaks++;
-      } else if (result.combatNext && result.healthDelta < 0) {
-        fails++;
-      }
-    }
-    expect(breaks).toBeGreaterThan(50);
-    expect(fails).toBeGreaterThan(20);
+    // Slice 2: combat is driven entirely by the stance_pick pendingChoice
+    // modal. The action card / autoPicker stays out of the way and is
+    // shadowed by the modal — engine tests for fight/flee resolution
+    // live in combat.test.ts instead.
+    expect(autoPickAction(raid)).toBe("stay");
   });
 
   it("move_forward raises a patrol pendingChoice when destination tile has a threat", () => {

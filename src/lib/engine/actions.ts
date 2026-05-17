@@ -208,7 +208,10 @@ export function currentTile(raid: CurrentRaid): MapTile | undefined {
 // loot tick, forcing a manual click per container. The opt-in stays — entering
 // a new room mid-extract via extract_step does NOT trigger auto-loot.
 export function autoPickAction(raid: CurrentRaid): ActionId {
-  if (raid.combat != null) return "fight";
+  // Combat is modal — the stance_pick pendingChoice owns each round.
+  // Returning "stay" here is a safe no-op the tick loop won't actually
+  // fire while the modal is up.
+  if (raid.combat != null) return "stay";
   if (raid.runState.flags.includes("extracting")) {
     if (raid.queuedAction === "loot" && ACTIONS.loot.isEligible(raid)) return "loot";
     if (ACTIONS.extract_now.isEligible(raid)) return "extract_now";
@@ -221,9 +224,11 @@ export function autoPickAction(raid: CurrentRaid): ActionId {
 
 // Primary actions are always shown in the action menu (in stable order),
 // disabled when ineligible. They drive the operative's default loop:
-// raiding / extracting / combat sub-mode.
+// raiding / extracting. Combat is now modal (stance_pick pendingChoice
+// drives every round); the action card is shadowed by the BranchModal
+// while combat is active so returning [] keeps the card clean.
 export function primaryActionOrder(raid: CurrentRaid): ActionId[] {
-  if (raid.combat != null) return ["fight", "flee"];
+  if (raid.combat != null) return [];
   if (raid.runState.flags.includes("extracting"))
     return ["extract_step", "loot", "stay"];
   return ["move_forward", "loot", "stay"];

@@ -1,23 +1,44 @@
-// Combat-revamp Slice 1 — pure round resolver.
+// Combat revamp — pure round resolver.
 //
-// Replaces the one-shot handleFight (~55/30/15 outcome split) with a
-// multi-round combat tracked on CurrentRaid.combat. Slice 1 ships
-// Press-only (no stance picks yet); the resolver still reads weapon
-// stats from the equipped weapon so equipping items has felt impact
-// from day one.
+// Slice 1 introduced multi-round combat (Press only). Slice 2 adds the
+// stance system: each round the player picks Press / Suppress /
+// Reposition / Disengage. Carry-over effects (Suppress lowers enemy
+// accuracy next round; Reposition halves incoming damage next round)
+// live on CombatState. Visible odds for each stance come from
+// computeStanceOdds — the fairness contract is honest because enemy
+// intent is telegraphed, not hidden.
 //
 // Pure + seedable: all randomness comes in as `rand`. The store is the
 // only allowed caller of `Date.now()` / `Math.random()`; tests pass a
 // seeded rand and assert deterministic outcomes.
 
-import type { CombatState, Equipment, LogKind } from "@/lib/types";
+import type {
+  CombatState,
+  EnemyIntent,
+  Equipment,
+  LogKind,
+  PendingChoice,
+  Stance,
+} from "@/lib/types";
 import { ITEMS } from "@/lib/data/items";
 import { getEnemy } from "@/lib/data/enemies";
+
+// Slice 2 — stance-pick PendingChoice timer. Matches the patrol timer
+// pattern (BranchModal auto-resolves to defaultId on timeout).
+export const STANCE_PICK_TIMER_MS = 10000;
 
 // Fallback stats when the operative has no weapon equipped (bare-fist).
 // Deliberately weak so the player feels the lift from equipping anything.
 const FIST_DAMAGE = 4;
 const FIST_ACCURACY = 0.4;
+
+// Slice 2 — stance tuning. These are first-pass values; expect to retune
+// in playtest. The plan's "visible odds" only stays honest if these
+// numbers actually match the resolver — keep computeStanceOdds and the
+// resolver in lock-step.
+const SUPPRESS_DAMAGE_MULT = 0.5;
+const SUPPRESS_ACCURACY_DEBUFF = 0.2;
+const REPOSITION_COVER_MULT = 0.5;
 
 export interface RoundLogLine {
   kind: LogKind;
@@ -27,7 +48,7 @@ export interface RoundLogLine {
 export interface RoundOutcome {
   // Next combat state, or null when combat ended this round.
   combat: CombatState | null;
-  outcome: "ongoing" | "target_down" | "player_down";
+  outcome: "ongoing" | "target_down" | "player_down" | "broke_contact";
   // Damage applied this round, summed for the store to fold into runState.
   damageToPlayer: number;
   damageToEnemy: number;
@@ -47,7 +68,19 @@ export function initCombat(
     enemyHpMax: enemy.hp,
     round: 0,
     initiator,
+    enemyAccuracyMod: 0,
+    playerCoverNextRound: false,
+    enemyIntent: rollEnemyIntent(enemy.id, 0),
   };
+}
+
+// Slice 2 — telegraphed enemy intent. Slice 1's resolver baked a fixed
+// "they shoot back" behavior; with telegraphing the player needs to see
+// what the enemy will do this round. For now a Grunt always Presses;
+// Slice 3 will roll in archetype variance (Sniper opens, Brawler closes).
+function rollEnemyIntent(archetypeId: string, _round: number): EnemyIntent {
+  if (archetypeId === "grunt") return "press";
+  return "press";
 }
 
 interface PlayerStats {
@@ -80,58 +113,90 @@ function rollDamage(base: number, rand: () => number): number {
   return Math.max(1, Math.round(roll));
 }
 
-// Resolve one round of combat. Slice 1 is Press-only (no stance pick).
-// On round 0 with the player as initiator, the enemy doesn't fire back —
-// the operative got the drop. On all other rounds both sides roll.
+// Resolve one round of combat with the player's chosen stance.
+//
+// Per-stance mechanics:
+// - press: full damage attack at base accuracy. Enemy returns fire at
+//   their accuracy (modulated by enemyAccuracyMod from prior Suppress).
+// - suppress: half damage to enemy; debuffs enemy accuracy on their
+//   *next* round (via enemyAccuracyMod carryover).
+// - reposition: no offensive output this round; sets cover for next
+//   round so incoming damage is halved.
+// - disengage: routed to resolveDisengage by the dispatcher; this
+//   function does not handle disengage directly.
+//
+// Round-0 player-initiator gets the free shot (enemy doesn't return
+// fire); same rule as Slice 1.
 export function resolveCombatRound(
   combat: CombatState,
   equipment: Equipment | null,
+  stance: Stance,
   rand: () => number,
 ): RoundOutcome {
+  if (stance === "disengage") {
+    // Caller should have routed to resolveDisengage. Treat as Press for
+    // defensive safety so combat doesn't get stuck.
+    stance = "press";
+  }
   const enemy = getEnemy(combat.enemyArchetypeId);
   const player = readPlayerStats(equipment);
   const logs: RoundLogLine[] = [];
   let damageToEnemy = 0;
   let damageToPlayer = 0;
 
-  // Player attack — Press
-  const playerHit = rand() < player.accuracy;
-  if (playerHit) {
-    damageToEnemy = rollDamage(player.damage, rand);
-    logs.push({
-      kind: "damage",
-      text: `You hit the ${enemy.name} for ${damageToEnemy}.`,
-    });
-  } else {
+  // Player attack
+  if (stance === "reposition") {
     logs.push({
       kind: "flavor",
-      text: `Shot wide on the ${enemy.name}. (${player.weaponName})`,
+      text: `Repositioning — moving for cover instead of firing.`,
     });
+  } else {
+    const playerHit = rand() < player.accuracy;
+    if (playerHit) {
+      const baseDmg = rollDamage(player.damage, rand);
+      damageToEnemy =
+        stance === "suppress"
+          ? Math.max(1, Math.round(baseDmg * SUPPRESS_DAMAGE_MULT))
+          : baseDmg;
+      const verb = stance === "suppress" ? "suppressed" : "hit";
+      logs.push({
+        kind: "damage",
+        text: `You ${verb} the ${enemy.name} for ${damageToEnemy}.`,
+      });
+    } else {
+      logs.push({
+        kind: "flavor",
+        text: `Shot wide on the ${enemy.name}. (${player.weaponName})`,
+      });
+    }
   }
 
   const enemyHpAfter = combat.enemyHp - damageToEnemy;
-
-  // Enemy attack — skipped if the player got round-0 initiative or the
-  // enemy is already down from this round's damage.
   const enemyDownThisRound = enemyHpAfter <= 0;
   const playerHasInitiative =
     combat.round === 0 && combat.initiator === "player";
+
+  // Enemy attack — skipped on round-0 with player initiative or if the
+  // enemy died from this round's damage. Suppress carryover applies to
+  // their accuracy *this* round (the carryover was applied to the prior
+  // Suppress; consumed here). playerCoverNextRound halves incoming dmg.
   if (!enemyDownThisRound && !playerHasInitiative) {
-    const enemyHit = rand() < enemy.accuracy;
+    const effectiveAccuracy = Math.max(
+      0.05,
+      enemy.accuracy + combat.enemyAccuracyMod,
+    );
+    const enemyHit = rand() < effectiveAccuracy;
     if (enemyHit) {
-      damageToPlayer = rollDamage(
-        (enemy.damageMin + enemy.damageMax) / 2,
-        rand,
-      );
-      // Clamp into the archetype's declared range to keep the variance
-      // narrow even when rollDamage's ±25% pushes wider.
-      damageToPlayer = Math.max(
-        enemy.damageMin,
-        Math.min(enemy.damageMax, damageToPlayer),
-      );
+      let dmg = rollDamage((enemy.damageMin + enemy.damageMax) / 2, rand);
+      dmg = Math.max(enemy.damageMin, Math.min(enemy.damageMax, dmg));
+      if (combat.playerCoverNextRound) {
+        dmg = Math.max(1, Math.round(dmg * REPOSITION_COVER_MULT));
+      }
+      damageToPlayer = dmg;
+      const coverNote = combat.playerCoverNextRound ? " (cover held)" : "";
       logs.push({
         kind: "damage",
-        text: `${enemy.name} hit you for ${damageToPlayer}.`,
+        text: `${enemy.name} hit you for ${damageToPlayer}${coverNote}.`,
       });
     } else {
       logs.push({
@@ -156,31 +221,97 @@ export function resolveCombatRound(
       outcome: "target_down",
       damageToPlayer,
       damageToEnemy,
-      ammoSpent: 1,
-      heatDelta: 4,
+      ammoSpent: stance === "reposition" ? 0 : 1,
+      heatDelta: stance === "suppress" ? 6 : 4,
       logs,
     };
   }
+
+  // Carryover for the next round: Suppress sets a debuff on enemy
+  // accuracy; Reposition sets cover. Always reset cover to false after
+  // the round consumes it (or leaves it false). Otherwise lingering
+  // bonuses would stack incorrectly.
+  const nextAccMod = stance === "suppress" ? -SUPPRESS_ACCURACY_DEBUFF : 0;
+  const nextCover = stance === "reposition";
 
   return {
     combat: {
       ...combat,
       enemyHp: enemyHpAfter,
       round: combat.round + 1,
+      enemyAccuracyMod: nextAccMod,
+      playerCoverNextRound: nextCover,
+      enemyIntent: rollEnemyIntent(combat.enemyArchetypeId, combat.round + 1),
     },
     outcome: "ongoing",
     damageToPlayer,
     damageToEnemy,
-    ammoSpent: 1,
-    heatDelta: 2,
+    ammoSpent: stance === "reposition" ? 0 : 1,
+    heatDelta: stance === "reposition" ? 1 : stance === "suppress" ? 4 : 2,
     logs,
   };
 }
 
-// Slice 1's flee — Heat-gated disengage roll. Slice 2 will replace this
-// with a proper Disengage stance using distance + Athletics gear.
-// Returns combat: null on success (broke contact, raid continues),
-// otherwise leaves combat state intact and applies a parting hit.
+// Slice 2 — visible-odds helper for the stance chip UI. Returns the
+// honest probabilities for each stance given current combat state +
+// equipment, accounting for telegraphed enemy intent. Keep this in lock-
+// step with resolveCombatRound — the chip math is the fairness contract
+// and lying here means lying to the player.
+export interface StanceOdds {
+  // 0-100 chance the player lands a hit this round.
+  hitPct: number;
+  // 0-100 chance the enemy lands a hit this round.
+  takeHitPct: number;
+  // Rough estimate of rounds to finish at current trajectory.
+  estRounds: number;
+}
+
+export function computeStanceOdds(
+  combat: CombatState,
+  equipment: Equipment | null,
+  stance: Stance,
+): StanceOdds {
+  if (stance === "disengage") {
+    return {
+      hitPct: 0,
+      takeHitPct: 0,
+      estRounds: 0,
+    };
+  }
+  const enemy = getEnemy(combat.enemyArchetypeId);
+  const player = readPlayerStats(equipment);
+  const playerHasInitiative =
+    combat.round === 0 && combat.initiator === "player";
+
+  const playerAccuracy = stance === "reposition" ? 0 : player.accuracy;
+  const enemyEffectiveAccuracy =
+    playerHasInitiative
+      ? 0
+      : Math.max(0.05, enemy.accuracy + combat.enemyAccuracyMod);
+
+  const expectedPlayerDamage =
+    stance === "reposition"
+      ? 0
+      : player.accuracy *
+        (stance === "suppress"
+          ? player.damage * SUPPRESS_DAMAGE_MULT
+          : player.damage);
+
+  const estRounds =
+    expectedPlayerDamage > 0
+      ? Math.max(1, Math.ceil(combat.enemyHp / expectedPlayerDamage))
+      : 99;
+
+  return {
+    hitPct: Math.round(playerAccuracy * 100),
+    takeHitPct: Math.round(enemyEffectiveAccuracy * 100),
+    estRounds,
+  };
+}
+
+// Slice 1 disengage retained; Slice 2's Disengage stance routes through
+// this same Heat-gated roll. Slice 2 adds the disengage success chance
+// to the stance odds chip via computeDisengageOdds.
 export interface DisengageOutcome {
   combat: CombatState | null;
   success: boolean;
@@ -190,16 +321,90 @@ export interface DisengageOutcome {
   logs: RoundLogLine[];
 }
 
+// Slice 2 — builds a stance_pick PendingChoice the store can raise after
+// initCombat and after each non-terminal round. Chips are pre-rendered
+// from computed odds so BranchModal can render them as-is (its default
+// chip-from-effects derivation doesn't apply to combat).
+export function makeStancePickChoice(
+  combat: CombatState,
+  equipment: Equipment | null,
+  heat: number,
+  now: number,
+): PendingChoice {
+  const enemy = getEnemy(combat.enemyArchetypeId);
+  const intentLabel: Record<EnemyIntent, string> = {
+    press: "Pressing",
+    suppress: "Suppressing",
+    hold: "Holding",
+  };
+  const pressOdds = computeStanceOdds(combat, equipment, "press");
+  const suppressOdds = computeStanceOdds(combat, equipment, "suppress");
+  const repoOdds = computeStanceOdds(combat, equipment, "reposition");
+  const disengageOdds = computeDisengageOdds(heat);
+
+  return {
+    eventId: "stance_pick",
+    prompt: `Engaged: ${enemy.name} — ${intentLabel[combat.enemyIntent]}. HP ${combat.enemyHp}/${combat.enemyHpMax}.`,
+    defaultId: "press",
+    startedAt: now,
+    timerMs: STANCE_PICK_TIMER_MS,
+    options: [
+      {
+        id: "press",
+        label: "Press",
+        description: `Trade fire. ~${pressOdds.estRounds}r left.`,
+        isDefault: true,
+        chips: [
+          { text: `you ${pressOdds.hitPct}%`, tone: "good" },
+          { text: `them ${pressOdds.takeHitPct}%`, tone: "bad" },
+        ],
+      },
+      {
+        id: "suppress",
+        label: "Suppress",
+        description: `Half damage; their next shot is shakier.`,
+        chips: [
+          { text: `you ${suppressOdds.hitPct}%`, tone: "good" },
+          { text: `them ${suppressOdds.takeHitPct}%`, tone: "bad" },
+          { text: `-${Math.round(0.2 * 100)}% next`, tone: "neutral" },
+        ],
+      },
+      {
+        id: "reposition",
+        label: "Reposition",
+        description: `No shot — cover bonus on next incoming.`,
+        chips: [
+          { text: `cover -50%`, tone: "good" },
+          { text: `them ${repoOdds.takeHitPct}%`, tone: "bad" },
+        ],
+      },
+      {
+        id: "disengage",
+        label: "Disengage",
+        description: `Try to break contact.`,
+        chips: [
+          { text: `break ${disengageOdds.breakPct}%`, tone: "good" },
+          { text: `fail = parting hit`, tone: "bad" },
+        ],
+      },
+    ],
+  };
+}
+
+export function computeDisengageOdds(heat: number): { breakPct: number } {
+  const heatPenalty = Math.min(0.4, heat / 250);
+  const breakChance = Math.max(0.2, 0.6 - heatPenalty);
+  return { breakPct: Math.round(breakChance * 100) };
+}
+
 export function resolveDisengage(
   combat: CombatState,
   heat: number,
   rand: () => number,
 ): DisengageOutcome {
   const enemy = getEnemy(combat.enemyArchetypeId);
-  // Base 60% break, falling off with heat (high heat = harder to slip).
-  const heatPenalty = Math.min(0.4, heat / 250);
-  const breakChance = Math.max(0.2, 0.6 - heatPenalty);
-  if (rand() < breakChance) {
+  const { breakPct } = computeDisengageOdds(heat);
+  if (rand() * 100 < breakPct) {
     return {
       combat: null,
       success: true,
@@ -214,13 +419,17 @@ export function resolveDisengage(
       ],
     };
   }
-  // Failed disengage — parting hit from the enemy.
   const damage = Math.max(
     enemy.damageMin,
     Math.round((enemy.damageMin + enemy.damageMax) / 2),
   );
   return {
-    combat: { ...combat, round: combat.round + 1 },
+    combat: {
+      ...combat,
+      round: combat.round + 1,
+      enemyAccuracyMod: 0,
+      playerCoverNextRound: false,
+    },
     success: false,
     damageToPlayer: damage,
     ammoSpent: 1,

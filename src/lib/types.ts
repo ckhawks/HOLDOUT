@@ -241,7 +241,11 @@ export type EventKind =
   | "target_fled"
   | "extract_clear"
   | "extract_skirmish"
-  | "extract_corner_loot";
+  | "extract_corner_loot"
+  // Slice 2 — combat stance picker. Raised once per active combat round
+  // via pendingChoice. Resolution does NOT flow through BranchEffects;
+  // the store routes stance_pick to a combat-round dispatcher instead.
+  | "stance_pick";
 
 export interface BranchEffects {
   heatDelta?: number;
@@ -261,6 +265,11 @@ export interface BranchOption {
   description?: string;
   effects?: BranchEffects;
   isDefault?: boolean;
+  // Slice 2 — when set, BranchModal renders these chips verbatim instead
+  // of deriving them from `effects`. Combat stance options use this
+  // because their numbers come from computed odds, not declarative
+  // BranchEffects.
+  chips?: { text: string; tone: "good" | "bad" | "neutral" | "loot" }[];
 }
 
 export interface PassiveEffects {
@@ -470,7 +479,26 @@ export interface CombatState {
   // round 0 asymmetry; Slice 1 uses it for the "you got the drop" log.
   round: number;
   initiator: "player" | "enemy";
+  // Slice 2 — carry-over stance effects. Applied this round, consumed
+  // on use. Suppress adds a negative enemyAccuracyMod next round;
+  // Reposition sets playerCoverNextRound = true for the next round only.
+  // Both reset to defaults after consumption inside resolveCombatRound.
+  enemyAccuracyMod: number;
+  playerCoverNextRound: boolean;
+  // Slice 2 — telegraphed enemy intent. Set when the stance picker is
+  // raised so the player can read what the enemy will do this round and
+  // pick accordingly. Slice 3 will wire intent to distance changes.
+  enemyIntent: EnemyIntent;
 }
+
+// Slice 2 — player stance pick each round. Slice 1's single Press is now
+// one of four options. Reposition is a single chip in Slice 2 (no
+// direction); Slice 3 splits it into Close In / Fall Back.
+export type Stance = "press" | "suppress" | "reposition" | "disengage";
+
+// Slice 2 — enemy intent shown in the stance picker UI. Slice 3 expands
+// "press" with directional movement based on archetype.
+export type EnemyIntent = "press" | "suppress" | "hold";
 
 export type ActionId =
   | "move_forward"

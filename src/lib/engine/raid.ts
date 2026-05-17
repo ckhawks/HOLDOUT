@@ -13,7 +13,8 @@ import { generateMap, revealFrom, stepForward } from "@/lib/engine/map";
 import { makeLogger, makeUid } from "./logging";
 import { iterKitItems } from "./equipment";
 import { lootVerb } from "./flavor";
-import { resolveCombatRound, resolveDisengage } from "./combat";
+// Slice 2: resolveCombatRound / resolveDisengage are called from the
+// store's stance dispatcher now, not from these handlers.
 
 export const TICK_MIN_MS = 3000;
 export const TICK_MAX_MS = 8000;
@@ -494,65 +495,21 @@ function handleUseKey(ctx: TickCtx, d: DeltaAccum): void {
   );
 }
 
-// Combat-revamp Slice 1: handleFight now resolves a single round of
-// multi-round combat against currentRaid.combat. The pure resolver lives
-// in engine/combat.ts; this thin wrapper folds its result into the delta
-// accumulator. On enemy down: rolls loot, emits a combat_resolved entry,
-// clears combat. On ongoing: writes the next CombatState. If combat
-// state is missing (action somehow fired without combat — shouldn't
-// happen but defensive), fall through with a no-op flavor line.
+// Combat-revamp Slice 2: combat is now driven entirely by stance_pick
+// pendingChoice (the store raises a forced-choice modal each round and
+// the resolveStance store action dispatches into engine/combat.ts).
+// handleFight / handleFlee remain only as defensive no-ops so any
+// lingering `fight` / `flee` queuedAction from save migration doesn't
+// crash — they emit a flavor line and let the stance picker take over
+// on the next render.
 function handleFight(ctx: TickCtx, d: DeltaAccum): void {
-  const { raid, rand, log } = ctx;
-  if (!raid.combat) {
-    d.logs.push(log("flavor", "No contact in sight.", undefined));
-    return;
-  }
-  const result = resolveCombatRound(raid.combat, raid.equipment, rand);
-  for (const line of result.logs) {
-    d.logs.push(log(line.kind, line.text, undefined));
-  }
-  d.healthDelta -= result.damageToPlayer;
-  d.ammoDelta -= result.ammoSpent;
-  d.heatDelta += result.heatDelta;
-  d.combatNext = result.combat;
-  if (result.outcome === "target_down") {
-    // Roll loot off the body.
-    const drop = rollLoot(ctx, false);
-    if (drop) {
-      d.droppedItem = drop;
-      const item = ITEMS[drop.itemId];
-      d.logs.push(
-        log("loot", `Looted ⟦${item?.name ?? drop.itemId}⟧ off them.`, drop.itemId),
-      );
-    }
-    d.combatOutcome = "target_down";
-  }
-  // Sustained-fire bleed: small chance per round when the player took
-  // damage (mirrors the old firefight_continues bleed roll).
-  if (result.damageToPlayer >= 6 && rand() < 0.2) {
-    d.flagsAdded.push("bleeding_minor");
-  }
+  const { log } = ctx;
+  d.logs.push(log("flavor", "Holding fire — waiting for an opening.", undefined));
 }
 
 function handleFlee(ctx: TickCtx, d: DeltaAccum): void {
-  const { raid, rand, log } = ctx;
-  if (!raid.combat) {
-    d.logs.push(log("flavor", "Nothing to break off from.", undefined));
-    return;
-  }
-  const result = resolveDisengage(raid.combat, raid.runState.heat, rand);
-  for (const line of result.logs) {
-    d.logs.push(log(line.kind, line.text, undefined));
-  }
-  d.healthDelta -= result.damageToPlayer;
-  d.ammoDelta -= result.ammoSpent;
-  d.heatDelta += result.heatDelta;
-  d.combatNext = result.combat;
-  if (result.success) {
-    d.combatOutcome = "broke_contact";
-  } else if (result.damageToPlayer > 0 && rand() < 0.15) {
-    d.flagsAdded.push("bleeding_minor");
-  }
+  const { log } = ctx;
+  d.logs.push(log("flavor", "Looking for a way out.", undefined));
 }
 
 // Post-action interrupt layer: small chance of an environmental hazard or
