@@ -184,6 +184,30 @@ export function ItemTooltip({
               : `${item.bagSections.length} sections · ${item.bagSections.reduce((n, s) => n + s.width * s.height, 0)} cells total`}
           </div>
         )}
+        {item.weaponStats && (
+          <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0 text-foreground/85">
+            <span>
+              <span className="text-muted-foreground">dmg </span>
+              {item.weaponStats.baseDamage}
+            </span>
+            <span>
+              <span className="text-muted-foreground">acc </span>
+              {Math.round(item.weaponStats.baseAccuracy * 100)}%
+            </span>
+          </div>
+        )}
+        {item.armorStats && (
+          <div className="mt-0.5 text-foreground/85">
+            <span className="text-muted-foreground">armor </span>
+            {item.armorStats.threshold}
+          </div>
+        )}
+        {item.helmetStats && (
+          <div className="mt-0.5 text-foreground/85">
+            <span className="text-muted-foreground">helmet </span>
+            {item.helmetStats.threshold}
+          </div>
+        )}
         {item.bagSections && item.bagSections.length > 0 && (
           <div className="mt-1 flex flex-col gap-1">
             {item.bagSections.map((s) => (

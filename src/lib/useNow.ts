@@ -14,11 +14,17 @@ const TICK_MS = 100;
 
 const subscribers = new Set<() => void>();
 let intervalId: ReturnType<typeof setInterval> | null = null;
+// Cached wall-clock snapshot. Must change ONLY when subscribers are
+// notified — calling Date.now() inline in getSnapshot would return a
+// new value on every render pass and trip React's "getSnapshot should
+// be cached" infinite-loop warning under useSyncExternalStore.
+let cachedNow = typeof Date !== "undefined" ? Date.now() : 0;
 
 function subscribe(callback: () => void): () => void {
   subscribers.add(callback);
   if (intervalId === null) {
     intervalId = setInterval(() => {
+      cachedNow = Date.now();
       for (const s of subscribers) s();
     }, TICK_MS);
   }
@@ -31,7 +37,7 @@ function subscribe(callback: () => void): () => void {
   };
 }
 
-const getSnapshot = (): number => Date.now();
+const getSnapshot = (): number => cachedNow;
 const getServerSnapshot = (): number => 0;
 
 export function useNow(): number {
