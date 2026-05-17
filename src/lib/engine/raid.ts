@@ -1,5 +1,6 @@
 import type {
   ActionId,
+  CombatState,
   CurrentRaid,
   Equipment,
   LogEntry,
@@ -12,6 +13,7 @@ import { generateMap, revealFrom, stepForward } from "@/lib/engine/map";
 import { makeLogger, makeUid } from "./logging";
 import { iterKitItems } from "./equipment";
 import { lootVerb } from "./flavor";
+import { resolveCombatRound, resolveDisengage } from "./combat";
 
 export const TICK_MIN_MS = 3000;
 export const TICK_MAX_MS = 8000;
@@ -83,6 +85,7 @@ export function startRaid(
     queuedAction: "move_forward",
     actionStartedAt: now,
     pendingEnd: null,
+    combat: null,
   };
 }
 
@@ -141,10 +144,12 @@ function patrolPendingChoice(now: number): PendingChoice {
         id: "engage",
         label: "Engage",
         description: "Open fire. Loud — and they'll fight back.",
+        // Combat-revamp Slice 1: no flag here. The store initializes
+        // currentRaid.combat from the target tile's enemySpawn when this
+        // choice resolves; flag-based combat eligibility is gone.
         effects: {
           heatDelta: 14,
           ammoDelta: -2,
-          flagsAdded: ["combat_engaged"],
         },
       },
       {
@@ -248,35 +253,8 @@ const HEARD_VOICES_LINES = [
   "Two of them. Couple of corridors over.",
 ] as const;
 
-const COMBAT_TARGET_DOWN_EMPTY_LINES = [
-  "Target down. Nothing on them.",
-  "Dropped them. Empty pockets.",
-  "Down. Nothing worth taking.",
-] as const;
-
-const COMBAT_TRADE_LINES = [
-  "Trading shots. Took a glancing hit.",
-  "Trading fire. Caught a graze.",
-  "Pinned. Took a hit but held.",
-] as const;
-
-const COMBAT_FLED_LINES = [
-  "Target broke contact and ran. Lost them.",
-  "They bolted. Lost the angle.",
-  "Ran for it. Lost them in the next room.",
-] as const;
-
-const FLEE_BREAK_LINES = [
-  "Broke contact — clear of the threat for now.",
-  "Slipped them. Clear for now.",
-  "Out of sight. Clear.",
-] as const;
-
-const FLEE_HIT_LINES = [
-  "Couldn't break clean. Took a round on the way out.",
-  "Bad break. Caught one running.",
-  "Couldn't shake them. Took a hit.",
-] as const;
+// (Combat-revamp Slice 1 removed the COMBAT_*_LINES / FLEE_*_LINES pools.
+// The pure resolver in engine/combat.ts emits its own log lines now.)
 
 const EXHAUSTION_LINES = [
   "Running on empty — body's eating itself.",
@@ -314,6 +292,10 @@ interface DeltaAccum {
   // use_key). The store splices it out of pockets/bag after the tick.
   consumedKeyUid?: string;
   combatOutcome?: CombatOutcome;
+  // Combat-revamp Slice 1: handlers set this when combat state changes.
+  // `undefined` = no change. `null` = combat ended this tick. The store
+  // writes it onto currentRaid.combat after applying deltas.
+  combatNext?: CombatState | null;
 }
 
 export type CombatOutcome =
@@ -512,58 +494,64 @@ function handleUseKey(ctx: TickCtx, d: DeltaAccum): void {
   );
 }
 
+// Combat-revamp Slice 1: handleFight now resolves a single round of
+// multi-round combat against currentRaid.combat. The pure resolver lives
+// in engine/combat.ts; this thin wrapper folds its result into the delta
+// accumulator. On enemy down: rolls loot, emits a combat_resolved entry,
+// clears combat. On ongoing: writes the next CombatState. If combat
+// state is missing (action somehow fired without combat — shouldn't
+// happen but defensive), fall through with a no-op flavor line.
 function handleFight(ctx: TickCtx, d: DeltaAccum): void {
-  const { rand, log } = ctx;
-  // Three outcomes:
-  //   - target_down (~55%): drop loot, clear combat
-  //   - firefight    (~30%): trade fire — HP/ammo cost, possible bleed
-  //   - target_fled (~15%): no loot, heat up, clear combat
-  const r = rand();
-  if (r < 0.55) {
+  const { raid, rand, log } = ctx;
+  if (!raid.combat) {
+    d.logs.push(log("flavor", "No contact in sight.", undefined));
+    return;
+  }
+  const result = resolveCombatRound(raid.combat, raid.equipment, rand);
+  for (const line of result.logs) {
+    d.logs.push(log(line.kind, line.text, undefined));
+  }
+  d.healthDelta -= result.damageToPlayer;
+  d.ammoDelta -= result.ammoSpent;
+  d.heatDelta += result.heatDelta;
+  d.combatNext = result.combat;
+  if (result.outcome === "target_down") {
+    // Roll loot off the body.
     const drop = rollLoot(ctx, false);
     if (drop) {
       d.droppedItem = drop;
       const item = ITEMS[drop.itemId];
       d.logs.push(
-        log("combat_resolved", `Target down. Looted ⟦${item?.name ?? drop.itemId}⟧ off them.`, drop.itemId),
+        log("loot", `Looted ⟦${item?.name ?? drop.itemId}⟧ off them.`, drop.itemId),
       );
-    } else {
-      d.logs.push(log("combat_resolved", pick(rand, COMBAT_TARGET_DOWN_EMPTY_LINES), undefined));
     }
-    d.heatDelta += 4;
-    d.ammoDelta = -1;
-    d.flagsRemoved.push("combat_engaged");
     d.combatOutcome = "target_down";
-  } else if (r < 0.85) {
-    d.healthDelta -= 7;
-    d.ammoDelta = -2;
-    d.heatDelta += 5;
-    if (rand() < 0.25) d.flagsAdded.push("bleeding_minor");
-    d.logs.push(log("damage", pick(rand, COMBAT_TRADE_LINES), undefined));
-    d.combatOutcome = "trade_shots";
-  } else {
-    d.heatDelta += 8;
-    d.ammoDelta = -1;
-    d.flagsRemoved.push("combat_engaged");
-    d.logs.push(log("combat_resolved", pick(rand, COMBAT_FLED_LINES), undefined));
-    d.combatOutcome = "target_fled";
+  }
+  // Sustained-fire bleed: small chance per round when the player took
+  // damage (mirrors the old firefight_continues bleed roll).
+  if (result.damageToPlayer >= 6 && rand() < 0.2) {
+    d.flagsAdded.push("bleeding_minor");
   }
 }
 
 function handleFlee(ctx: TickCtx, d: DeltaAccum): void {
-  const { rand, log } = ctx;
-  // 60% break-contact, 40% they keep on you.
-  if (rand() < 0.6) {
-    d.heatDelta += 6;
-    d.flagsRemoved.push("combat_engaged");
-    d.logs.push(log("combat_resolved", pick(rand, FLEE_BREAK_LINES), undefined));
+  const { raid, rand, log } = ctx;
+  if (!raid.combat) {
+    d.logs.push(log("flavor", "Nothing to break off from.", undefined));
+    return;
+  }
+  const result = resolveDisengage(raid.combat, raid.runState.heat, rand);
+  for (const line of result.logs) {
+    d.logs.push(log(line.kind, line.text, undefined));
+  }
+  d.healthDelta -= result.damageToPlayer;
+  d.ammoDelta -= result.ammoSpent;
+  d.heatDelta += result.heatDelta;
+  d.combatNext = result.combat;
+  if (result.success) {
     d.combatOutcome = "broke_contact";
-  } else {
-    d.healthDelta -= 5;
-    d.ammoDelta = -1;
-    if (rand() < 0.2) d.flagsAdded.push("bleeding_minor");
-    d.logs.push(log("damage", pick(rand, FLEE_HIT_LINES), undefined));
-    d.combatOutcome = "trade_shots";
+  } else if (result.damageToPlayer > 0 && rand() < 0.15) {
+    d.flagsAdded.push("bleeding_minor");
   }
 }
 
@@ -622,6 +610,10 @@ export interface ActionTickResult {
   // For after-raid report counters: which combat sub-outcome resolved this
   // tick, if any. Set by handleFight / handleFlee.
   combatOutcome?: CombatOutcome;
+  // Combat-revamp Slice 1: next combat state when fight/flee mutated it.
+  // `undefined` = no change. `null` = combat ended this tick. Store
+  // assigns to currentRaid.combat.
+  combatNext?: CombatState | null;
 }
 
 // Resolve one tick by carrying out the queued action on the current raid.
@@ -706,5 +698,6 @@ export function tickAction(
     extractedNow: d.extractedNow,
     consumedKeyUid: d.consumedKeyUid,
     combatOutcome: d.combatOutcome,
+    combatNext: d.combatNext,
   };
 }

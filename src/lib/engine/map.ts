@@ -283,6 +283,10 @@ export function generateMap(
         contents: [],
         seen: false,
         threat,
+        // Combat-revamp Slice 0: stamp a placeholder archetype on every
+        // threat tile so Slice 1's resolver has something to read. Slice 3
+        // will roll across grunt/sniper/brawler weighted by location.
+        enemySpawn: threat ? { archetypeId: "grunt" } : undefined,
       });
     }
   }

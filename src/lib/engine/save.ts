@@ -2,6 +2,7 @@ import type {
   ConstructionState,
   CurrentRaid,
   Hideout,
+  LogEntry,
   ModuleId,
   Operative,
   ShopState,
@@ -12,7 +13,7 @@ import type {
 import { DEFAULT_UNLOCKED_RECIPES } from "@/lib/data/recipes";
 
 const SAVE_KEY = "holdout:save";
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 32;
 
 export interface PersistedState {
   cash: number;
@@ -413,6 +414,46 @@ export function migrateSave(saved: SavedGame): SavedGame {
     if (!sx.construction) sx.construction = defaultConstructionState();
     if (s.unlocks?.workbench) {
       sx.construction.modules.workbench = { built: true, tier: 1 };
+    }
+  }
+  // v31: combat-revamp Slice 0 — weapon/armor/helmet items become real
+  // (stat fields on the catalog) + MapTile gains optional enemySpawn. Both
+  // additions are catalog-side or new-tile-only, so old saves need no
+  // backfill. The bump itself is the only thing here.
+  // v32: combat-revamp Slice 1 — multi-round combat replaces the one-shot
+  // handleFight. Legacy `combat_engaged` flag is dropped (eligibility now
+  // reads `currentRaid.combat != null`). On load: strip the flag from any
+  // persisted runState.flags. If a save was mid-fight (flag present on an
+  // active raid), append a "contact broken" log entry — the threat is
+  // treated as fled rather than synthesizing a fake CombatState. Operative
+  // keeps their pack, loot, position, etc. Default combat: null on raids
+  // that predate the field.
+  if (saved.schemaVersion < 32) {
+    const cr = s.currentRaid;
+    if (cr) {
+      const crx = cr as unknown as {
+        combat?: unknown;
+        runState: { flags: string[] };
+        log: LogEntry[];
+      };
+      const hadFlag = crx.runState?.flags?.includes("combat_engaged");
+      if (hadFlag) {
+        crx.runState.flags = crx.runState.flags.filter(
+          (f) => f !== "combat_engaged",
+        );
+        crx.log = [
+          ...crx.log,
+          {
+            id: `mig-${Date.now()}`,
+            timestamp: Date.now(),
+            text: "Contact broken. Threat slipped away in the noise.",
+            kind: "combat_resolved",
+          },
+        ];
+      }
+      if (!("combat" in crx) || crx.combat === undefined) {
+        crx.combat = null;
+      }
     }
   }
   // v29: chest rig EquipSlot added. Equipment now has both `bag` and `rig`

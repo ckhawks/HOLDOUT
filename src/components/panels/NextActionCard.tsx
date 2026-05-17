@@ -15,9 +15,11 @@ import {
   Pause,
   Play,
   SkipForward,
+  Swords,
   X,
   Zap,
 } from "lucide-react";
+import { ENEMIES } from "@/lib/data/enemies";
 import { useGame } from "@/store/game";
 import { ACTION_TIMER_MS } from "@/lib/engine/raid";
 import {
@@ -69,8 +71,45 @@ export function NextActionCard() {
   const primaryOrder = primaryActionOrder(raid);
   const ctxActions = contextActions(raid);
 
+  // Combat-revamp Slice 1: minimal contact indicator above the action card.
+  // Shows the engaged enemy + a HP bar across rounds. Full combat panel
+  // with stance chips lands in Slice 2.
+  const combatBanner = raid.combat ? (
+    <div className="mb-2 rounded-sm border border-amber-500/40 bg-amber-500/10 px-2 py-1.5">
+      <div className="flex items-center gap-1.5">
+        <Swords className="size-3 text-amber-300" />
+        <span className="font-mono text-[10px] uppercase tracking-widest text-amber-200">
+          Contact
+        </span>
+        <span className="ml-auto font-mono text-[10px] tabular-nums text-amber-200/80">
+          R{raid.combat.round + 1}
+        </span>
+      </div>
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-[12px] font-medium text-amber-100">
+          {ENEMIES[raid.combat.enemyArchetypeId]?.name ?? "Hostile"}
+        </span>
+        <span className="font-mono text-[11px] tabular-nums text-amber-100/90">
+          {raid.combat.enemyHp}/{raid.combat.enemyHpMax}
+        </span>
+      </div>
+      <div className="mt-1 h-1 bg-amber-950/60">
+        <div
+          className="h-full bg-amber-400/80 transition-all"
+          style={{
+            width: `${Math.max(
+              0,
+              Math.min(100, (raid.combat.enemyHp / raid.combat.enemyHpMax) * 100),
+            )}%`,
+          }}
+        />
+      </div>
+    </div>
+  ) : null;
+
   return (
     <aside className="flex w-56 shrink-0 flex-col border-l border-border/60 bg-card/30 px-3 py-3">
+      {combatBanner}
       <div className="flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
           Next action

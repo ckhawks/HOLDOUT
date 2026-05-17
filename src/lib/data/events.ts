@@ -87,12 +87,13 @@ export const EVENTS: RaidEventDef[] = [
         id: "engage",
         label: "Engage",
         description: "Open fire. Loud — and they'll fight back.",
-        // No loot here. Combat resolves over 1+ follow-up ticks; loot drops on
-        // target_down. flagsAdded sets the exclusive combat pool.
+        // Combat-revamp Slice 1: store-side resolution. The Engage outcome
+        // initializes currentRaid.combat from the target tile's enemySpawn
+        // when this choice resolves (see store/slices/raid.ts). The legacy
+        // `combat_engaged` flag is gone.
         effects: {
           heatDelta: 14,
           ammoDelta: -3,
-          flagsAdded: ["combat_engaged"],
           depthAdvance: 0,
           distanceAdvance: 0,
         },

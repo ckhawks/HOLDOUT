@@ -55,6 +55,21 @@ function makeRaid(over: Partial<CurrentRaid> = {}): CurrentRaid {
     queuedAction: "move_forward",
     actionStartedAt: 0,
     pendingEnd: null,
+    combat: null,
+    ...over,
+  };
+}
+
+// Combat-revamp Slice 1: helper for tests that need to seed an active
+// combat. Mirrors the shape of initCombat output but lets the test pin
+// HP for predictable outcomes.
+function activeCombat(over: Partial<CurrentRaid["combat"] & object> = {}) {
+  return {
+    enemyArchetypeId: "grunt",
+    enemyHp: 20,
+    enemyHpMax: 20,
+    round: 0,
+    initiator: "player" as const,
     ...over,
   };
 }
@@ -209,45 +224,65 @@ describe("tickAction loot", () => {
 });
 
 describe("combat sub-mode", () => {
-  it("autoPickAction picks fight when combat_engaged is set", () => {
-    const raid = makeRaid({
-      runState: freshRunState({ flags: ["combat_engaged"] }),
-    });
+  it("autoPickAction picks fight when raid.combat is active", () => {
+    const raid = makeRaid({ combat: activeCombat() });
     expect(autoPickAction(raid)).toBe("fight");
   });
 
-  it("fight resolves to one of three outcomes (target_down / firefight / fled)", () => {
-    const raid = makeRaid({
-      queuedAction: "fight",
-      runState: freshRunState({ flags: ["combat_engaged"] }),
-    });
+  it("fight ticks damage the enemy and eventually drop them (target_down)", () => {
+    // Equip the Scavenged Pistol so a fight resolves in a handful of
+    // rounds rather than the bare-fists ~12-round average. The test still
+    // verifies that combatNext goes null when the enemy hits 0 HP across
+    // many seeds.
+    const armedEquipment = {
+      pockets: { grid: { width: 4, height: 4 }, items: [] },
+      bag: null,
+      rig: null,
+      weapon: { uid: "w1", itemId: "scavenged_pistol" },
+      armor: null,
+      helmet: null,
+    };
     let downs = 0;
-    let firefights = 0;
-    let fleds = 0;
     for (let seed = 1; seed < 200; seed++) {
-      const result = tickAction(raid, makeRng(seed), 0);
-      const cleared = result.flagsRemoved.includes("combat_engaged");
-      if (cleared && result.droppedItem) downs++;
-      else if (cleared) fleds++;
-      else firefights++;
+      let raid = makeRaid({
+        queuedAction: "fight",
+        combat: activeCombat(),
+        equipment: armedEquipment,
+        startingEquipment: armedEquipment,
+      });
+      for (let round = 0; round < 12 && raid.combat; round++) {
+        const result = tickAction(raid, makeRng(seed + round * 31), 0);
+        const nextCombat =
+          result.combatNext === undefined ? raid.combat : result.combatNext;
+        raid = {
+          ...raid,
+          combat: nextCombat,
+          runState: {
+            ...raid.runState,
+            health: Math.max(0, raid.runState.health + result.healthDelta),
+          },
+        };
+      }
+      if (!raid.combat) downs++;
     }
-    // Loose bounds — all three should fire.
-    expect(downs).toBeGreaterThan(20);
-    expect(firefights).toBeGreaterThan(20);
-    expect(fleds).toBeGreaterThan(5);
+    expect(downs).toBeGreaterThan(150);
   });
 
-  it("flee resolves to break-contact (clears flag) or failed flee (HP loss)", () => {
-    const raid = makeRaid({
-      queuedAction: "flee",
-      runState: freshRunState({ flags: ["combat_engaged"] }),
-    });
+  it("flee tick clears combat on success or applies damage + leaves combat running on fail", () => {
     let breaks = 0;
     let fails = 0;
     for (let seed = 1; seed < 200; seed++) {
+      const raid = makeRaid({
+        queuedAction: "flee",
+        combat: activeCombat(),
+        runState: freshRunState({ heat: 30 }),
+      });
       const result = tickAction(raid, makeRng(seed), 0);
-      if (result.flagsRemoved.includes("combat_engaged")) breaks++;
-      else fails++;
+      if (result.combatNext === null) {
+        breaks++;
+      } else if (result.combatNext && result.healthDelta < 0) {
+        fails++;
+      }
     }
     expect(breaks).toBeGreaterThan(50);
     expect(fails).toBeGreaterThan(20);

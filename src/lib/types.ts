@@ -48,6 +48,40 @@ export interface Item {
   // docs/archive/CONSTRUCTION_SYSTEM.md.
   component?: boolean;
   specialized?: boolean;
+  // Combat stat fields (Slice 0+ of the combat revamp). Live on the catalog
+  // only — StashItem instances never carry a copy. The shape grows per
+  // slice (band/threshold/coverage added as later slices need them) so
+  // future stats land without per-instance migrations.
+  weaponStats?: WeaponStats;
+  armorStats?: ArmorStats;
+  helmetStats?: HelmetStats;
+  procs?: ItemProc[];
+}
+
+// Weapon stats — Slice 0 ships baseDamage + baseAccuracy as placeholders so
+// the resolver has something to read. Slice 3 will add `band` + bandFalloff;
+// slice 4 will add `pen`.
+export interface WeaponStats {
+  baseDamage: number;
+  baseAccuracy: number;
+}
+
+// Armor stats — Slice 0 ships threshold as a placeholder. Slice 4 will add
+// per-location coverage maps.
+export interface ArmorStats {
+  threshold: number;
+}
+
+export interface HelmetStats {
+  threshold: number;
+}
+
+// Conditional proc — Slice 0 ships the shape only; resolver consults the
+// list starting in Slice 7. Trigger/effect enums grow per launch proc.
+export interface ItemProc {
+  trigger: string;
+  effect: string;
+  value: number;
 }
 
 export interface BagSectionDef {
@@ -344,6 +378,11 @@ export interface MapTile {
   // move into a threat tile, the patrol forced-choice modal fires. Cleared
   // when the patrol is resolved (target_down or target_fled).
   threat: boolean;
+  // Combat-revamp Slice 0: deterministic enemy ID rolled at map-gen for
+  // each threat tile. The combat resolver reads from data/enemies.ts via
+  // this archetypeId. Slice 0 always seeds "grunt" — Slice 3 will expand
+  // to Sniper / Brawler based on location + depth.
+  enemySpawn?: { archetypeId: string };
 }
 
 export interface RaidMap {
@@ -410,6 +449,27 @@ export interface CurrentRaid {
   // `at`. Replaces the chained setTimeout-in-store pattern so the tick loop
   // owns all scheduling. Cleared back to null by endRaid.
   pendingEnd: { at: number; success: boolean } | null;
+  // Combat-revamp Slice 1: when non-null, the operative is engaged in
+  // multi-round combat. Replaces the legacy `combat_engaged` flag. Each
+  // `fight` action tick resolves one round via resolveCombatRound; ends
+  // when enemy HP drops to 0 (target_down) or operative dies. Disengage
+  // (Slice 2 will add Disengage stance; Slice 1's `flee` action calls
+  // resolveDisengage with Heat-gated odds).
+  combat: CombatState | null;
+}
+
+// Combat-revamp Slice 1 — multi-round combat state. Lives on CurrentRaid
+// while a fight is active. The pure resolver in engine/combat.ts mutates
+// this each round; the store applies it back to currentRaid.
+export interface CombatState {
+  enemyArchetypeId: string;
+  enemyHp: number;
+  enemyHpMax: number;
+  // 0-indexed. Round 0 belongs to the initiator (the player when they
+  // chose Engage, the enemy when an ambush fired). Slice 6 fully wires
+  // round 0 asymmetry; Slice 1 uses it for the "you got the drop" log.
+  round: number;
+  initiator: "player" | "enemy";
 }
 
 export type ActionId =

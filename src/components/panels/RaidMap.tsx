@@ -106,7 +106,7 @@ export function RaidMap() {
   if (!raid) return null;
   const { map, operativePos } = raid;
   const isExtracting = raid.runState.flags.includes("extracting");
-  const inCombat = raid.runState.flags.includes("combat_engaged");
+  const inCombat = raid.combat != null;
   const canOverride = raid.active && !raid.pendingChoice && !isExtracting && !inCombat;
   // While the player hovers a valid override target, show the preview arrow
   // at the hovered tile instead of the cached nextStep so they can see what

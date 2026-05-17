@@ -13,6 +13,7 @@ import {
   startRaid,
   tickAction,
 } from "@/lib/engine/raid";
+import { initCombat } from "@/lib/engine/combat";
 import {
   applyBandage,
   applyConsumable,
@@ -263,6 +264,12 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       combatTradedShots:
         currentRaid.tally.combatTradedShots + (t.combatOutcome === "trade_shots" ? 1 : 0),
     };
+    // Combat-revamp Slice 1: handleFight/handleFlee report next combat
+    // state via t.combatNext. `undefined` = no change; `null` = combat
+    // ended this tick; otherwise the new CombatState. Applied here so
+    // currentRaid.combat stays in sync after each round.
+    const nextCombat =
+      t.combatNext === undefined ? currentRaid.combat : t.combatNext;
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, ...allLogs],
@@ -271,6 +278,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       equipment: nextEquipment,
       nextStep,
       tally,
+      combat: nextCombat,
       runState: {
         ...currentRaid.runState,
         heat: nextHeat,
@@ -376,7 +384,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     if (!currentRaid || !currentRaid.active) return;
     if (currentRaid.pendingChoice) return;
     const flags = currentRaid.runState.flags;
-    if (flags.includes("extracting") || flags.includes("combat_engaged")) return;
+    if (flags.includes("extracting") || currentRaid.combat) return;
     // Must be exactly one orthogonal step from the operative.
     const { x: ox, y: oy } = currentRaid.operativePos;
     if (Math.abs(target.x - ox) + Math.abs(target.y - oy) !== 1) return;
@@ -423,8 +431,15 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     let nextStep = currentRaid.nextStep;
     let depthChange = fx.depthAdvance ?? 0;
     let distanceChange = fx.distanceAdvance ?? 0;
-    const movingForwardForCombat = !!fx.flagsAdded?.includes("combat_engaged");
-    if (movingForwardForCombat) {
+    // Combat-revamp Slice 1: Engage no longer pushes the combat_engaged
+    // flag — it initializes currentRaid.combat from the target tile's
+    // pre-seeded enemySpawn. The choice resolver detects Engage by
+    // choice.id rather than by flag inspection.
+    const isEngageChoice =
+      currentRaid.pendingChoice?.eventId === "spotted_patrol" &&
+      choice.id === "engage";
+    let nextCombat: CurrentRaid["combat"] = currentRaid.combat;
+    if (isEngageChoice) {
       // Engage-into-patrol: commit the move into the threat tile, clear the
       // threat (operative is now in the room with the target). distance
       // advances by 1 to match the move.
@@ -435,6 +450,12 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
         fwd.x !== currentRaid.operativePos.x ||
         fwd.y !== currentRaid.operativePos.y
       ) {
+        // Read the enemy spawn off the destination tile BEFORE clearing
+        // its threat (clearTileThreat preserves enemySpawn but reading
+        // here matches the original tile's intent regardless).
+        const destTile = nextMap.tiles[fwd.y * nextMap.width + fwd.x];
+        const spawn = destTile?.enemySpawn ?? { archetypeId: "grunt" };
+        nextCombat = initCombat(spawn, "player");
         nextPos = fwd;
         nextMap = markTileVisited(nextMap, fwd.x, fwd.y);
         nextMap = clearTileThreat(nextMap, fwd.x, fwd.y);
@@ -485,6 +506,7 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       map: nextMap,
       nextStep,
       tally,
+      combat: nextCombat,
       runState: {
         ...rs,
         heat: choiceHeat,

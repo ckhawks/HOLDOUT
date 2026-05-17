@@ -98,6 +98,22 @@ export const ITEMS: Record<string, Item> = {
   mil_optic:        { id: "mil_optic",        name: "Military Optic",    tier: "rare",         category: "military",    sellValue: 180, weight: 1, shape: S.i3 },
   suppressor_tube:  { id: "suppressor_tube",  name: "Suppressor Tube",   tier: "rare",         category: "military",    sellValue: 170, weight: 1, shape: S.horiz2 },
 
+  // ─── Combat-revamp Slice 0: equippable weapons / armor / helmet ───
+  // Stats are placeholders — slices 3-4 will add range bands, pen, and
+  // location coverage. Slots route into the previously-dead weapon/armor/
+  // helmet equip slots; nothing reads stats yet so equipping them is purely
+  // a forward setup for later slices.
+  scavenged_pistol: { id: "scavenged_pistol", name: "Scavenged Pistol",  tier: "common",       category: "military",    sellValue: 95,  weight: 2, shape: S.horiz2,  slot: "weapon",
+    weaponStats: { baseDamage: 8, baseAccuracy: 0.55 } },
+  worn_carbine:     { id: "worn_carbine",     name: "Worn Carbine",      tier: "uncommon",     category: "military",    sellValue: 240, weight: 3, shape: S.i3,      slot: "weapon",
+    weaponStats: { baseDamage: 12, baseAccuracy: 0.6 } },
+  soft_vest:        { id: "soft_vest",        name: "Soft Vest",         tier: "common",       category: "military",    sellValue: 110, weight: 2, shape: S.square2, slot: "armor",
+    armorStats: { threshold: 2 } },
+  plate_carrier:    { id: "plate_carrier",    name: "Plate Carrier",     tier: "uncommon",     category: "military",    sellValue: 280, weight: 4, shape: S.rect2x3, slot: "armor",
+    armorStats: { threshold: 5 } },
+  salvaged_helmet:  { id: "salvaged_helmet",  name: "Salvaged Helmet",   tier: "common",       category: "military",    sellValue: 90,  weight: 1, shape: S.horiz2,  slot: "helmet",
+    helmetStats: { threshold: 2 } },
+
   // experimental
   prototype_chip:   { id: "prototype_chip",   name: "Prototype Chip",    tier: "rare",         category: "experimental", sellValue: 220, weight: 1, shape: S.one },
   exotic_alloy:     { id: "exotic_alloy",     name: "Reactor Plate",     tier: "rare",         category: "experimental", sellValue: 320, weight: 3, shape: S.square2 },

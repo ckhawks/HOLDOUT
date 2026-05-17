@@ -28,7 +28,7 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     isEligible: (raid) => {
       // Allowed during raid AND extract — the operative can opportunistically
       // search a room they're passing back through. Combat suspends it.
-      if (raid.runState.flags.includes("combat_engaged")) return false;
+      if (raid.combat != null) return false;
       const tile = currentTile(raid);
       if (!tile) return false;
       return tile.type !== "entry" && tile.lootRemaining > 0;
@@ -51,7 +51,7 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     label: "Leave",
     description: "Step off the extract point and end the raid.",
     isEligible: (raid) => {
-      if (raid.runState.flags.includes("combat_engaged")) return false;
+      if (raid.combat != null) return false;
       const tile = currentTile(raid);
       return !!tile && tile.type === "entry";
     },
@@ -60,20 +60,20 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     id: "fight",
     label: "Fight back",
     description: "Trade fire with the threat.",
-    isEligible: (raid) => raid.runState.flags.includes("combat_engaged"),
+    isEligible: (raid) => raid.combat != null,
   },
   flee: {
     id: "flee",
     label: "Break contact",
     description: "Try to disengage and slip out.",
-    isEligible: (raid) => raid.runState.flags.includes("combat_engaged"),
+    isEligible: (raid) => raid.combat != null,
   },
   breach_locked: {
     id: "breach_locked",
     label: "Breach container",
     description: "Blast open a locked container.",
     isEligible: (raid) => {
-      if (raid.runState.flags.includes("combat_engaged")) return false;
+      if (raid.combat != null) return false;
       const tile = currentTile(raid);
       return !!tile && tile.lockedContainers.length > 0;
     },
@@ -83,7 +83,7 @@ export const ACTIONS: Record<ActionId, ActionDef> = {
     label: "Use bypass key",
     description: "Quietly open a locked container. Consumes one Bypass Key.",
     isEligible: (raid) => {
-      if (raid.runState.flags.includes("combat_engaged")) return false;
+      if (raid.combat != null) return false;
       const tile = currentTile(raid);
       if (!tile || tile.lockedContainers.length === 0) return false;
       return hasItemId(raid.equipment, "bypass_key");
@@ -208,7 +208,7 @@ export function currentTile(raid: CurrentRaid): MapTile | undefined {
 // loot tick, forcing a manual click per container. The opt-in stays — entering
 // a new room mid-extract via extract_step does NOT trigger auto-loot.
 export function autoPickAction(raid: CurrentRaid): ActionId {
-  if (raid.runState.flags.includes("combat_engaged")) return "fight";
+  if (raid.combat != null) return "fight";
   if (raid.runState.flags.includes("extracting")) {
     if (raid.queuedAction === "loot" && ACTIONS.loot.isEligible(raid)) return "loot";
     if (ACTIONS.extract_now.isEligible(raid)) return "extract_now";
@@ -223,7 +223,7 @@ export function autoPickAction(raid: CurrentRaid): ActionId {
 // disabled when ineligible. They drive the operative's default loop:
 // raiding / extracting / combat sub-mode.
 export function primaryActionOrder(raid: CurrentRaid): ActionId[] {
-  if (raid.runState.flags.includes("combat_engaged")) return ["fight", "flee"];
+  if (raid.combat != null) return ["fight", "flee"];
   if (raid.runState.flags.includes("extracting"))
     return ["extract_step", "loot", "stay"];
   return ["move_forward", "loot", "stay"];
@@ -234,7 +234,7 @@ export function primaryActionOrder(raid: CurrentRaid): ActionId[] {
 // locked container, future lockpick, future use-key.
 const CONTEXT_ACTION_IDS: ActionId[] = ["extract_now", "breach_locked", "use_key"];
 export function contextActions(raid: CurrentRaid): ActionDef[] {
-  if (raid.runState.flags.includes("combat_engaged")) return [];
+  if (raid.combat != null) return [];
   return CONTEXT_ACTION_IDS.map((id) => ACTIONS[id]).filter((a) =>
     a.isEligible(raid),
   );
