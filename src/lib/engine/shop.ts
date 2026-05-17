@@ -57,6 +57,18 @@ export function generateShopOffers(rand: () => number): ShopOffer[] {
     price: priceFor("bandage_pack"),
     stock: 4 + Math.floor(rand() * 3),
   });
+  // Combat-revamp slice 2 follow-up: starter pistol always in stock. The
+  // bare-fist resolver makes a Grunt take ~12 rounds to drop without a
+  // weapon — that's a 2-minute fight at the 10s stance timer. The shop
+  // entry gates the slog behind one short detour to the hideout instead
+  // of giving the player a free pistol on spawn. Price is sub-markup so
+  // a first-time player can afford it after one cleared raid.
+  offers.push({
+    offerId: offerId(rand),
+    itemId: "scavenged_pistol",
+    price: 120,
+    stock: 1,
+  });
   // 2 distinct other chems, 2-5 stock each.
   for (const id of pickN(CHEM_POOL, 2, rand)) {
     offers.push({
