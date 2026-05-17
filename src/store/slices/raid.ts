@@ -329,6 +329,15 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     if (nextPos !== currentRaid.operativePos) {
       const arrivedTile = tileAt(nextMap, nextPos.x, nextPos.y);
       const wasFirstVisit = arrivedTile && !arrivedTile.visited;
+      // If the arrived tile was a pre-gen threat tile, clear its threat
+      // flag now — combat just initialized this tick (handled by
+      // tryCombatInit in the move handler) and the room shouldn't keep
+      // its red-border "threat ahead" treatment after the encounter.
+      // Runs unconditionally on arrival so target_down, disengage, and
+      // even death all leave the room in a consistent post-combat state.
+      if (arrivedTile && arrivedTile.threat) {
+        nextMap = clearTileThreat(nextMap, nextPos.x, nextPos.y);
+      }
       nextMap = markTileVisited(nextMap, nextPos.x, nextPos.y);
       nextMap = revealFrom(nextMap, nextPos.x, nextPos.y);
       nextStep = isExtracting
@@ -727,15 +736,25 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     const { currentRaid } = get();
     if (!currentRaid || !currentRaid.active) return;
     if (currentRaid.pausedAt) {
-      // Resume: shift the action timer forward by the pause duration so the
-      // remaining budget is preserved. Room contents don't expire so there's
-      // no longer anything else to shift.
+      // Resume: shift the action timer forward by the pause duration so
+      // the remaining budget is preserved. Also shift pendingChoice's
+      // startedAt — patrol modals, stance pickers, and door choices all
+      // use that timestamp for auto-resolve. Without this, the 10s
+      // stance budget would fire immediately on resume after a longer
+      // pause.
       const pauseDuration = Date.now() - currentRaid.pausedAt;
+      const shiftedPendingChoice = currentRaid.pendingChoice
+        ? {
+            ...currentRaid.pendingChoice,
+            startedAt: currentRaid.pendingChoice.startedAt + pauseDuration,
+          }
+        : null;
       set({
         currentRaid: {
           ...currentRaid,
           pausedAt: null,
           actionStartedAt: currentRaid.actionStartedAt + pauseDuration,
+          pendingChoice: shiftedPendingChoice,
         },
       });
     } else {
