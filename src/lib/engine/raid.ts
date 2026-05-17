@@ -15,6 +15,7 @@ import { iterKitItems } from "./equipment";
 import { lootVerb } from "./flavor";
 // Slice 2: resolveCombatRound / resolveDisengage are called from the
 // store's stance dispatcher now, not from these handlers.
+import { initCombat } from "./combat";
 
 export const TICK_MIN_MS = 3000;
 export const TICK_MAX_MS = 8000;
@@ -130,50 +131,14 @@ export function carriedWeight(equipment: import("@/lib/types").Equipment): numbe
   return w;
 }
 
-// A patrol encounter — fired as a forced-choice modal when the operative
-// runs into hostiles while pushing forward.
-function patrolPendingChoice(now: number): PendingChoice {
-  return {
-    eventId: "spotted_patrol",
-    prompt:
-      "Movement up ahead — patrol in the next room. They haven't spotted me yet.",
-    defaultId: "hide",
-    startedAt: now,
-    timerMs: PATROL_TIMER_MS,
-    options: [
-      {
-        id: "engage",
-        label: "Engage",
-        description: "Open fire. Loud — and they'll fight back.",
-        // Combat-revamp Slice 1: no flag here. The store initializes
-        // currentRaid.combat from the target tile's enemySpawn when this
-        // choice resolves; flag-based combat eligibility is gone.
-        effects: {
-          heatDelta: 14,
-          ammoDelta: -2,
-        },
-      },
-      {
-        id: "hide",
-        label: "Hide",
-        description: "Hold here. Quiet.",
-        effects: { heatDelta: -3, energyDelta: -2 },
-        isDefault: true,
-      },
-      {
-        id: "reposition",
-        label: "Reposition",
-        description: "Slip around them. Lane shift, +1 distance.",
-        effects: {
-          heatDelta: 3,
-          energyDelta: -3,
-          distanceAdvance: 1,
-          depthAdvance: 0,
-        },
-      },
-    ],
-  };
-}
+// Patrol interrupt's forced-choice modal removed. The player can already
+// see threat tiles on the map (red border + AlertTriangle); walking into
+// one is a deliberate engage. Tactical alternatives (Hide / Reposition)
+// are expressible via the action card (Stay) and click-to-move on a
+// non-threat adjacent tile. Heat ambushes now go straight into combat
+// with the enemy as round-0 initiator. PATROL_TIMER_MS is retained
+// because some legacy save-resume codepaths still synthesize a patrol
+// pendingChoice; not worth ripping until those paths can be retired.
 
 // ─── tickAction helpers ──────────────────────────────────────────────────────
 // tickAction was once a 315-line switch with shared closure state. Per the
@@ -305,35 +270,44 @@ export type CombatOutcome =
   | "broke_contact"
   | "trade_shots";
 
-// Patrol interrupt — fired both pre-move and pre-extract-step. Pre-gen threat
-// tiles are visible to the player on the map; heat-driven ambushes are not.
-// Returns a fully-formed ActionTickResult with pendingChoice set, or null if
-// no interrupt fires.
-function tryPatrolInterrupt(
+// Direct combat init on move. Replaces the old patrol pendingChoice
+// modal. Two cases:
+//   1. Heat ambush (non-threat destination, heat-driven roll): enemy
+//      gets round 0. Operative stays in place this tick — the contact
+//      lit up before they could move. Player's tactical response is in
+//      the stance picker (Disengage is an option).
+//   2. Threat-tile destination: operative commits the move; player
+//      gets round 0 (they walked in deliberately). The threat is
+//      cleared from the tile so the room reads "cleared" afterward.
+// Returns null when neither case fires (regular move proceeds).
+function tryCombatInit(
   ctx: TickCtx,
-  bleed: number,
-  pools: { heat: readonly string[]; threat: readonly string[] },
-): ActionTickResult | null {
-  const { raid, rand, now, log } = ctx;
+  movementOnSuccess: "forward" | "backward",
+  d: DeltaAccum,
+): boolean {
+  const { raid, rand, log } = ctx;
   const dest = raid.nextStep;
   const destTile = dest ? raid.map.tiles[dest.y * raid.map.width + dest.x] : undefined;
   const heatRoll =
     !destTile?.threat && rand() < (raid.runState.heat ?? 0) / HEAT_AMBUSH_DIVISOR;
-  if (!(destTile && destTile.threat) && !heatRoll) return null;
-  return {
-    logs: [log("flavor", pick(rand, heatRoll ? pools.heat : pools.threat), undefined)],
-    heatDelta: 0,
-    healthDelta: -bleed,
-    energyDelta: 0,
-    ammoDelta: 0,
-    flagsAdded: [],
-    flagsRemoved: [],
-    movement: "none",
-    consumedLoot: false,
-    breachedLocked: false,
-    extractedNow: false,
-    pendingChoice: patrolPendingChoice(now),
-  };
+  if (heatRoll) {
+    d.logs.push(
+      log("damage", "Ambushed — they had the drop on you.", undefined),
+    );
+    d.combatNext = initCombat({ archetypeId: "grunt" }, "enemy");
+    d.movement = "none";
+    return true;
+  }
+  if (destTile && destTile.threat) {
+    const spawn = destTile.enemySpawn ?? { archetypeId: "grunt" };
+    d.logs.push(
+      log("flavor", "Pushed in. First move's mine.", undefined),
+    );
+    d.combatNext = initCombat(spawn, "player");
+    d.movement = movementOnSuccess;
+    return true;
+  }
+  return false;
 }
 
 // Roll one loot drop for the current location. Returns the dropped item
@@ -356,21 +330,13 @@ function rollLoot(ctx: TickCtx, isRare: boolean): StashItem | null {
 // Per-action handlers. Each mutates the delta accumulator; the patrol-style
 // ones can short-circuit by returning an early ActionTickResult.
 
-function handleMoveForward(ctx: TickCtx, d: DeltaAccum, bleed: number): ActionTickResult | void {
-  const interrupt = tryPatrolInterrupt(ctx, bleed, {
-    heat: MOVE_FORWARD_HEAT_LINES,
-    threat: MOVE_FORWARD_THREAT_LINES,
-  });
-  if (interrupt) return interrupt;
+function handleMoveForward(ctx: TickCtx, d: DeltaAccum, _bleed: number): ActionTickResult | void {
+  if (tryCombatInit(ctx, "forward", d)) return;
   d.movement = "forward";
 }
 
-function handleExtractStep(ctx: TickCtx, d: DeltaAccum, bleed: number): ActionTickResult | void {
-  const interrupt = tryPatrolInterrupt(ctx, bleed, {
-    heat: EXTRACT_HEAT_LINES,
-    threat: EXTRACT_THREAT_LINES,
-  });
-  if (interrupt) return interrupt;
+function handleExtractStep(ctx: TickCtx, d: DeltaAccum, _bleed: number): ActionTickResult | void {
+  if (tryCombatInit(ctx, "backward", d)) return;
   d.movement = "backward";
 }
 

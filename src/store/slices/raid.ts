@@ -416,6 +416,12 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
     // currentRaid.combat stays in sync after each round.
     const nextCombat =
       t.combatNext === undefined ? currentRaid.combat : t.combatNext;
+    // Combat-revamp follow-up: when the move handler initialized combat
+    // this tick (null → non-null transition), raise the stance picker
+    // immediately so the player picks their opening move without a
+    // separate input round.
+    const combatJustStarted =
+      currentRaid.combat == null && nextCombat != null;
     let raid: CurrentRaid = {
       ...currentRaid,
       log: [...currentRaid.log, ...allLogs],
@@ -508,6 +514,20 @@ export const createRaidSlice: StateCreator<GameState, [], [], RaidSlice> = (set,
       queuedAction,
       actionStartedAt: Date.now(),
     };
+    // If combat just opened this tick (move into threat tile or heat
+    // ambush), raise the stance picker so the player picks their first
+    // round immediately.
+    if (combatJustStarted && nextCombat) {
+      raid = {
+        ...raid,
+        pendingChoice: makeStancePickChoice(
+          nextCombat,
+          raid.equipment,
+          raid.runState.heat,
+          Date.now(),
+        ),
+      };
+    }
     set({
       currentRaid: raid,
       ...(nextConstruction !== construction ? { construction: nextConstruction } : {}),

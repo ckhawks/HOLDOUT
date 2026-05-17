@@ -248,14 +248,17 @@ describe("combat sub-mode", () => {
       queuedAction: "move_forward",
     });
     const result = tickAction(raid, makeRng(1), 0);
-    expect(result.pendingChoice).toBeDefined();
-    expect(result.movement).toBe("none");
-    const ids = result.pendingChoice!.options.map((o) => o.id);
-    expect(ids).toContain("engage");
-    expect(ids).toContain("hide");
+    // Combat-revamp follow-up: walking into a threat tile no longer
+    // raises a forced-choice modal — it commits the move and initializes
+    // combat with the player as round-0 initiator. The stance picker is
+    // raised by the store after applying the tick.
+    expect(result.pendingChoice).toBeUndefined();
+    expect(result.movement).toBe("forward");
+    expect(result.combatNext).toBeDefined();
+    expect(result.combatNext?.initiator).toBe("player");
   });
 
-  it("at high heat, move_forward into a clean tile sometimes raises an ambush patrol", () => {
+  it("at high heat, move_forward into a clean tile sometimes ambushes (enemy initiator)", () => {
     const baseMap = generateMap(makeRng(1));
     const entry = baseMap.entry;
     const dest = { x: entry.x + 1, y: entry.y };
@@ -270,11 +273,13 @@ describe("combat sub-mode", () => {
       runState: freshRunState({ heat: 100 }),
     });
     // heat=100 → 25% per tick. Across 200 seeds we should see plenty of
-    // ambushes.
+    // enemy-initiator combat starts via combatNext.
     let ambushes = 0;
     for (let seed = 1; seed < 200; seed++) {
       const result = tickAction(raid, makeRng(seed), 0);
-      if (result.pendingChoice) ambushes++;
+      if (result.combatNext && result.combatNext.initiator === "enemy") {
+        ambushes++;
+      }
     }
     expect(ambushes).toBeGreaterThan(20);
   });
