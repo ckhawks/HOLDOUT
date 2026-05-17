@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement } from "react";
+import { createElement, useEffect } from "react";
 import { useNow } from "@/lib/useNow";
 import {
   ChevronRight,
@@ -53,15 +53,41 @@ const CHIP_ICONS: Record<ChipKind, React.ComponentType<{ className?: string }>> 
 export function NextActionCard() {
   const raid = useGame((s) => s.currentRaid);
   const overrideAction = useGame((s) => s.overrideAction);
+  const resolvePendingChoice = useGame((s) => s.resolvePendingChoice);
   const togglePause = useGame((s) => s.togglePause);
   const skipActionTimer = useGame((s) => s.skipActionTimer);
   const recall = useGame((s) => s.recall);
   const cancelRecall = useGame((s) => s.cancelRecall);
   const paused = !!raid?.pausedAt;
-  const now = useNow();
+  const wallNow = useNow();
+  const now = paused ? raid?.pausedAt ?? wallNow : wallNow;
+
+  // Slice 2: stance_pick is rendered inline (BranchModal returns null
+  // for combat). Auto-resolve to defaultId when the timer runs out.
+  const isStancePick =
+    !!raid?.combat && raid?.pendingChoice?.eventId === "stance_pick";
+  useEffect(() => {
+    if (!isStancePick || !raid?.pendingChoice || paused) return;
+    const c = raid.pendingChoice;
+    if (wallNow >= c.startedAt + c.timerMs) {
+      resolvePendingChoice(c.defaultId);
+    }
+  }, [isStancePick, raid?.pendingChoice, paused, wallNow, resolvePendingChoice]);
 
   if (!raid) return null;
   const queued = raid.queuedAction;
+  const stanceChoice = isStancePick ? raid.pendingChoice : null;
+  const stanceElapsed = stanceChoice
+    ? Math.max(0, now - stanceChoice.startedAt)
+    : 0;
+  const stanceRemaining = stanceChoice
+    ? Math.max(0, stanceChoice.timerMs - stanceElapsed)
+    : 0;
+  const stancePct = stanceChoice
+    ? Math.max(0, Math.min(1, 1 - stanceElapsed / stanceChoice.timerMs))
+    : 1;
+  const stanceSeconds = Math.ceil(stanceRemaining / 1000);
+
   const elapsed = paused ? raid.pausedAt! - raid.actionStartedAt : now - raid.actionStartedAt;
   const remaining = Math.max(0, ACTION_TIMER_MS - elapsed);
   const pct = Math.max(0, Math.min(1, 1 - elapsed / ACTION_TIMER_MS));
@@ -107,16 +133,34 @@ export function NextActionCard() {
     </div>
   ) : null;
 
+  // Header / timer block reused across normal and stance modes. In
+  // stance mode we swap the action timer for the stance pendingChoice
+  // timer and label the card "Combat" instead of "Next action".
+  const headerLabel = stanceChoice ? "Combat" : "Next action";
+  const headerSeconds = stanceChoice ? stanceSeconds : seconds;
+  const headerPct = stanceChoice ? stancePct : pct;
+  const urgentStance = stanceChoice && stanceRemaining < 3000;
+
   return (
     <aside className="flex w-56 shrink-0 flex-col border-l border-border/60 bg-card/30 px-3 py-3">
       {combatBanner}
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          Next action
+        <span
+          className={cn(
+            "font-mono text-[10px] uppercase tracking-widest",
+            stanceChoice ? "text-amber-300" : "text-muted-foreground",
+          )}
+        >
+          {headerLabel}
         </span>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-            {seconds}s
+          <span
+            className={cn(
+              "font-mono text-[11px] tabular-nums",
+              urgentStance ? "text-red-400" : "text-muted-foreground",
+            )}
+          >
+            {headerSeconds}s
           </span>
           <button
             type="button"
@@ -144,35 +188,58 @@ export function NextActionCard() {
       </div>
       <div className="mt-1 h-1 bg-border/40">
         <div
-          className={cn("h-full bg-foreground/80", paused && "animate-pulse bg-amber-300/80")}
-          style={{ width: `${pct * 100}%`, transition: "width 100ms linear" }}
+          className={cn(
+            "h-full",
+            paused
+              ? "animate-pulse bg-amber-300/80"
+              : urgentStance
+              ? "bg-red-400/80"
+              : "bg-foreground/80",
+          )}
+          style={{ width: `${headerPct * 100}%`, transition: "width 100ms linear" }}
         />
       </div>
-      <div className="mt-2 flex flex-col gap-1">
-        {primaryOrder.map((id) => (
-          <ActionRow
-            key={id}
-            id={id}
-            raid={raid}
-            queued={queued}
-            onPick={overrideAction}
-          />
-        ))}
-        {ctxActions.length > 0 ? (
-          <>
-            <div className="my-1 border-t border-border/60" />
-            {ctxActions.map((a) => (
-              <ActionRow
-                key={a.id}
-                id={a.id}
-                raid={raid}
-                queued={queued}
-                onPick={overrideAction}
-              />
-            ))}
-          </>
-        ) : null}
-      </div>
+      {stanceChoice ? (
+        <div className="mt-2 flex flex-col gap-1">
+          {stanceChoice.options.map((opt) => (
+            <StanceRow
+              key={opt.id}
+              optionId={opt.id}
+              label={opt.label}
+              description={opt.description}
+              chips={opt.chips ?? []}
+              isDefault={opt.id === stanceChoice.defaultId}
+              onPick={resolvePendingChoice}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-col gap-1">
+          {primaryOrder.map((id) => (
+            <ActionRow
+              key={id}
+              id={id}
+              raid={raid}
+              queued={queued}
+              onPick={overrideAction}
+            />
+          ))}
+          {ctxActions.length > 0 ? (
+            <>
+              <div className="my-1 border-t border-border/60" />
+              {ctxActions.map((a) => (
+                <ActionRow
+                  key={a.id}
+                  id={a.id}
+                  raid={raid}
+                  queued={queued}
+                  onPick={overrideAction}
+                />
+              ))}
+            </>
+          ) : null}
+        </div>
+      )}
       <div className="mt-3 border-t border-border/60 pt-3">
         {isExtracting ? (
           <button
@@ -278,6 +345,73 @@ function ActionRow({
           {count}x
         </span>
       ) : null}
+    </button>
+  );
+}
+
+// Slice 2 — stance row. Renders one stance option inline in the action
+// card so combat doesn't blackout the rest of the terminal. Chips come
+// from the pendingChoice option (pre-rendered by makeStancePickChoice
+// so the values stay in lock-step with the resolver).
+function StanceRow({
+  optionId,
+  label,
+  description,
+  chips,
+  isDefault,
+  onPick,
+}: {
+  optionId: string;
+  label: string;
+  description?: string;
+  chips: { text: string; tone: "good" | "bad" | "neutral" | "loot" }[];
+  isDefault: boolean;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(optionId)}
+      className={cn(
+        "relative flex w-full cursor-pointer items-start gap-2 rounded-sm border px-2.5 py-1.5 text-left transition-colors",
+        "border-border/60 bg-background/30 text-foreground/90 hover:border-amber-400/60 hover:bg-amber-500/10",
+        isDefault && "ring-1 ring-amber-400/40",
+      )}
+    >
+      <ChevronRight className="mt-0.5 size-3 shrink-0 text-amber-400" />
+      <div className="flex flex-1 flex-col gap-1">
+        <span className="flex items-center gap-1.5 text-[12px] font-medium leading-tight">
+          {label}
+          {isDefault ? (
+            <span className="rounded-sm bg-amber-400/20 px-1 py-px font-mono text-[8px] uppercase tracking-widest text-amber-300">
+              Default
+            </span>
+          ) : null}
+        </span>
+        {description ? (
+          <span className="text-[10px] font-normal leading-tight text-muted-foreground opacity-80">
+            {description}
+          </span>
+        ) : null}
+        {chips.length > 0 ? (
+          <div className="mt-0.5 flex flex-wrap gap-1">
+            {chips.map((c, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "inline-block rounded-sm px-1 py-px font-mono text-[10px] tabular-nums",
+                  c.tone === "good" && "text-emerald-300",
+                  c.tone === "bad" && "text-red-300",
+                  c.tone === "loot" && "text-amber-300",
+                  c.tone === "neutral" && "text-foreground/70",
+                )}
+              >
+                {c.text}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
     </button>
   );
 }

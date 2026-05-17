@@ -55,6 +55,10 @@ function chipsFor(opt: BranchOption): Chip[] {
 export function BranchModal() {
   const choice = useGame((s) => s.currentRaid?.pendingChoice ?? null);
   if (!choice) return null;
+  // Combat stance_pick renders inline in the action card so the player
+  // can still see HP, the event log, and the map during combat. Skip
+  // the full-screen modal for it.
+  if (choice.eventId === "stance_pick") return null;
   // Keyed remount on each new choice: lets the inner component seed
   // selectedIdx from `choice.defaultId` via useState's lazy initializer
   // instead of an in-effect setState (which the React Compiler flags as a
