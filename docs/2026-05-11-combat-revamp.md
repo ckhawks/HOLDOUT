@@ -8,6 +8,30 @@ Current combat is one-shot — once you can afford meds + food + a basic backpac
 
 The fairness contract is **visible odds before commit**. A 22% line that flips against you should feel like "rolled unlucky," not "the game cheated." This is the single most load-bearing UI rule in the whole system.
 
+## Decisions locked 2026-05-17
+
+Resolved during plan review. Read these before the rest of the doc — they override anything below that contradicts.
+
+- **Enemy intent is telegraphed, not hidden.** Each enemy's stance for the upcoming round is shown on its row before the player commits. Derived from archetype + previous round state (Brawler closing + Pressing, Sniper opening + Pressing at range, etc.). This makes the shown odds *truthful*, not estimates — the fairness contract holds. Player-facing read: "I knew the Brawler was charging and I Pressed anyway" is a story; "the game rolled hidden and got me" is not.
+- **Mid-raid save migration: clear the flag, keep the loot.** When a save with `combat_engaged` set loads under the new schema, drop the flag, log a one-line "contact broken" entry, leave the operative on their current tile with everything they were carrying. No forced raid-failure, no synthesized `CombatState`. The threat tile they engaged is treated as having fled.
+- **Item stats live on the catalog (`ITEMS[id]`), not on `StashItem` instances.** `weaponStats` / `armorStats` / `helmetStats` / `procs` are read from the data record at use-time. Stashed items don't carry a copy. This means schema bumps that grow the stats shape don't require per-instance backfill migrations — a player's hoarded Worn Carbine picks up new fields automatically when the catalog gains them.
+- **Fairness contract is honest because of telegraphing.** With enemy intent visible, the chip's "78% you hit / 22% they hit you" is exact for this round, not an average over a hidden distribution.
+
+## Player view — slice by slice
+
+What you'll actually *feel* changing as each slice lands. The engineering work is below; this is the same plan from the player's chair.
+
+- **Slice 0 — new gear slots come alive.** Weapons, armor pieces, and a helmet appear in loot and can be equipped into the slots that were dead before. No combat change yet. You can plan a loadout that *means* something next slice.
+- **Slice 1 — combat takes more than one click.** Engagements become multi-round. You see the enemy on the combat panel and you Press until they're down or you are. Stakes go up — combat isn't a 0.5s die-roll anymore.
+- **Slice 2 — stances + visible odds.** You pick Press / Suppress / Reposition / Disengage each round, each chip shows the math. First slice where good decisions feel like good decisions.
+- **Slice 3 — distance matters.** Combat tracks a distance band (Point Blank → Far). Your weapon has a sweet spot. Repositioning lets you fight at your range. New enemies (Sniper opens distance, Brawler closes) push or pull you out of that sweet spot.
+- **Slice 4 — armor that actually does something.** Hits roll Location (head / chest / limbs / gap) and Pen vs Armor. A plate either holds the threshold or doesn't. Seam shots (~2%) bypass armor — your dedicated lucky-shot lethality.
+- **Slice 5 — recon before you commit.** Walking next to a threat tile reveals partial info — maybe just count and archetype, maybe HP and weapon, depends on observability. You see what you're walking into.
+- **Slice 6 — initiative matters.** Whoever started the fight gets a free round 0. Heat-gated ambushes (between-tile rolls) can flip that against you.
+- **Slice 7 — gear procs.** Items carry conditional bonuses (Bipod after a Reposition, Adrenaline after taking damage, Suppressor for silent round 0 kills). Loadout builds become a thing.
+- **Slice 8 — rare catastrophes.** Weapon jam at the worst moment. Enemy crit-stack. Ambush-from-behind. Stories you remember, gated so they hit at most once a long fight.
+- **Slice 9 — content + tuning.** More archetype variants and procs, numbers tuned based on what felt off in 1-8.
+
 ## Core scope (load-bearing)
 
 ### Engagement entry
@@ -71,6 +95,8 @@ Every stance chip shows the math:
 > Press — 78% you hit, 22% they hit you, est 2 rounds
 
 This is the fairness contract. Without it, RNG feels cheap. With it, every death is a bet that didn't pay off.
+
+The odds are honest (not averaged over a hidden enemy distribution) because **enemy intent is telegraphed** — each enemy row shows the stance they'll take this round, derived from archetype + previous round state. You see Brawler-Closing-Pressing before you commit your stance. See "Decisions locked 2026-05-17" up top.
 
 ### Loadout = stack of modifiers + conditional procs
 Gear is statline + sometimes a conditional bonus. Examples:
@@ -165,7 +191,7 @@ Each slice leaves the game playable. Slices 1-4 are the "is this fun?" gate; tun
 ### Slice 0 — weapons / armor / helmets exist
 Introduce the first equippable items in these slots so later mechanical slices have something to attach stats to. Placeholder stats fine; only the *fields* matter.
 
-- New: `Item` type extended with `weaponStats?`, `armorStats?`, `helmetStats?` (optional, shape evolves per slice). New item entries in `data/items.ts`: 1-2 weapons (e.g., Scavenged Pistol, Worn Carbine), 1-2 armor pieces (e.g., Soft Vest, Plate Carrier), 1 helmet (e.g., Salvaged Helmet). All carry a `slot` field so they route to equipment slots.
+- New: `Item` type extended with `weaponStats?`, `armorStats?`, `helmetStats?` (optional, shape evolves per slice). Stats live on the catalog (`ITEMS[id]`) only — `StashItem` instances carry just `itemId` and never a copy of stats. Future slices that grow the stats shape don't need per-instance migrations. New item entries in `data/items.ts`: 1-2 weapons (e.g., Scavenged Pistol, Worn Carbine), 1-2 armor pieces (e.g., Soft Vest, Plate Carrier), 1 helmet (e.g., Salvaged Helmet). All carry a `slot` field so they route to equipment slots.
 - Touches: `map.ts` gen pass adds optional `enemySpawn` to tiles where `threat === true` (no enemy data yet — just the shape and a placeholder).
 - Schema: v31 — migrate existing saves (add empty `enemySpawn: undefined`).
 - No felt change in combat yet; player can equip items into previously-dead slots.
@@ -175,7 +201,7 @@ Replace today's one-shot `handleFight` / `handleFlee` (`raid.ts:515-568`) with a
 
 - New: `engine/combat.ts` (pure round resolver), `CombatState` shape on `CurrentRaid`, `data/enemies.ts` with one entry, combat UI panel that takes over when `currentRaid.combat != null`.
 - Touches: `engine/actions.ts:59-70` (eligibility now reads `currentRaid.combat != null`, not the flag), `engine/raid.ts` (`handleFight` becomes `initCombat` + the tick loop calls `resolveCombatRound` while `currentRaid.combat != null`), `spotted_patrol` event Engage outcome calls `initCombat`, remove `combat_engaged` flag entirely.
-- Schema: v32 — migrate by clearing legacy `combat_engaged` from any persisted flags and ensuring `currentRaid.combat` defaults to `undefined`.
+- Schema: v32 — migrate by clearing legacy `combat_engaged` from any persisted flags and ensuring `currentRaid.combat` defaults to `undefined`. If a player loads mid-raid with the flag set, drop it, append a `combat_resolved`-kind log entry ("Contact broken. Threat slipped away.") and leave the operative on their current tile with all pack/equipment intact. No forced raid-failure, no synthesized `CombatState`. See "Decisions locked 2026-05-17".
 - Tests: deterministic round resolution, multi-round HP tracking, RNG seeded, save migration clears the legacy flag.
 
 ### Slice 2 — stance system
