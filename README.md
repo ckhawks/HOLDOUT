@@ -4,6 +4,18 @@ A web-based deep-crafting raid game. You play a handler dispatching one operativ
 
 The whole game is presented as a fictional **dispatch terminal** — every system is an "app" or panel. shadcn/vercel aesthetic, lucide icons, monochrome accents. No 3D world, no top-down combat. The art direction is the UI itself.
 
+> ⚠️ **Status: in active development.** Playable but unfinished — shared as a work-in-progress.
+
+![HOLDOUT — Ops console, dispatching an operative to a target location](docs/screenshots/ops.png)
+
+## Screenshots
+
+| Hideout — grow your base from a junk pile | Stash — inventory & loot |
+| :---: | :---: |
+| ![Hideout](docs/screenshots/hideout.png) | ![Stash](docs/screenshots/stash.png) |
+| **Market — buy & sell** | **Feed — live comms during a raid** |
+| ![Market](docs/screenshots/market.png) | ![Feed](docs/screenshots/feed.png) |
+
 ## Stack
 
 Next.js 16 · TypeScript · Tailwind 4 · shadcn/ui · Zustand 5 · localStorage save · pnpm
@@ -44,3 +56,7 @@ experiments/
 2. `docs/BACKLOG.md` — what's open and what just shipped (changelog at the bottom)
 3. `src/lib/engine/raid.ts` — the action loop
 4. `src/store/game.ts` — Zustand store
+
+## Credits
+
+UI sound effects are sourced from [Freesound](https://freesound.org/). See [`CREDITS.md`](CREDITS.md) for per-sound attribution and licenses.
